@@ -10,6 +10,7 @@ use App\Livewire\Invitations\Manage as InvitationsManage;
 use App\Livewire\Modules\Manage as ModulesManage;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Roles\Manage as RolesManage;
+use App\Livewire\SecurityLog\Index as SecurityLogIndex;
 use App\Livewire\UserRoles\Manage as UserRolesManage;
 use App\Models\SecurityEvent;
 use Illuminate\Http\Request;
@@ -66,4 +67,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/modules', ModulesManage::class)
         ->middleware('permission:screens.modules.manage')
         ->name('modules.index');
+
+    Route::get('/security-log', SecurityLogIndex::class)
+        ->middleware('permission:screens.security.view')
+        ->name('security-log.index');
 });
