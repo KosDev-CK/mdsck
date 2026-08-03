@@ -24,5 +24,16 @@
     </div>
 
     @livewireScripts
+
+    @auth
+        <script>
+            document.addEventListener('livewire:init', () => {
+                window.Echo.private('App.Models.User.{{ auth()->id() }}')
+                    .notification((notification) => {
+                        Livewire.dispatch('notification-received');
+                    });
+            });
+        </script>
+    @endauth
 </body>
 </html>
