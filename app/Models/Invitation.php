@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 class Invitation extends Model
@@ -56,5 +57,29 @@ class Invitation extends Model
     public function isPending(): bool
     {
         return ! $this->isAccepted() && ! $this->isRevoked() && ! $this->isExpired();
+    }
+
+    /**
+     * Generate a new random invitation token and its deterministic lookup hash.
+     * The raw token is only ever handed to the invitee via email; only the
+     * hash is persisted (same approach Sanctum uses for API tokens).
+     *
+     * @return array{0: string, 1: string} [$rawToken, $hash]
+     */
+    public static function generateToken(): array
+    {
+        $raw = Str::random(48);
+
+        return [$raw, static::hashToken($raw)];
+    }
+
+    public static function hashToken(string $rawToken): string
+    {
+        return hash('sha256', $rawToken);
+    }
+
+    public static function findByToken(string $rawToken): ?self
+    {
+        return static::where('token_hash', static::hashToken($rawToken))->first();
     }
 }
