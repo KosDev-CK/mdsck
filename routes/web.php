@@ -7,6 +7,7 @@ use App\Livewire\Auth\VerifyTwoFactor;
 use App\Livewire\Connections\Manage as ConnectionsManage;
 use App\Livewire\Dashboard;
 use App\Livewire\Invitations\Manage as InvitationsManage;
+use App\Livewire\Modules\Manage as ModulesManage;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Roles\Manage as RolesManage;
 use App\Livewire\UserRoles\Manage as UserRolesManage;
@@ -61,4 +62,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/connections', ConnectionsManage::class)
         ->middleware('permission:screens.connections.manage')
         ->name('connections.index');
+
+    Route::get('/modules', ModulesManage::class)
+        ->middleware('permission:screens.modules.manage')
+        ->name('modules.index');
 });

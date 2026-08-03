@@ -12,7 +12,9 @@
       "Bash(npm install *)",
       "Bash(php -r \"echo bin2hex\\(random_bytes\\(16\\)\\), PHP_EOL, bin2hex\\(random_bytes\\(16\\)\\), PHP_EOL, random_int\\(100000,999999\\), PHP_EOL;\")",
       "Bash(npm run *)",
-      "Bash(find /c/wamp64/bin/apache -iname \"httpd-vhosts.conf\" 2>/dev/null)"
+      "Bash(find /c/wamp64/bin/apache -iname \"httpd-vhosts.conf\" 2>/dev/null)",
+      "Bash(curl -s -o /dev/null -w \"ejemplo \\(guest\\) -> %{http_code}\\\\n\" http://mds.test/ejemplo)",
+      "Bash(xargs grep -l \"function isEnabled\\\\|function enable\\(\")"
     ]
   }
 }
