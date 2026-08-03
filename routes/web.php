@@ -4,6 +4,7 @@ use App\Livewire\Auth\AcceptInvitation;
 use App\Livewire\Auth\RequestLoginCode;
 use App\Livewire\Auth\VerifyLoginCode;
 use App\Livewire\Auth\VerifyTwoFactor;
+use App\Livewire\Connections\Manage as ConnectionsManage;
 use App\Livewire\Dashboard;
 use App\Livewire\Invitations\Manage as InvitationsManage;
 use App\Livewire\Profile\Show as ProfileShow;
@@ -56,4 +57,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/user-roles', UserRolesManage::class)
         ->middleware('permission:screens.user-roles.manage')
         ->name('user-roles.index');
+
+    Route::get('/connections', ConnectionsManage::class)
+        ->middleware('permission:screens.connections.manage')
+        ->name('connections.index');
 });
