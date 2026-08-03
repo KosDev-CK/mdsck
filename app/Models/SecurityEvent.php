@@ -18,6 +18,10 @@ class SecurityEvent extends Model
 
     public const TWO_FACTOR_FAILED = 'two_factor_failed';
 
+    public const TWO_FACTOR_ENABLED = 'two_factor_enabled';
+
+    public const TWO_FACTOR_DISABLED = 'two_factor_disabled';
+
     public const LOGOUT = 'logout';
 
     public const SESSION_REVOKED = 'session_revoked';

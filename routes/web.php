@@ -4,6 +4,11 @@ use App\Livewire\Auth\AcceptInvitation;
 use App\Livewire\Auth\RequestLoginCode;
 use App\Livewire\Auth\VerifyLoginCode;
 use App\Livewire\Auth\VerifyTwoFactor;
+use App\Livewire\Dashboard;
+use App\Livewire\Invitations\Manage as InvitationsManage;
+use App\Livewire\Profile\Show as ProfileShow;
+use App\Livewire\Roles\Manage as RolesManage;
+use App\Livewire\UserRoles\Manage as UserRolesManage;
 use App\Models\SecurityEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -36,7 +41,19 @@ Route::post('/logout', function (Request $request) {
 })->middleware('auth')->name('logout');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/dashboard', function () {
-        return view('dashboard');
-    })->name('dashboard');
+    Route::get('/dashboard', Dashboard::class)->name('dashboard');
+
+    Route::get('/profile', ProfileShow::class)->name('profile.show');
+
+    Route::get('/invitations', InvitationsManage::class)
+        ->middleware('permission:screens.invitations.manage')
+        ->name('invitations.index');
+
+    Route::get('/roles', RolesManage::class)
+        ->middleware('permission:screens.roles.manage')
+        ->name('roles.index');
+
+    Route::get('/user-roles', UserRolesManage::class)
+        ->middleware('permission:screens.user-roles.manage')
+        ->name('user-roles.index');
 });
