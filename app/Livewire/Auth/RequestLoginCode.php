@@ -27,26 +27,40 @@ class RequestLoginCode extends Component
 
         $user = User::where('email', $this->email)->first();
 
-        if ($user && $user->is_active && ! $user->isLocked()) {
-            $code = $this->generateNumericCode(config('security.login_code_length'));
+        if (! $user) {
+            $this->addError('email', 'Este correo no tiene acceso al sistema.');
 
-            LoginCode::where('user_id', $user->id)->whereNull('consumed_at')->update(['consumed_at' => now()]);
-
-            LoginCode::create([
-                'user_id' => $user->id,
-                'code_hash' => Hash::make($code),
-                'expires_at' => now()->addMinutes(config('security.login_code_ttl_minutes')),
-                'ip_address' => request()->ip(),
-                'user_agent' => request()->userAgent(),
-            ]);
-
-            $user->notify(new LoginCodeNotification($code));
-
-            session(['login.user_id' => $user->id]);
+            return;
         }
 
-        // Always redirect the same way, whether or not the account exists,
-        // to avoid leaking which emails are registered.
+        if (! $user->is_active) {
+            $this->addError('email', 'Esta cuenta está desactivada. Contacta al administrador.');
+
+            return;
+        }
+
+        if ($user->isLocked()) {
+            $this->addError('email', 'Esta cuenta está bloqueada temporalmente. Intenta más tarde.');
+
+            return;
+        }
+
+        $code = $this->generateNumericCode(config('security.login_code_length'));
+
+        LoginCode::where('user_id', $user->id)->whereNull('consumed_at')->update(['consumed_at' => now()]);
+
+        LoginCode::create([
+            'user_id' => $user->id,
+            'code_hash' => Hash::make($code),
+            'expires_at' => now()->addMinutes(config('security.login_code_ttl_minutes')),
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+
+        $user->notify(new LoginCodeNotification($code));
+
+        session(['login.user_id' => $user->id]);
+
         return redirect()->route('login.verify');
     }
 

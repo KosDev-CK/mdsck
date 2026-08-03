@@ -32,12 +32,39 @@ class PasswordlessLoginTest extends TestCase
         Notification::assertSentTo($user, \App\Notifications\LoginCodeNotification::class);
     }
 
-    public function test_requesting_a_code_for_unknown_email_still_redirects_without_creating_a_code(): void
+    public function test_requesting_a_code_for_an_unknown_email_shows_an_error_and_creates_no_code(): void
     {
         Livewire::test(RequestLoginCode::class)
             ->set('email', 'nobody@example.com')
             ->call('sendCode')
-            ->assertRedirect(route('login.verify'));
+            ->assertHasErrors('email')
+            ->assertNoRedirect();
+
+        $this->assertDatabaseCount('login_codes', 0);
+    }
+
+    public function test_requesting_a_code_for_a_deactivated_account_shows_an_error(): void
+    {
+        $user = User::factory()->create(['is_active' => false]);
+
+        Livewire::test(RequestLoginCode::class)
+            ->set('email', $user->email)
+            ->call('sendCode')
+            ->assertHasErrors('email')
+            ->assertNoRedirect();
+
+        $this->assertDatabaseCount('login_codes', 0);
+    }
+
+    public function test_requesting_a_code_for_a_locked_account_shows_an_error(): void
+    {
+        $user = User::factory()->create(['is_active' => true, 'locked_until' => now()->addMinutes(5)]);
+
+        Livewire::test(RequestLoginCode::class)
+            ->set('email', $user->email)
+            ->call('sendCode')
+            ->assertHasErrors('email')
+            ->assertNoRedirect();
 
         $this->assertDatabaseCount('login_codes', 0);
     }
