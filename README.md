@@ -1,59 +1,65 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# MDS
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Plantilla base para sitios internos con login, roles/permisos por pantalla, invitaciones, 2FA y notificaciones en tiempo real. Pensada para clonarse y reutilizarse en nuevos desarrollos — la parte de plataforma ya está resuelta, solo hace falta construir el contenido de cada módulo nuevo.
 
-## About Laravel
+## Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Laravel 12 + MySQL (InnoDB forzado, ver `config/database.php`)
+- Blade + Livewire 3 + Tailwind v4
+- Spatie Laravel Permission (roles = "perfiles", permisos = "pantallas")
+- nwidart/laravel-modules (cada proceso/módulo vive aislado bajo `Modules/`)
+- Laravel Reverb (WebSockets propios, sin dependencias externas) para notificaciones en tiempo real
+- Google2FA (TOTP, compatible con Microsoft/Google Authenticator)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Autenticación
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Sin contraseña: el usuario ingresa su correo, recibe un código de 6 dígitos por email, y opcionalmente confirma con 2FA (TOTP) si lo tiene activado en su perfil. El acceso es solo por invitación — no hay registro público.
 
-## Learning Laravel
+Reglas de seguridad: 5 intentos fallidos bloquean la cuenta 5 minutos; 3 ciclos de bloqueo corto escalan a un bloqueo de 24 horas y notifican a los administradores. Solo se permite 1 sesión activa por usuario, y la sesión inactiva expira a las 3 horas (`SESSION_LIFETIME` en `.env`).
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Arranque en desarrollo (WAMP)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+composer install
+npm install
+cp .env.example .env   # ajusta credenciales de BD
+php artisan key:generate
+php artisan migrate --seed
+npm run build           # o "npm run dev" mientras desarrollas
+```
 
-## Laravel Sponsors
+Corre `composer run dev` para levantar en paralelo Reverb, el worker de colas, los logs (`pail`) y Vite.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+El seeder crea las pantallas base, el rol **Administrador** y un primer usuario administrador (ver `database/seeders/CoreSeeder.php` — ajusta el correo antes de sembrar en un proyecto nuevo). Como el login es sin contraseña, ese es el único acceso hasta que ese usuario invite a los demás desde "Configuración de acceso".
 
-### Premium Partners
+En dev, los correos se escriben en `storage/logs/laravel.log` (`MAIL_MAILER=log`) — ahí verás el código de acceso y los enlaces de invitación hasta que configures un SMTP real.
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Pruebas
 
-## Contributing
+```bash
+php artisan test
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Cubre autenticación passwordless, 2FA, bloqueo de cuenta, sesión única, invitaciones, perfiles/pantallas, pool de conexiones a BD, módulos, notificaciones y bitácora de seguridad.
 
-## Code of Conduct
+## Agregar un módulo de contenido nuevo
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+php artisan module:make MiModulo
+```
 
-## Security Vulnerabilities
+Sigue el patrón del módulo `Modules/Ejemplo` (incluido como referencia): su propia migración, modelo, componente Livewire y vista, resuelto por el mismo sistema de perfiles/pantallas del core. Para que aparezca en el menú y sea asignable a un perfil:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+1. Crea un registro en `screens` con `module`, `route_name` y `permission_name` (hazlo en el seeder del propio módulo, no en `CoreSeeder`, para que el módulo sea instalable/removible de forma independiente).
+2. Da de alta la ruta con el middleware `permission:{permission_name}` en `Modules/MiModulo/routes/web.php`.
+3. Corre `php artisan module:seed MiModulo`.
 
-## License
+Activar/desactivar módulos instalados: pantalla "Módulos" (`/modules`).
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Pool de conexiones a BD
+
+Pantalla "Conexiones a BD" (`/connections`) permite registrar conexiones adicionales (MySQL, PostgreSQL, SQL Server o APIs externas) que un módulo puede usar en tiempo de ejecución vía `DatabaseConnection::toConnectionConfig()`. El soporte para Oracle (yajra/laravel-oci8) se agrega cuando el primer módulo lo necesite — requiere instalar el Oracle Instant Client en el servidor.
+
+## Despliegue a producción
+
+Ver [`docs/deploy-lemp.md`](docs/deploy-lemp.md).
