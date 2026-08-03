@@ -15,15 +15,20 @@ class EnsureSingleSession
         if (Auth::check()) {
             $user = Auth::user();
 
-            if ($user->current_session_id && $user->current_session_id !== $request->session()->getId()) {
-                SecurityEvent::log(SecurityEvent::SESSION_REVOKED, $request, $user);
+            $mismatchedSession = $user->current_session_id && $user->current_session_id !== $request->session()->getId();
+            $deactivated = ! $user->is_active;
+
+            if ($mismatchedSession || $deactivated) {
+                SecurityEvent::log(SecurityEvent::SESSION_REVOKED, $request, $user, meta: ['reason' => $deactivated ? 'deactivated' : 'session_mismatch']);
 
                 Auth::logout();
                 $request->session()->invalidate();
                 $request->session()->regenerateToken();
 
                 return redirect()->route('login')
-                    ->with('status', 'Tu sesión se cerró porque iniciaste sesión desde otro dispositivo.');
+                    ->with('status', $deactivated
+                        ? 'Tu cuenta fue desactivada.'
+                        : 'Tu sesión se cerró porque iniciaste sesión desde otro dispositivo.');
             }
         }
 
