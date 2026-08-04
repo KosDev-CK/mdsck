@@ -1,7 +1,7 @@
 <div>
     <h1 class="text-lg font-semibold text-gray-900 mb-6">Bienvenido, {{ auth()->user()->name }}</h1>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6">
         <div class="bg-white rounded-xl border border-gray-200 p-5">
             <div class="text-sm text-gray-500">Tus perfiles</div>
             <div class="mt-2 flex flex-wrap gap-1">

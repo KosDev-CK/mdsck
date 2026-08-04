@@ -58,11 +58,11 @@
             </form>
         @elseif ($enablingTwoFactor)
             <div class="space-y-4">
-                <div class="flex items-start gap-6">
-                    <div class="border border-gray-200 rounded-md p-2 shrink-0">
+                <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+                    <div class="border border-gray-200 rounded-md p-2 shrink-0 mx-auto sm:mx-0">
                         {!! $this->qrCodeSvg !!}
                     </div>
-                    <div class="text-sm text-gray-600">
+                    <div class="text-sm text-gray-600 w-full sm:w-auto">
                         <p class="mb-2">Escanea el código con tu app Authenticator, o ingresa esta clave manualmente:</p>
                         <code class="block bg-gray-100 rounded px-2 py-1 text-xs break-all">{{ $pendingSecret }}</code>
                     </div>

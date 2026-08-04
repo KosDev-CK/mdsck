@@ -17,10 +17,11 @@ class EjemploDatabaseSeeder extends Seeder
             ['slug' => 'ejemplo'],
             [
                 'module' => 'Ejemplo',
+                'group_label' => 'Módulos',
                 'name' => 'Ejemplo',
                 'route_name' => 'ejemplo.index',
                 'permission_name' => 'screens.ejemplo.manage',
-                'icon' => 'puzzle',
+                'icon' => 'cube',
                 'order' => 90,
             ]
         );

@@ -28,32 +28,34 @@
         </div>
 
         <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-gray-500 border-b border-gray-100">
-                        <th class="py-2">Título</th>
-                        <th class="py-2">Descripción</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($items as $item)
-                        <tr class="border-b border-gray-50">
-                            <td class="py-2 font-medium text-gray-900">{{ $item->title }}</td>
-                            <td class="py-2 text-gray-500">{{ $item->description }}</td>
-                            <td class="py-2 text-right">
-                                <button wire:click="delete({{ $item->id }})" wire:confirm="¿Eliminar este registro?" class="text-red-600 hover:text-red-500 text-sm">
-                                    Eliminar
-                                </button>
-                            </td>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 border-b border-gray-100">
+                            <th class="py-2">Título</th>
+                            <th class="py-2">Descripción</th>
+                            <th></th>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="3" class="py-6 text-center text-gray-400">Sin registros todavía.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @forelse ($items as $item)
+                            <tr class="border-b border-gray-50">
+                                <td class="py-2 font-medium text-gray-900 whitespace-nowrap">{{ $item->title }}</td>
+                                <td class="py-2 text-gray-500">{{ $item->description }}</td>
+                                <td class="py-2 text-right whitespace-nowrap">
+                                    <button wire:click="delete({{ $item->id }})" wire:confirm="¿Eliminar este registro?" class="text-red-600 hover:text-red-500 text-sm">
+                                        Eliminar
+                                    </button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="3" class="py-6 text-center text-gray-400">Sin registros todavía.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
 
             <div class="mt-4">{{ $items->links() }}</div>
         </div>

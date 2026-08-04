@@ -11,6 +11,7 @@ class Screen extends Model
 {
     protected $fillable = [
         'module',
+        'group_label',
         'name',
         'slug',
         'route_name',

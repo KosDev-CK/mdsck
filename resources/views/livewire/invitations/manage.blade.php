@@ -46,50 +46,52 @@
         <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
             <h2 class="text-sm font-semibold text-gray-900 mb-4">Invitaciones</h2>
 
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-gray-500 border-b border-gray-100">
-                        <th class="py-2">Nombre</th>
-                        <th class="py-2">Perfiles</th>
-                        <th class="py-2">Estado</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($invitations as $invitation)
-                        @php
-                            $state = match(true) {
-                                $invitation->isAccepted() => ['Aceptada', 'bg-emerald-50 text-emerald-700'],
-                                $invitation->isRevoked() => ['Revocada', 'bg-gray-100 text-gray-500'],
-                                $invitation->isExpired() => ['Vencida', 'bg-amber-50 text-amber-700'],
-                                default => ['Pendiente', 'bg-indigo-50 text-indigo-700'],
-                            };
-                        @endphp
-                        <tr class="border-b border-gray-50">
-                            <td class="py-2">
-                                <div class="font-medium text-gray-900">{{ $invitation->name }}</div>
-                                <div class="text-gray-400 text-xs">{{ $invitation->email }}</div>
-                            </td>
-                            <td class="py-2">
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach ($invitation->roles as $role)
-                                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $role->name }}</span>
-                                    @endforeach
-                                </div>
-                            </td>
-                            <td class="py-2">
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $state[1] }}">{{ $state[0] }}</span>
-                            </td>
-                            <td class="py-2 text-right space-x-2">
-                                @if ($invitation->isPending())
-                                    <button wire:click="resend({{ $invitation->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">Reenviar</button>
-                                    <button wire:click="revoke({{ $invitation->id }})" wire:confirm="¿Revocar esta invitación?" class="text-red-600 hover:text-red-500 text-sm">Revocar</button>
-                                @endif
-                            </td>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 border-b border-gray-100">
+                            <th class="py-2">Nombre</th>
+                            <th class="py-2">Perfiles</th>
+                            <th class="py-2">Estado</th>
+                            <th></th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach ($invitations as $invitation)
+                            @php
+                                $state = match(true) {
+                                    $invitation->isAccepted() => ['Aceptada', 'bg-emerald-50 text-emerald-700'],
+                                    $invitation->isRevoked() => ['Revocada', 'bg-gray-100 text-gray-500'],
+                                    $invitation->isExpired() => ['Vencida', 'bg-amber-50 text-amber-700'],
+                                    default => ['Pendiente', 'bg-indigo-50 text-indigo-700'],
+                                };
+                            @endphp
+                            <tr class="border-b border-gray-50">
+                                <td class="py-2 whitespace-nowrap">
+                                    <div class="font-medium text-gray-900">{{ $invitation->name }}</div>
+                                    <div class="text-gray-400 text-xs">{{ $invitation->email }}</div>
+                                </td>
+                                <td class="py-2">
+                                    <div class="flex flex-wrap gap-1">
+                                        @foreach ($invitation->roles as $role)
+                                            <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $role->name }}</span>
+                                        @endforeach
+                                    </div>
+                                </td>
+                                <td class="py-2 whitespace-nowrap">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $state[1] }}">{{ $state[0] }}</span>
+                                </td>
+                                <td class="py-2 text-right space-x-2 whitespace-nowrap">
+                                    @if ($invitation->isPending())
+                                        <button wire:click="resend({{ $invitation->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">Reenviar</button>
+                                        <button wire:click="revoke({{ $invitation->id }})" wire:confirm="¿Revocar esta invitación?" class="text-red-600 hover:text-red-500 text-sm">Revocar</button>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
 
             <div class="mt-4">{{ $invitations->links() }}</div>
         </div>

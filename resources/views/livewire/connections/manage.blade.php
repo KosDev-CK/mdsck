@@ -1,7 +1,7 @@
 <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 class="text-lg font-semibold text-gray-900">Conexiones a BD</h1>
-        <button wire:click="create" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        <button wire:click="create" class="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
             Nueva conexión
         </button>
     </div>
@@ -138,36 +138,38 @@
     @endif
 
     <div class="bg-white rounded-xl border border-gray-200 p-5">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-left text-gray-500 border-b border-gray-100">
-                    <th class="py-2">Nombre</th>
-                    <th class="py-2">Clave</th>
-                    <th class="py-2">Tipo</th>
-                    <th class="py-2">Modo</th>
-                    <th class="py-2">Estado</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach ($connections as $connection)
-                    <tr class="border-b border-gray-50">
-                        <td class="py-2 font-medium text-gray-900">{{ $connection->name }}</td>
-                        <td class="py-2 text-gray-500 font-mono text-xs">{{ $connection->key }}</td>
-                        <td class="py-2 uppercase text-xs text-gray-500">{{ $connection->driver }}</td>
-                        <td class="py-2 text-gray-500">{{ $connection->mode === 'pool' ? 'Pool' : 'Única' }}</td>
-                        <td class="py-2">
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $connection->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500' }}">
-                                {{ $connection->is_active ? 'Activa' : 'Inactiva' }}
-                            </span>
-                        </td>
-                        <td class="py-2 text-right space-x-2">
-                            <button wire:click="edit({{ $connection->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">Editar</button>
-                            <button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" class="text-red-600 hover:text-red-500 text-sm">Eliminar</button>
-                        </td>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b border-gray-100">
+                        <th class="py-2">Nombre</th>
+                        <th class="py-2">Clave</th>
+                        <th class="py-2">Tipo</th>
+                        <th class="py-2">Modo</th>
+                        <th class="py-2">Estado</th>
+                        <th></th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach ($connections as $connection)
+                        <tr class="border-b border-gray-50">
+                            <td class="py-2 font-medium text-gray-900 whitespace-nowrap">{{ $connection->name }}</td>
+                            <td class="py-2 text-gray-500 font-mono text-xs whitespace-nowrap">{{ $connection->key }}</td>
+                            <td class="py-2 uppercase text-xs text-gray-500 whitespace-nowrap">{{ $connection->driver }}</td>
+                            <td class="py-2 text-gray-500 whitespace-nowrap">{{ $connection->mode === 'pool' ? 'Pool' : 'Única' }}</td>
+                            <td class="py-2 whitespace-nowrap">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $connection->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500' }}">
+                                    {{ $connection->is_active ? 'Activa' : 'Inactiva' }}
+                                </span>
+                            </td>
+                            <td class="py-2 text-right space-x-2 whitespace-nowrap">
+                                <button wire:click="edit({{ $connection->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">Editar</button>
+                                <button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" class="text-red-600 hover:text-red-500 text-sm">Eliminar</button>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

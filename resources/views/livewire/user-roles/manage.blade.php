@@ -16,37 +16,39 @@
                 class="mb-4 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm"
             >
 
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-gray-500 border-b border-gray-100">
-                        <th class="py-2">Usuario</th>
-                        <th class="py-2">Perfiles</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($users as $user)
-                        <tr class="border-b border-gray-50 {{ $selectedUserId === $user->id ? 'bg-indigo-50/50' : '' }}">
-                            <td class="py-2">
-                                <div class="font-medium text-gray-900">{{ $user->name }}</div>
-                                <div class="text-gray-400 text-xs">{{ $user->email }}</div>
-                            </td>
-                            <td class="py-2">
-                                <div class="flex flex-wrap gap-1">
-                                    @foreach ($user->getRoleNames() as $roleName)
-                                        <span class="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{{ $roleName }}</span>
-                                    @endforeach
-                                </div>
-                            </td>
-                            <td class="py-2 text-right">
-                                <button wire:click="selectUser({{ $user->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">
-                                    Editar
-                                </button>
-                            </td>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-500 border-b border-gray-100">
+                            <th class="py-2">Usuario</th>
+                            <th class="py-2">Perfiles</th>
+                            <th></th>
                         </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @foreach ($users as $user)
+                            <tr class="border-b border-gray-50 {{ $selectedUserId === $user->id ? 'bg-indigo-50/50' : '' }}">
+                                <td class="py-2 whitespace-nowrap">
+                                    <div class="font-medium text-gray-900">{{ $user->name }}</div>
+                                    <div class="text-gray-400 text-xs">{{ $user->email }}</div>
+                                </td>
+                                <td class="py-2">
+                                    <div class="flex flex-wrap gap-1">
+                                        @foreach ($user->getRoleNames() as $roleName)
+                                            <span class="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">{{ $roleName }}</span>
+                                        @endforeach
+                                    </div>
+                                </td>
+                                <td class="py-2 text-right whitespace-nowrap">
+                                    <button wire:click="selectUser({{ $user->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">
+                                        Editar
+                                    </button>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
 
             <div class="mt-4">{{ $users->links() }}</div>
         </div>
