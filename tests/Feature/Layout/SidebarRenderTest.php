@@ -38,5 +38,15 @@ class SidebarRenderTest extends TestCase
         $this->assertStringContainsString('lg:w-64', $html);
         $this->assertStringContainsString('lg:w-20', $html);
         $this->assertStringContainsString('max-w-screen-2xl', $html);
+
+        // The "collapsed" (icon-only) state must only ever hide screen labels
+        // at the lg+ breakpoint via a scoped `lg:hidden` class binding on the
+        // label span itself — never via a bare x-show, otherwise it also
+        // hides labels in the mobile off-canvas drawer (which shares the same
+        // Alpine state through localStorage). Regression guard for that bug.
+        $this->assertMatchesRegularExpression(
+            '/<span :class="\{ \'lg:hidden\': collapsed \}" class="truncate">Dashboard<\/span>/',
+            $html
+        );
     }
 }
