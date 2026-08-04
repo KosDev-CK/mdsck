@@ -50,9 +50,11 @@ php artisan module:make MiModulo
 
 Sigue el patrón del módulo `Modules/Ejemplo` (incluido como referencia): su propia migración, modelo, componente Livewire y vista, resuelto por el mismo sistema de perfiles/pantallas del core. Para que aparezca en el menú y sea asignable a un perfil:
 
-1. Crea un registro en `screens` con `module`, `route_name` y `permission_name` (hazlo en el seeder del propio módulo, no en `CoreSeeder`, para que el módulo sea instalable/removible de forma independiente).
+1. Crea un registro en `screens` con `module`, `group_label` (la sección del menú donde debe agruparse, ej. "Módulos"), `route_name`, `permission_name` e `icon` (nombre de un ícono outline de [Heroicons](https://heroicons.com), ej. `cube`, sin el prefijo `o-`) — hazlo en el seeder del propio módulo, no en `CoreSeeder`, para que el módulo sea instalable/removible de forma independiente.
 2. Da de alta la ruta con el middleware `permission:{permission_name}` en `Modules/MiModulo/routes/web.php`.
 3. Corre `php artisan module:seed MiModulo`.
+
+El menú lateral agrupa automáticamente por `group_label`, es colapsable (el estado se guarda en `localStorage`) y se convierte en un panel deslizante en pantallas menores a `lg` (tablets y celulares).
 
 Activar/desactivar módulos instalados: pantalla "Módulos" (`/modules`).
 
