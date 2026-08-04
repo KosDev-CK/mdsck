@@ -14,7 +14,8 @@
       "Bash(npm run *)",
       "Bash(find /c/wamp64/bin/apache -iname \"httpd-vhosts.conf\" 2>/dev/null)",
       "Bash(curl -s -o /dev/null -w \"ejemplo \\(guest\\) -> %{http_code}\\\\n\" http://mds.test/ejemplo)",
-      "Bash(xargs grep -l \"function isEnabled\\\\|function enable\\(\")"
+      "Bash(xargs grep -l \"function isEnabled\\\\|function enable\\(\")",
+      "mcp__claude-in-chrome__tabs_context_mcp"
     ]
   }
 }
