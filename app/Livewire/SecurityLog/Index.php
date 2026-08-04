@@ -67,6 +67,7 @@ class Index extends Component
                 SecurityEvent::LOCKED_SHORT => 'Bloqueo 5 min',
                 SecurityEvent::LOCKED_LONG => 'Bloqueo 24 h',
                 SecurityEvent::TWO_FACTOR_FAILED => '2FA fallido',
+                SecurityEvent::TWO_FACTOR_RECOVERY_USED => 'Código de recuperación usado',
                 SecurityEvent::TWO_FACTOR_ENABLED => '2FA activado',
                 SecurityEvent::TWO_FACTOR_DISABLED => '2FA desactivado',
                 SecurityEvent::LOGOUT => 'Cierre de sesión',

@@ -209,4 +209,46 @@ class PasswordlessLoginTest extends TestCase
 
         $this->assertAuthenticatedAs($user);
     }
+
+    public function test_a_valid_recovery_code_logs_the_user_in_and_is_consumed(): void
+    {
+        $user = User::factory()->create([
+            'is_active' => true,
+            'two_factor_secret' => 'ABCDEFGHIJKLMNOP',
+            'two_factor_confirmed_at' => now(),
+            'two_factor_recovery_codes' => ['AAAAAAAAAA', 'BBBBBBBBBB'],
+        ]);
+
+        session(['login.two_factor_user_id' => $user->id]);
+
+        Livewire::test(VerifyTwoFactor::class)
+            ->call('toggleRecoveryCode')
+            ->set('recoveryCode', 'aaaaaaaaaa')
+            ->call('verifyWithRecoveryCode')
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertSame(['BBBBBBBBBB'], $user->fresh()->two_factor_recovery_codes);
+    }
+
+    public function test_a_used_recovery_code_cannot_be_reused(): void
+    {
+        $user = User::factory()->create([
+            'is_active' => true,
+            'two_factor_secret' => 'ABCDEFGHIJKLMNOP',
+            'two_factor_confirmed_at' => now(),
+            'two_factor_recovery_codes' => ['BBBBBBBBBB'],
+        ]);
+
+        session(['login.two_factor_user_id' => $user->id]);
+
+        Livewire::test(VerifyTwoFactor::class)
+            ->call('toggleRecoveryCode')
+            ->set('recoveryCode', 'AAAAAAAAAA')
+            ->call('verifyWithRecoveryCode')
+            ->assertHasErrors('recoveryCode');
+
+        $this->assertGuest();
+        $this->assertSame(['BBBBBBBBBB'], $user->fresh()->two_factor_recovery_codes);
+    }
 }
