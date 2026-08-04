@@ -45,6 +45,25 @@ class ProfileTest extends TestCase
         $this->assertNotEmpty($component->get('recoveryCodes'));
     }
 
+    public function test_a_user_can_download_their_recovery_codes_as_a_text_file(): void
+    {
+        $user = User::factory()->create();
+
+        $component = Livewire::actingAs($user)
+            ->test(Show::class)
+            ->call('startEnablingTwoFactor');
+
+        $secret = $component->get('pendingSecret');
+        $validCode = (new Google2FA)->getCurrentOtp($secret);
+
+        $component->set('confirmationCode', $validCode)
+            ->call('confirmTwoFactor')
+            ->assertHasNoErrors();
+
+        $component->call('downloadRecoveryCodes')
+            ->assertFileDownloaded('mds-codigos-recuperacion.txt');
+    }
+
     public function test_enabling_two_factor_with_a_wrong_code_fails(): void
     {
         $user = User::factory()->create();

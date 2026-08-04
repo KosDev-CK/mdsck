@@ -83,6 +83,20 @@ class Show extends Component
         $this->confirmationCode = '';
     }
 
+    public function downloadRecoveryCodes()
+    {
+        if (! $this->recoveryCodes) {
+            return;
+        }
+
+        $content = implode(PHP_EOL, $this->recoveryCodes).PHP_EOL;
+
+        return response()->streamDownload(
+            fn () => print $content,
+            'mds-codigos-recuperacion.txt'
+        );
+    }
+
     public function disableTwoFactor()
     {
         $this->validate(['disableCode' => ['required', 'digits:6']]);

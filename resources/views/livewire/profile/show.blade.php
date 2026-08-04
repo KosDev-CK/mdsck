@@ -40,6 +40,9 @@
                         <span>{{ $code }}</span>
                     @endforeach
                 </div>
+                <button wire:click="downloadRecoveryCodes" type="button" class="mt-3 inline-flex items-center rounded-md bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-200">
+                    Descargar códigos (.txt)
+                </button>
             </div>
         @endif
 
