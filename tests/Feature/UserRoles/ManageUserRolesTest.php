@@ -49,6 +49,20 @@ class ManageUserRolesTest extends TestCase
         $this->assertFalse($target->fresh()->hasRole('Administrador'));
     }
 
+    public function test_cancelling_an_edit_clears_the_selected_user(): void
+    {
+        $admin = $this->actingAdmin();
+        $target = User::factory()->create(['is_active' => true]);
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('selectUser', $target->id)
+            ->set('selectedRoles', ['Editor'])
+            ->call('cancelEdit')
+            ->assertSet('selectedUserId', null)
+            ->assertSet('selectedRoles', []);
+    }
+
     public function test_the_administrador_role_cannot_be_stripped_from_an_admin_via_the_component(): void
     {
         $admin = $this->actingAdmin();

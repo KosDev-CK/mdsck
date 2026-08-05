@@ -30,6 +30,12 @@ class Manage extends Component
         $this->selectedRoles = User::find($userId)?->roles->pluck('name')->all() ?? [];
     }
 
+    public function cancelEdit()
+    {
+        $this->selectedUserId = null;
+        $this->selectedRoles = [];
+    }
+
     public function saveRoles()
     {
         $user = User::find($this->selectedUserId);

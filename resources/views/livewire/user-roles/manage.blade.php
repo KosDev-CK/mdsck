@@ -73,9 +73,14 @@
                     @endforeach
                 </div>
 
-                <button wire:click="saveRoles" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
-                    Guardar
-                </button>
+                <div class="flex gap-2">
+                    <button wire:click="saveRoles" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                        Guardar
+                    </button>
+                    <button wire:click="cancelEdit" type="button" class="inline-flex items-center rounded-md px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100">
+                        Cancelar
+                    </button>
+                </div>
             @else
                 <p class="text-sm text-gray-400">Selecciona un usuario para editar sus perfiles.</p>
             @endif

@@ -10,6 +10,6 @@ $colors = [
 ];
 @endphp
 
-<span {{ $attributes->class(['inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', $colors[$color] ?? $colors['gray']]) }}>
+<span {{ $attributes->class(['inline-flex items-center rounded-full text-xs font-medium', $colors[$color] ?? $colors['gray']])->merge(['style' => 'padding: 3px 6px;']) }}>
     {{ $slot }}
 </span>
