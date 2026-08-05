@@ -7,10 +7,19 @@
 
     <title>{{ $title ?? config('app.name') }}</title>
 
+    <script>
+        (function () {
+            var theme = localStorage.getItem('mds_theme');
+            if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @livewireStyles
 </head>
-<body class="h-full bg-gray-50 text-gray-900 antialiased">
+<body class="h-full bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100">
     <div
         x-data="{
             sidebarOpen: false,

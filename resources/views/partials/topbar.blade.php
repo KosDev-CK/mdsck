@@ -1,16 +1,16 @@
-<header class="h-16 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between lg:justify-end px-4 sm:px-6 gap-4">
-    <button @click="sidebarOpen = true" class="text-gray-500 hover:text-gray-700 lg:hidden">
+<header class="h-16 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between lg:justify-end px-4 sm:px-6 gap-4 dark:bg-gray-900 dark:border-gray-800">
+    <button @click="sidebarOpen = true" class="text-gray-500 hover:text-gray-700 lg:hidden dark:text-gray-400 dark:hover:text-gray-200">
         <x-heroicon-o-bars-3 class="h-6 w-6" />
     </button>
 
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-2">
+        <x-ui.theme-toggle />
+
         @livewire('notifications.bell')
 
         <div class="relative" x-data="{ open: false }">
-            <button @click="open = !open" class="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900">
-                <span class="h-8 w-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-medium">
-                    {{ mb_substr(auth()->user()->name, 0, 1) }}
-                </span>
+            <button @click="open = !open" class="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100">
+                <x-ui.avatar :name="auth()->user()->name" />
                 <span class="hidden sm:inline">{{ auth()->user()->name }}</span>
             </button>
 
@@ -18,12 +18,12 @@
                 x-show="open"
                 @click.outside="open = false"
                 x-cloak
-                class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-10"
+                class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-10 dark:bg-gray-800 dark:border-gray-700"
             >
-                <a href="{{ route('profile.show') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi perfil</a>
+                <a href="{{ route('profile.show') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700">Mi perfil</a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
-                    <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar sesión</button>
+                    <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700">Cerrar sesión</button>
                 </form>
             </div>
         </div>
