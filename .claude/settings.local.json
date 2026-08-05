@@ -17,7 +17,8 @@
       "Bash(xargs grep -l \"function isEnabled\\\\|function enable\\(\")",
       "mcp__claude-in-chrome__tabs_context_mcp",
       "Bash(grep -E \"^\\(home|user-plus|shield-check|users|circle-stack|squares-plus|lock-closed|cube|bars-3|x-mark|chevron-double-left|chevron-double-right\\)\\\\.svg$\")",
-      "Bash(curl -s -o /dev/null -w \"dashboard -> %{http_code}\\\\n\" http://mds.test/dashboard)"
+      "Bash(curl -s -o /dev/null -w \"dashboard -> %{http_code}\\\\n\" http://mds.test/dashboard)",
+      "Bash(\"/c/wamp64/bin/apache/apache2.4.62.1/bin/httpd.exe\" -t)"
     ]
   }
 }
