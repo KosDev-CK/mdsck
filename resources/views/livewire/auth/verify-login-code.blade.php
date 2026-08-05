@@ -19,7 +19,7 @@
                 id="code"
                 autofocus
                 maxlength="6"
-                class="mt-1 block w-full text-center tracking-[0.5em] text-lg font-semibold rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                class="mt-1 block w-full text-center tracking-[0.5em] text-lg font-semibold rounded-md border-gray-300 shadow-sm"
                 placeholder="······"
             >
             @error('code') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
