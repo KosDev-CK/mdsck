@@ -22,6 +22,38 @@
                 @error('name') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
             </div>
 
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="company" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Empresa</label>
+                    <input wire:model="company" type="text" id="company" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('company') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+
+                <div>
+                    <label for="cedis" class="block text-sm font-medium text-gray-700 dark:text-gray-300">CEDIS</label>
+                    <input wire:model="cedis" type="text" id="cedis" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('cedis') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+
+                <div>
+                    <label for="area" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Área</label>
+                    <input wire:model="area" type="text" id="area" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('area') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+
+                <div>
+                    <label for="employeeNumber" class="block text-sm font-medium text-gray-700 dark:text-gray-300">No. de empleado</label>
+                    <input wire:model="employeeNumber" type="text" id="employeeNumber" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('employeeNumber') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+
+                <div class="sm:col-span-2">
+                    <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Ubicación</label>
+                    <input wire:model="location" type="text" id="location" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('location') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
             <x-ui.button type="submit">
                 Guardar
             </x-ui.button>

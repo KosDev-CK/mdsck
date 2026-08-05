@@ -26,6 +26,28 @@ class ProfileTest extends TestCase
         $this->assertSame('New Name', $user->fresh()->name);
     }
 
+    public function test_a_user_can_update_their_corporate_data(): void
+    {
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)
+            ->test(Show::class)
+            ->set('company', 'Kosmos')
+            ->set('cedis', 'CEDIS Norte')
+            ->set('area', 'TI')
+            ->set('employeeNumber', 'EMP-123')
+            ->set('location', 'Monterrey')
+            ->call('updateName')
+            ->assertHasNoErrors();
+
+        $fresh = $user->fresh();
+        $this->assertSame('Kosmos', $fresh->company);
+        $this->assertSame('CEDIS Norte', $fresh->cedis);
+        $this->assertSame('TI', $fresh->area);
+        $this->assertSame('EMP-123', $fresh->employee_number);
+        $this->assertSame('Monterrey', $fresh->location);
+    }
+
     public function test_a_user_can_enable_two_factor_with_a_valid_code(): void
     {
         $user = User::factory()->create();

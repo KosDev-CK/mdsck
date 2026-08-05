@@ -8,6 +8,7 @@ use App\Livewire\Branding\Manage as BrandingManage;
 use App\Livewire\Connections\Manage as ConnectionsManage;
 use App\Livewire\Dashboard;
 use App\Livewire\Invitations\Manage as InvitationsManage;
+use App\Livewire\Messages\Send as MessagesSend;
 use App\Livewire\Modules\Manage as ModulesManage;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Roles\Manage as RolesManage;
@@ -76,4 +77,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/branding', BrandingManage::class)
         ->middleware('permission:screens.branding.manage')
         ->name('branding.index');
+
+    Route::get('/messages', MessagesSend::class)
+        ->middleware('permission:screens.messages.manage')
+        ->name('messages.index');
 });

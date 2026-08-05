@@ -9,6 +9,10 @@ class Bell extends Component
 {
     public int $unreadCount = 0;
 
+    public int $totalCount = 0;
+
+    public int $readCount = 0;
+
     public function mount()
     {
         $this->refreshCount();
@@ -26,6 +30,12 @@ class Bell extends Component
         $this->refreshCount();
     }
 
+    public function deleteNotification(string $id)
+    {
+        auth()->user()->notifications()->where('id', $id)->whereNotNull('read_at')->delete();
+        $this->refreshCount();
+    }
+
     #[On('notification-received')]
     public function refresh()
     {
@@ -35,6 +45,8 @@ class Bell extends Component
     protected function refreshCount(): void
     {
         $this->unreadCount = auth()->user()->unreadNotifications()->count();
+        $this->totalCount = auth()->user()->notifications()->count();
+        $this->readCount = $this->totalCount - $this->unreadCount;
     }
 
     public function render()

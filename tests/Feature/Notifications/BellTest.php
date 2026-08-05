@@ -30,6 +30,58 @@ class BellTest extends TestCase
             ->assertSet('unreadCount', 0);
     }
 
+    public function test_it_exposes_total_read_and_unread_counts(): void
+    {
+        $admin = User::factory()->create();
+
+        $admin->notify(new AccountLockedNotification(User::factory()->create()));
+        $admin->notify(new AccountLockedNotification(User::factory()->create()));
+
+        $component = Livewire::actingAs($admin)
+            ->test(Bell::class)
+            ->assertSet('totalCount', 2)
+            ->assertSet('unreadCount', 2)
+            ->assertSet('readCount', 0);
+
+        $notificationId = $admin->notifications()->first()->id;
+
+        $component->call('markAsRead', $notificationId)
+            ->assertSet('totalCount', 2)
+            ->assertSet('unreadCount', 1)
+            ->assertSet('readCount', 1);
+    }
+
+    public function test_a_read_notification_can_be_deleted(): void
+    {
+        $admin = User::factory()->create();
+        $admin->notify(new AccountLockedNotification(User::factory()->create()));
+
+        $notificationId = $admin->notifications()->first()->id;
+
+        Livewire::actingAs($admin)
+            ->test(Bell::class)
+            ->call('markAsRead', $notificationId)
+            ->call('deleteNotification', $notificationId)
+            ->assertSet('totalCount', 0);
+
+        $this->assertDatabaseMissing('notifications', ['id' => $notificationId]);
+    }
+
+    public function test_an_unread_notification_cannot_be_deleted(): void
+    {
+        $admin = User::factory()->create();
+        $admin->notify(new AccountLockedNotification(User::factory()->create()));
+
+        $notificationId = $admin->notifications()->first()->id;
+
+        Livewire::actingAs($admin)
+            ->test(Bell::class)
+            ->call('deleteNotification', $notificationId)
+            ->assertSet('totalCount', 1);
+
+        $this->assertDatabaseHas('notifications', ['id' => $notificationId]);
+    }
+
     public function test_mark_all_as_read_clears_the_unread_count(): void
     {
         $admin = User::factory()->create();

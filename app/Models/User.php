@@ -27,6 +27,11 @@ class User extends Authenticatable
         'password',
         'is_active',
         'invited_by',
+        'company',
+        'cedis',
+        'area',
+        'employee_number',
+        'location',
     ];
 
     /**

@@ -17,6 +17,16 @@ class Show extends Component
 {
     public string $name = '';
 
+    public string $company = '';
+
+    public string $cedis = '';
+
+    public string $area = '';
+
+    public string $employeeNumber = '';
+
+    public string $location = '';
+
     public bool $enablingTwoFactor = false;
 
     public string $pendingSecret = '';
@@ -29,14 +39,35 @@ class Show extends Component
 
     public function mount()
     {
-        $this->name = auth()->user()->name;
+        $user = auth()->user();
+
+        $this->name = $user->name;
+        $this->company = $user->company ?? '';
+        $this->cedis = $user->cedis ?? '';
+        $this->area = $user->area ?? '';
+        $this->employeeNumber = $user->employee_number ?? '';
+        $this->location = $user->location ?? '';
     }
 
     public function updateName()
     {
-        $this->validate(['name' => ['required', 'string', 'max:255']]);
+        $this->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'company' => ['nullable', 'string', 'max:255'],
+            'cedis' => ['nullable', 'string', 'max:255'],
+            'area' => ['nullable', 'string', 'max:255'],
+            'employeeNumber' => ['nullable', 'string', 'max:255'],
+            'location' => ['nullable', 'string', 'max:255'],
+        ]);
 
-        auth()->user()->update(['name' => $this->name]);
+        auth()->user()->update([
+            'name' => $this->name,
+            'company' => $this->company ?: null,
+            'cedis' => $this->cedis ?: null,
+            'area' => $this->area ?: null,
+            'employee_number' => $this->employeeNumber ?: null,
+            'location' => $this->location ?: null,
+        ]);
 
         session()->flash('status', 'Perfil actualizado.');
     }

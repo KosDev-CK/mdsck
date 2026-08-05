@@ -40,7 +40,13 @@ En dev, los correos se escriben en `storage/logs/laravel.log` (`MAIL_MAILER=log`
 php artisan test
 ```
 
-Cubre autenticación passwordless, 2FA, bloqueo de cuenta, sesión única, invitaciones, perfiles/pantallas, pool de conexiones a BD, módulos, notificaciones y bitácora de seguridad.
+Cubre autenticación passwordless, 2FA, bloqueo de cuenta, sesión única, invitaciones, perfiles/pantallas, pool de conexiones a BD, módulos, notificaciones, mensajería a usuarios, branding y bitácora de seguridad.
+
+## Mensajes a usuarios
+
+Pantalla "Mensajes" (`/messages`) permite a un administrador enviar un aviso (asunto + mensaje) a uno o varios usuarios, o a todos los usuarios activos. Llega como notificación de base de datos + broadcast, visible en la campana del topbar — que además del contador de pendientes muestra el total/leídas/sin leer, y permite eliminar una notificación una vez leída (no antes).
+
+Desde "Configuración de acceso" también se puede desactivar/reactivar la cuenta de un usuario ya invitado, y revocar su 2FA (pidiendo el propio código 2FA del administrador si lo tiene activado).
 
 ## Agregar un módulo de contenido nuevo
 

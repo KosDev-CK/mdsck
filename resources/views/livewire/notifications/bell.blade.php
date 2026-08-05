@@ -17,25 +17,40 @@
         x-cloak
         class="absolute right-0 mt-2 w-80 bg-white rounded-md shadow-lg border border-gray-200 z-10 dark:bg-gray-800 dark:border-gray-700"
     >
-        <div class="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-            <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Notificaciones</span>
-            @if ($unreadCount > 0)
-                <button wire:click="markAllAsRead" class="text-xs text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
-                    Marcar todas como leídas
-                </button>
-            @endif
+        <div class="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-900 dark:text-gray-100">Notificaciones</span>
+                @if ($unreadCount > 0)
+                    <button wire:click="markAllAsRead" class="text-xs text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+                        Marcar todas como leídas
+                    </button>
+                @endif
+            </div>
+            <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                Total: {{ $totalCount }} · Leídas: {{ $readCount }} · Sin leer: {{ $unreadCount }}
+            </div>
         </div>
 
         <div class="max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
             @forelse ($notifications as $notification)
-                <button
-                    wire:click="markAsRead('{{ $notification->id }}')"
-                    class="w-full text-left px-4 py-3 text-sm {{ $notification->read_at ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 bg-indigo-50/40 dark:text-gray-100 dark:bg-indigo-500/10' }} hover:bg-gray-50 dark:hover:bg-gray-700"
-                >
-                    <div class="font-medium">{{ $notification->data['title'] ?? 'Notificación' }}</div>
-                    <div class="text-xs text-gray-500 mt-0.5 dark:text-gray-400">{{ $notification->data['message'] ?? '' }}</div>
-                    <div class="text-xs text-gray-400 mt-1 dark:text-gray-500">{{ $notification->created_at->diffForHumans() }}</div>
-                </button>
+                <div class="group flex items-start gap-1 px-4 py-3 text-sm {{ $notification->read_at ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 bg-indigo-50/40 dark:text-gray-100 dark:bg-indigo-500/10' }} hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <button wire:click="markAsRead('{{ $notification->id }}')" class="flex-1 min-w-0 text-left">
+                        <div class="font-medium">{{ $notification->data['title'] ?? 'Notificación' }}</div>
+                        <div class="text-xs text-gray-500 mt-0.5 dark:text-gray-400">{{ $notification->data['message'] ?? '' }}</div>
+                        <div class="text-xs text-gray-400 mt-1 dark:text-gray-500">{{ $notification->created_at->diffForHumans() }}</div>
+                    </button>
+
+                    @if ($notification->read_at)
+                        <button
+                            wire:click="deleteNotification('{{ $notification->id }}')"
+                            wire:confirm="¿Eliminar esta notificación?"
+                            title="Eliminar"
+                            class="shrink-0 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 dark:text-gray-500 dark:hover:text-red-400"
+                        >
+                            <x-heroicon-o-x-mark class="h-4 w-4" />
+                        </button>
+                    @endif
+                </div>
             @empty
                 <div class="px-4 py-6 text-sm text-gray-400 text-center dark:text-gray-500">Sin notificaciones</div>
             @endforelse
