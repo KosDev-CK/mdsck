@@ -85,9 +85,63 @@
                                     @if ($invitation->isPending())
                                         <button wire:click="resend({{ $invitation->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Reenviar</button>
                                         <button wire:click="revoke({{ $invitation->id }})" wire:confirm="¿Revocar esta invitación?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">Revocar</button>
+                                    @elseif ($invitation->isAccepted() && $invitation->user)
+                                        <x-ui.badge :color="$invitation->user->is_active ? 'emerald' : 'gray'">
+                                            {{ $invitation->user->is_active ? 'Activo' : 'Inactivo' }}
+                                        </x-ui.badge>
+
+                                        <button
+                                            wire:click="toggleActive({{ $invitation->user->id }})"
+                                            wire:confirm="¿{{ $invitation->user->is_active ? 'Desactivar' : 'Reactivar' }} a {{ $invitation->user->name }}?"
+                                            class="text-sm {{ $invitation->user->is_active ? 'text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300' : 'text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300' }}"
+                                        >
+                                            {{ $invitation->user->is_active ? 'Desactivar' : 'Reactivar' }}
+                                        </button>
+
+                                        @if ($invitation->user->hasTwoFactorEnabled())
+                                            <button wire:click="startRevokingTwoFactor({{ $invitation->user->id }})" class="text-amber-600 hover:text-amber-500 text-sm dark:text-amber-400 dark:hover:text-amber-300">
+                                                Revocar 2FA
+                                            </button>
+                                        @endif
                                     @endif
                                 </td>
                             </tr>
+
+                            @if ($invitation->user && $revokingTwoFactorUserId === $invitation->user->id)
+                                <tr class="border-b border-gray-50 bg-amber-50/50 dark:border-gray-800 dark:bg-amber-500/5">
+                                    <td colspan="4" class="py-3">
+                                        <form wire:submit="confirmRevokeTwoFactor" class="flex flex-wrap items-end gap-3">
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                                                    @if (auth()->user()->hasTwoFactorEnabled())
+                                                        Ingresa tu propio código 2FA para confirmar
+                                                    @else
+                                                        Confirma que quieres revocar el 2FA de {{ $invitation->user->name }}
+                                                    @endif
+                                                </label>
+                                                @if (auth()->user()->hasTwoFactorEnabled())
+                                                    <input
+                                                        wire:model="adminTwoFactorCode"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        maxlength="6"
+                                                        autofocus
+                                                        class="mt-1 w-32 text-center tracking-widest rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                                                    >
+                                                    @error('adminTwoFactorCode') <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                                                @endif
+                                            </div>
+
+                                            <x-ui.button type="submit" variant="danger" size="sm">
+                                                Confirmar revocación
+                                            </x-ui.button>
+                                            <x-ui.button type="button" wire:click="cancelRevokingTwoFactor" variant="ghost" size="sm">
+                                                Cancelar
+                                            </x-ui.button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            @endif
                         @endforeach
                     </tbody>
                 </table>

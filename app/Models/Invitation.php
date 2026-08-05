@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -37,6 +38,16 @@ class Invitation extends Model
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(Role::class, 'invitation_role');
+    }
+
+    /**
+     * The account created when this invitation was accepted, matched by
+     * email since acceptance doesn't store a foreign key back (see
+     * AcceptInvitation::accept()).
+     */
+    public function user(): HasOne
+    {
+        return $this->hasOne(User::class, 'email', 'email');
     }
 
     public function isExpired(): bool

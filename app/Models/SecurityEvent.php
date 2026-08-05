@@ -32,6 +32,12 @@ class SecurityEvent extends Model
 
     public const INVITATION_ACCEPTED = 'invitation_accepted';
 
+    public const USER_DEACTIVATED = 'user_deactivated';
+
+    public const USER_REACTIVATED = 'user_reactivated';
+
+    public const TWO_FACTOR_REVOKED_BY_ADMIN = 'two_factor_revoked_by_admin';
+
     protected $fillable = [
         'user_id',
         'email',
