@@ -17,12 +17,20 @@ class BrandingPresetSeeder extends Seeder
 
         $presets = [
             [
+                'name' => 'Predeterminado',
+                ...SiteSetting::DEFAULTS,
+                'is_system' => true,
+            ],
+            [
                 'name' => 'LandIT',
                 'primary_color' => '#F36522',
                 'success_color' => '#4C9A63',
                 'danger_color' => '#D6432A',
                 'warning_color' => '#F2B705',
                 'info_color' => '#2C7FB8',
+                'topbar_color' => '#FFFFFF',
+                'sidebar_header_color' => '#F36522',
+                'sidebar_body_color' => '#000000',
                 'is_system' => true,
             ],
             [
@@ -32,6 +40,9 @@ class BrandingPresetSeeder extends Seeder
                 'danger_color' => '#9D1E27',
                 'warning_color' => '#F39200',
                 'info_color' => '#0E6199',
+                'topbar_color' => '#FFFFFF',
+                'sidebar_header_color' => '#E41D26',
+                'sidebar_body_color' => '#1D1D1B',
                 'is_system' => true,
             ],
         ];

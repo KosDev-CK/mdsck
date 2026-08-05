@@ -20,15 +20,16 @@
 
 <aside
     x-cloak
+    style="background-color: var(--sidebar-body-bg)"
     :class="{
         '-translate-x-full': !sidebarOpen,
         'translate-x-0': sidebarOpen,
         'lg:w-20': collapsed,
         'lg:w-64': !collapsed,
     }"
-    class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-gray-900 text-gray-300 transition-all duration-200 lg:static lg:translate-x-0"
+    class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col text-gray-300 transition-all duration-200 lg:static lg:translate-x-0"
 >
-    <div class="flex h-16 items-center justify-between border-b border-gray-800 px-4">
+    <div style="background-color: var(--sidebar-header-bg)" class="flex h-16 items-center justify-between border-b border-gray-800 px-4">
         @if ($brandLogo)
             <img :class="{ 'lg:hidden': collapsed }" src="{{ $brandLogo }}" alt="{{ config('app.name') }}" class="h-8 max-w-[140px] object-contain">
         @else

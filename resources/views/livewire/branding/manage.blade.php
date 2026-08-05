@@ -94,14 +94,49 @@
     </x-ui.card>
 
     <x-ui.card padding="p-6">
-        <h2 class="text-sm font-semibold text-gray-900 mb-4 dark:text-gray-100">Presets guardados</h2>
+        <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Barra superior y menú lateral</h2>
+        <p class="text-sm text-gray-500 mb-4 dark:text-gray-400">El menú lateral usa dos tonos: uno para el encabezado (logo/nombre) y otro para el cuerpo (los enlaces). La barra superior conserva su color solo en modo claro; en modo oscuro sigue usando el gris oscuro de siempre.</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            @foreach ([
+                ['prop' => 'topbarColor', 'label' => 'Barra superior'],
+                ['prop' => 'sidebarHeaderColor', 'label' => 'Menú — encabezado'],
+                ['prop' => 'sidebarBodyColor', 'label' => 'Menú — cuerpo'],
+            ] as $field)
+                <div x-data="{ color: @entangle($field['prop']) }">
+                    <label class="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">{{ $field['label'] }}</label>
+                    <div class="flex items-center gap-2">
+                        <input type="color" x-model="color" class="h-9 w-9 rounded border border-gray-300 cursor-pointer dark:border-gray-700">
+                        <input type="text" x-model="color" maxlength="7" class="w-28 rounded-md border-gray-300 shadow-sm sm:text-sm font-mono uppercase dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    </div>
+                    @error($field['prop']) <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+            @endforeach
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 mt-6">
+            <x-ui.button wire:click="saveColors">
+                Guardar colores
+            </x-ui.button>
+
+            <input wire:model="newPresetName" type="text" placeholder="Nombre del preset…" class="rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+            <x-ui.button wire:click="saveAsPreset" variant="secondary">
+                Guardar como preset
+            </x-ui.button>
+        </div>
+        @error('newPresetName') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+    </x-ui.card>
+
+    <x-ui.card padding="p-6">
+        <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Presets guardados</h2>
+        <p class="text-sm text-gray-500 mb-4 dark:text-gray-400">Un preset guarda toda la configuración de colores del sitio (marca + barra superior + menú), no solo los 5 colores básicos. "Predeterminado" regresa a los colores originales de la plantilla.</p>
 
         <div class="space-y-2">
             @foreach ($presets as $preset)
                 <div class="flex items-center justify-between gap-4 rounded-md border border-gray-100 px-3 py-2 dark:border-gray-800">
                     <div class="flex items-center gap-3 min-w-0">
                         <div class="flex shrink-0">
-                            @foreach (['primary_color', 'success_color', 'danger_color', 'warning_color', 'info_color'] as $colorField)
+                            @foreach (\App\Models\BrandingPreset::COLOR_FIELDS as $colorField)
                                 <span class="h-5 w-5 rounded-full border-2 border-white -ml-1.5 first:ml-0 dark:border-gray-900" style="background-color: {{ $preset->$colorField }}"></span>
                             @endforeach
                         </div>

@@ -56,6 +56,70 @@ class ManageBrandingTest extends TestCase
         $this->assertSame('#22AA33', $settings->success_color);
     }
 
+    public function test_an_admin_can_update_the_topbar_and_sidebar_colors(): void
+    {
+        $admin = $this->actingAdmin();
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->set('topbarColor', '#ABCDEF')
+            ->set('sidebarHeaderColor', '#111111')
+            ->set('sidebarBodyColor', '#222222')
+            ->call('saveColors')
+            ->assertHasNoErrors();
+
+        $settings = SiteSetting::current();
+        $this->assertSame('#ABCDEF', $settings->topbar_color);
+        $this->assertSame('#111111', $settings->sidebar_header_color);
+        $this->assertSame('#222222', $settings->sidebar_body_color);
+    }
+
+    public function test_a_preset_carries_the_full_site_configuration_not_just_the_five_base_colors(): void
+    {
+        $admin = $this->actingAdmin();
+        $preset = BrandingPreset::create([
+            'name' => 'Prueba completa',
+            'primary_color' => '#F36522',
+            'success_color' => '#4C9A63',
+            'danger_color' => '#D6432A',
+            'warning_color' => '#F2B705',
+            'info_color' => '#2C7FB8',
+            'topbar_color' => '#FFFFFF',
+            'sidebar_header_color' => '#F36522',
+            'sidebar_body_color' => '#000000',
+            'is_system' => false,
+        ]);
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('applyPreset', $preset->id)
+            ->assertSet('sidebarHeaderColor', '#F36522')
+            ->assertSet('sidebarBodyColor', '#000000');
+
+        $settings = SiteSetting::current();
+        $this->assertSame('#F36522', $settings->sidebar_header_color);
+        $this->assertSame('#000000', $settings->sidebar_body_color);
+    }
+
+    public function test_the_default_preset_restores_the_original_colors(): void
+    {
+        $admin = $this->actingAdmin();
+
+        $default = BrandingPreset::create(array_merge(
+            ['name' => 'Predeterminado', 'is_system' => true],
+            SiteSetting::DEFAULTS
+        ));
+
+        SiteSetting::current()->update(['primary_color' => '#000000']);
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('applyPreset', $default->id)
+            ->assertSet('primaryColor', SiteSetting::DEFAULTS['primary_color']);
+
+        $this->assertSame(SiteSetting::DEFAULTS['primary_color'], SiteSetting::current()->primary_color);
+    }
+
     public function test_an_invalid_hex_color_is_rejected(): void
     {
         $admin = $this->actingAdmin();

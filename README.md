@@ -64,11 +64,13 @@ Pantalla "Conexiones a BD" (`/connections`) permite registrar conexiones adicion
 
 ## Branding
 
-Pantalla "Branding" (`/branding`) permite configurar, sin tocar código: logotipo (se usa en el sidebar y en el encabezado de los correos), favicon, y 5 colores semánticos (Primario, Success, Danger, Warning, Info) que se aplican en vivo a `button`/`badge`/`alert` y demás componentes `x-ui.*` vía variables CSS (`--color-primary`, etc., inyectadas por request en `partials/branding-head.blade.php`).
+Pantalla "Branding" (`/branding`) permite configurar, sin tocar código: logotipo (se usa en el sidebar y en el encabezado de los correos), favicon, 5 colores semánticos (Primario, Success, Danger, Warning, Info) y 3 colores de "chrome" (barra superior, encabezado del menú lateral, cuerpo del menú lateral). Todo se aplica en vivo vía variables CSS inyectadas por request en `partials/branding-head.blade.php` — nada requiere recompilar assets.
+
+El color de la barra superior solo aplica en modo claro (en modo oscuro se mantiene el gris neutro de siempre); los 2 colores del menú lateral aplican siempre, igual que el propio menú es siempre oscuro independientemente del tema.
 
 El nombre del sitio y la URL siguen viviendo en `.env` (`APP_NAME`, `APP_URL`) — no son parte de este branding dinámico, se ajustan al desplegar a cada entorno.
 
-Los colores se pueden guardar como **presets** reutilizables y volver a aplicarse después. Se siembran 2 de referencia (`LandIT` y `Corporativo Kosmos`, no eliminables) en `database/seeders/BrandingPresetSeeder.php` — ajusta o quita ese seeder en un proyecto nuevo.
+Cualquier combinación de los 8 colores se puede guardar como **preset** reutilizable (configuración completa del sitio, no solo los 5 básicos) y volver a aplicarse después. Se siembran 3 de referencia en `database/seeders/BrandingPresetSeeder.php` (no eliminables): `Predeterminado` (los colores originales de la plantilla), `LandIT` y `Corporativo Kosmos` — ajusta o quita ese seeder en un proyecto nuevo.
 
 ## Despliegue a producción
 

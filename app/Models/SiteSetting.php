@@ -15,6 +15,9 @@ class SiteSetting extends Model
         'danger_color',
         'warning_color',
         'info_color',
+        'topbar_color',
+        'sidebar_header_color',
+        'sidebar_body_color',
     ];
 
     public const DEFAULTS = [
@@ -23,6 +26,9 @@ class SiteSetting extends Model
         'danger_color' => '#DC2626',
         'warning_color' => '#D97706',
         'info_color' => '#2563EB',
+        'topbar_color' => '#FFFFFF',
+        'sidebar_header_color' => '#111827',
+        'sidebar_body_color' => '#111827',
     ];
 
     public static function current(): self

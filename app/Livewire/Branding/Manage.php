@@ -28,6 +28,12 @@ class Manage extends Component
 
     public string $infoColor = '';
 
+    public string $topbarColor = '';
+
+    public string $sidebarHeaderColor = '';
+
+    public string $sidebarBodyColor = '';
+
     public string $newPresetName = '';
 
     public function mount(): void
@@ -35,39 +41,53 @@ class Manage extends Component
         $this->fillFromSettings(SiteSetting::current());
     }
 
+    /**
+     * Maps DB columns (site_settings / branding_presets) to their Livewire property.
+     */
+    protected function colorFieldMap(): array
+    {
+        return [
+            'primary_color' => 'primaryColor',
+            'success_color' => 'successColor',
+            'danger_color' => 'dangerColor',
+            'warning_color' => 'warningColor',
+            'info_color' => 'infoColor',
+            'topbar_color' => 'topbarColor',
+            'sidebar_header_color' => 'sidebarHeaderColor',
+            'sidebar_body_color' => 'sidebarBodyColor',
+        ];
+    }
+
     protected function fillFromSettings(SiteSetting $settings): void
     {
-        $this->primaryColor = $settings->primary_color;
-        $this->successColor = $settings->success_color;
-        $this->dangerColor = $settings->danger_color;
-        $this->warningColor = $settings->warning_color;
-        $this->infoColor = $settings->info_color;
+        foreach ($this->colorFieldMap() as $column => $property) {
+            $this->$property = $settings->$column;
+        }
     }
 
     protected function colorRules(): array
     {
         $hex = ['required', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'];
 
-        return [
-            'primaryColor' => $hex,
-            'successColor' => $hex,
-            'dangerColor' => $hex,
-            'warningColor' => $hex,
-            'infoColor' => $hex,
-        ];
+        return array_fill_keys(array_values($this->colorFieldMap()), $hex);
+    }
+
+    protected function currentColorData(): array
+    {
+        $data = [];
+
+        foreach ($this->colorFieldMap() as $column => $property) {
+            $data[$column] = $this->$property;
+        }
+
+        return $data;
     }
 
     public function saveColors(): void
     {
         $this->validate($this->colorRules());
 
-        SiteSetting::current()->update([
-            'primary_color' => $this->primaryColor,
-            'success_color' => $this->successColor,
-            'danger_color' => $this->dangerColor,
-            'warning_color' => $this->warningColor,
-            'info_color' => $this->infoColor,
-        ]);
+        SiteSetting::current()->update($this->currentColorData());
 
         session()->flash('status', 'Colores actualizados.');
     }
@@ -109,13 +129,12 @@ class Manage extends Component
     {
         $preset = BrandingPreset::findOrFail($presetId);
 
-        SiteSetting::current()->update([
-            'primary_color' => $preset->primary_color,
-            'success_color' => $preset->success_color,
-            'danger_color' => $preset->danger_color,
-            'warning_color' => $preset->warning_color,
-            'info_color' => $preset->info_color,
-        ]);
+        $data = [];
+        foreach ($this->colorFieldMap() as $column => $property) {
+            $data[$column] = $preset->$column;
+        }
+
+        SiteSetting::current()->update($data);
 
         $this->fillFromSettings(SiteSetting::current());
 
@@ -128,14 +147,10 @@ class Manage extends Component
             'newPresetName' => ['required', 'string', 'max:255', 'unique:branding_presets,name'],
         ]));
 
-        BrandingPreset::create([
-            'name' => $this->newPresetName,
-            'primary_color' => $this->primaryColor,
-            'success_color' => $this->successColor,
-            'danger_color' => $this->dangerColor,
-            'warning_color' => $this->warningColor,
-            'info_color' => $this->infoColor,
-        ]);
+        BrandingPreset::create(array_merge(
+            ['name' => $this->newPresetName],
+            $this->currentColorData()
+        ));
 
         $this->newPresetName = '';
 
