@@ -1,4 +1,4 @@
-<div class="space-y-6 max-w-4xl">
+<div class="space-y-6">
     <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Branding</h1>
 
     @if (session('status'))
@@ -26,7 +26,14 @@
                                 <span class="text-xs text-gray-400 dark:text-gray-500">Sin logo</span>
                             @endif
                         </div>
-                        <input wire:model="logo" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                        <div class="space-y-2">
+                            <input wire:model="logo" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                            @if ($settings->logoUrl())
+                                <button wire:click="removeLogo" wire:confirm="¿Quitar el logotipo actual?" type="button" class="block text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
+                                    Quitar logotipo
+                                </button>
+                            @endif
+                        </div>
                     </div>
                     @error('logo') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                 </div>
@@ -45,7 +52,14 @@
                                 <span class="text-xs text-gray-400 dark:text-gray-500">Sin favicon</span>
                             @endif
                         </div>
-                        <input wire:model="favicon" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                        <div class="space-y-2">
+                            <input wire:model="favicon" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                            @if ($settings->faviconUrl())
+                                <button wire:click="removeFavicon" wire:confirm="¿Quitar el favicon actual?" type="button" class="block text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
+                                    Quitar favicon
+                                </button>
+                            @endif
+                        </div>
                     </div>
                     @error('favicon') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                 </div>

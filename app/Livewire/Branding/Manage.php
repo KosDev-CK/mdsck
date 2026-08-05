@@ -125,6 +125,34 @@ class Manage extends Component
         session()->flash('status', 'Identidad visual actualizada.');
     }
 
+    public function removeLogo(): void
+    {
+        $settings = SiteSetting::current();
+
+        if ($settings->logo_path) {
+            Storage::disk('public')->delete($settings->logo_path);
+            $settings->update(['logo_path' => null]);
+        }
+
+        $this->reset('logo');
+
+        session()->flash('status', 'Logotipo eliminado.');
+    }
+
+    public function removeFavicon(): void
+    {
+        $settings = SiteSetting::current();
+
+        if ($settings->favicon_path) {
+            Storage::disk('public')->delete($settings->favicon_path);
+            $settings->update(['favicon_path' => null]);
+        }
+
+        $this->reset('favicon');
+
+        session()->flash('status', 'Favicon eliminado.');
+    }
+
     public function applyPreset(int $presetId): void
     {
         $preset = BrandingPreset::findOrFail($presetId);

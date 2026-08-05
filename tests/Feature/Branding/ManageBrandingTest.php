@@ -148,6 +148,36 @@ class ManageBrandingTest extends TestCase
         Storage::disk('public')->assertExists($settings->favicon_path);
     }
 
+    public function test_an_admin_can_remove_the_logo(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['logo_path' => 'branding/existing-logo.png']);
+        Storage::disk('public')->put('branding/existing-logo.png', 'fake-content');
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('removeLogo');
+
+        Storage::disk('public')->assertMissing('branding/existing-logo.png');
+        $this->assertNull(SiteSetting::current()->logo_path);
+    }
+
+    public function test_an_admin_can_remove_the_favicon(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['favicon_path' => 'branding/existing-favicon.png']);
+        Storage::disk('public')->put('branding/existing-favicon.png', 'fake-content');
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('removeFavicon');
+
+        Storage::disk('public')->assertMissing('branding/existing-favicon.png');
+        $this->assertNull(SiteSetting::current()->favicon_path);
+    }
+
     public function test_applying_a_preset_replaces_the_active_colors(): void
     {
         $admin = $this->actingAdmin();
