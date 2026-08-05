@@ -1,42 +1,42 @@
 <div>
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 class="text-lg font-semibold text-gray-900">Conexiones a BD</h1>
-        <button wire:click="create" class="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+        <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Conexiones a BD</h1>
+        <x-ui.button wire:click="create">
             Nueva conexión
-        </button>
+        </x-ui.button>
     </div>
 
     @if (session('status'))
-        <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+        <x-ui.alert variant="success" class="mb-4">
             {{ session('status') }}
-        </div>
+        </x-ui.alert>
     @endif
 
     @if ($showForm)
-        <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-            <h2 class="text-sm font-semibold text-gray-900 mb-4">{{ $editingId ? 'Editar conexión' : 'Nueva conexión' }}</h2>
+        <x-ui.card padding="p-6" class="mb-6">
+            <h2 class="text-sm font-semibold text-gray-900 mb-4 dark:text-gray-100">{{ $editingId ? 'Editar conexión' : 'Nueva conexión' }}</h2>
 
             <form wire:submit="save" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Nombre</label>
-                    <input wire:model="name" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                    @error('name') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label>
+                    <input wire:model="name" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('name') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Clave (identificador único)</label>
-                    <input wire:model="key" type="text" placeholder="ej. oracle_finanzas" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                    @error('key') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Clave (identificador único)</label>
+                    <input wire:model="key" type="text" placeholder="ej. oracle_finanzas" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    @error('key') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Módulo (opcional)</label>
-                    <input wire:model="module" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Módulo (opcional)</label>
+                    <input wire:model="module" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Tipo</label>
-                    <select wire:model.live="driver" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
+                    <select wire:model.live="driver" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                         <option value="mysql">MySQL</option>
                         <option value="pgsql">PostgreSQL</option>
                         <option value="sqlsrv">SQL Server</option>
@@ -45,103 +45,103 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Modo de conexión</label>
-                    <select wire:model="mode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Modo de conexión</label>
+                    <select wire:model="mode" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                         <option value="single">Conexión única</option>
                         <option value="pool">Pool de conexiones</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mt-6">
-                        <input wire:model="isActive" type="checkbox" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mt-6 dark:text-gray-300">
+                        <input wire:model="isActive" type="checkbox" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800">
                         Activa
                     </label>
                 </div>
 
                 @if ($driver === 'api')
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700">URL base</label>
-                        <input wire:model="baseUrl" type="text" placeholder="https://api.ejemplo.com" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                        @error('baseUrl') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">URL base</label>
+                        <input wire:model="baseUrl" type="text" placeholder="https://api.ejemplo.com" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                        @error('baseUrl') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
                 @else
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Host</label>
-                        <input wire:model="host" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                        @error('host') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Host</label>
+                        <input wire:model="host" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                        @error('host') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Puerto</label>
-                        <input wire:model="port" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Puerto</label>
+                        <input wire:model="port" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Base de datos</label>
-                        <input wire:model="database" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                        @error('database') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Base de datos</label>
+                        <input wire:model="database" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                        @error('database') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
                 @endif
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">Usuario</label>
-                    <input wire:model="username" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Usuario</label>
+                    <input wire:model="username" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                         Contraseña {{ $editingId ? '(dejar vacío para no cambiarla)' : '' }}
                     </label>
-                    <input wire:model="password" type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                    <input wire:model="password" type="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                 </div>
 
                 @if ($mode === 'pool')
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Mínimo de conexiones</label>
-                        <input wire:model="poolMin" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Mínimo de conexiones</label>
+                        <input wire:model="poolMin" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700">Máximo de conexiones</label>
-                        <input wire:model="poolMax" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm">
-                        @error('poolMax') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Máximo de conexiones</label>
+                        <input wire:model="poolMax" type="number" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                        @error('poolMax') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                     </div>
                 @endif
 
                 <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700">Opciones extra (JSON, ej. headers de la API)</label>
-                    <textarea wire:model="extraJson" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm font-mono text-xs"></textarea>
-                    @error('extraJson') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Opciones extra (JSON, ej. headers de la API)</label>
+                    <textarea wire:model="extraJson" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm font-mono text-xs dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"></textarea>
+                    @error('extraJson') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
                 </div>
 
                 @if ($testResult)
                     @php [$status, $message] = explode(':', $testResult, 2); @endphp
-                    <div class="md:col-span-2 text-sm {{ $status === 'ok' ? 'text-emerald-700' : 'text-red-600' }}">
+                    <div class="md:col-span-2 text-sm {{ $status === 'ok' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400' }}">
                         {{ $message }}
                     </div>
                 @endif
 
                 <div class="md:col-span-2 flex gap-2">
-                    <button type="submit" class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+                    <x-ui.button type="submit">
                         Guardar
-                    </button>
-                    <button type="button" wire:click="testConnection" class="inline-flex items-center rounded-md bg-white border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    </x-ui.button>
+                    <x-ui.button type="button" wire:click="testConnection" variant="secondary">
                         Probar conexión
-                    </button>
-                    <button type="button" wire:click="$set('showForm', false)" class="inline-flex items-center rounded-md px-4 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100">
+                    </x-ui.button>
+                    <x-ui.button type="button" wire:click="$set('showForm', false)" variant="ghost">
                         Cancelar
-                    </button>
+                    </x-ui.button>
                 </div>
             </form>
-        </div>
+        </x-ui.card>
     @endif
 
-    <div class="bg-white rounded-xl border border-gray-200 p-5">
+    <x-ui.card padding="p-5">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="text-left text-gray-500 border-b border-gray-100">
+                    <tr class="text-left text-gray-500 border-b border-gray-100 dark:text-gray-400 dark:border-gray-800">
                         <th class="py-2">Nombre</th>
                         <th class="py-2">Clave</th>
                         <th class="py-2">Tipo</th>
@@ -152,24 +152,24 @@
                 </thead>
                 <tbody>
                     @foreach ($connections as $connection)
-                        <tr class="border-b border-gray-50">
-                            <td class="py-2 font-medium text-gray-900 whitespace-nowrap">{{ $connection->name }}</td>
-                            <td class="py-2 text-gray-500 font-mono text-xs whitespace-nowrap">{{ $connection->key }}</td>
-                            <td class="py-2 uppercase text-xs text-gray-500 whitespace-nowrap">{{ $connection->driver }}</td>
-                            <td class="py-2 text-gray-500 whitespace-nowrap">{{ $connection->mode === 'pool' ? 'Pool' : 'Única' }}</td>
+                        <tr class="border-b border-gray-50 dark:border-gray-800">
+                            <td class="py-2 font-medium text-gray-900 whitespace-nowrap dark:text-gray-100">{{ $connection->name }}</td>
+                            <td class="py-2 text-gray-500 font-mono text-xs whitespace-nowrap dark:text-gray-400">{{ $connection->key }}</td>
+                            <td class="py-2 uppercase text-xs text-gray-500 whitespace-nowrap dark:text-gray-400">{{ $connection->driver }}</td>
+                            <td class="py-2 text-gray-500 whitespace-nowrap dark:text-gray-400">{{ $connection->mode === 'pool' ? 'Pool' : 'Única' }}</td>
                             <td class="py-2 whitespace-nowrap">
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs {{ $connection->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500' }}">
+                                <x-ui.badge :color="$connection->is_active ? 'emerald' : 'gray'">
                                     {{ $connection->is_active ? 'Activa' : 'Inactiva' }}
-                                </span>
+                                </x-ui.badge>
                             </td>
                             <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                                <button wire:click="edit({{ $connection->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm">Editar</button>
-                                <button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" class="text-red-600 hover:text-red-500 text-sm">Eliminar</button>
+                                <button wire:click="edit({{ $connection->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
+                                <button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">Eliminar</button>
                             </td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
         </div>
-    </div>
+    </x-ui.card>
 </div>

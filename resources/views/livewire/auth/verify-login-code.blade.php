@@ -1,16 +1,16 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-1">Ingresa tu código</h1>
-    <p class="text-sm text-gray-500 mb-6">Revisa tu correo, te enviamos un código de 6 dígitos.</p>
+    <h1 class="text-lg font-semibold text-gray-900 mb-1 dark:text-gray-100">Ingresa tu código</h1>
+    <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Revisa tu correo, te enviamos un código de 6 dígitos.</p>
 
     @if (session('status'))
-        <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
+        <x-ui.alert variant="success" class="mb-4">
             {{ session('status') }}
-        </div>
+        </x-ui.alert>
     @endif
 
     <form wire:submit="verifyCode" class="space-y-4">
         <div>
-            <label for="code" class="block text-sm font-medium text-gray-700">Código</label>
+            <label for="code" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Código</label>
             <input
                 wire:model="code"
                 type="text"
@@ -19,10 +19,10 @@
                 id="code"
                 autofocus
                 maxlength="6"
-                class="mt-1 block w-full text-center tracking-[0.5em] text-lg font-semibold rounded-md border-gray-300 shadow-sm"
+                class="mt-1 block w-full text-center tracking-[0.5em] text-lg font-semibold rounded-md border-gray-300 shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                 placeholder="······"
             >
-            @error('code') <p class="mt-1 text-sm text-red-600">{{ $message }}</p> @enderror
+            @error('code') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
         </div>
 
         <button
@@ -37,12 +37,12 @@
     </form>
 
     <div class="mt-4 text-center">
-        <button wire:click="resend" class="text-sm text-indigo-600 hover:text-indigo-500">
+        <button wire:click="resend" class="text-sm text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
             Reenviar código
         </button>
     </div>
 
     <div class="mt-2 text-center">
-        <a href="{{ route('login') }}" class="text-sm text-gray-500 hover:text-gray-700">Usar otro correo</a>
+        <a href="{{ route('login') }}" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Usar otro correo</a>
     </div>
 </div>
