@@ -38,6 +38,8 @@ class SecurityEvent extends Model
 
     public const TWO_FACTOR_REVOKED_BY_ADMIN = 'two_factor_revoked_by_admin';
 
+    public const RATE_LIMITED = 'rate_limited';
+
     protected $fillable = [
         'user_id',
         'email',

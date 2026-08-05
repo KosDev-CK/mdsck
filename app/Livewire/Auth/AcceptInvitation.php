@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Auth;
 
+use App\Concerns\GuardsAgainstFlooding;
 use App\Models\Invitation;
 use App\Models\SecurityEvent;
 use App\Models\User;
@@ -12,6 +13,8 @@ use Livewire\Component;
 #[Layout('layouts.guest')]
 class AcceptInvitation extends Component
 {
+    use GuardsAgainstFlooding;
+
     public string $token;
 
     public ?Invitation $invitation = null;
@@ -35,6 +38,12 @@ class AcceptInvitation extends Component
     public function accept(LoginSecurityManager $security)
     {
         if ($this->status !== 'pending' || ! $this->invitation) {
+            return;
+        }
+
+        if ($this->tooManyRequests('invitations.accept')) {
+            $this->status = 'rate_limited';
+
             return;
         }
 

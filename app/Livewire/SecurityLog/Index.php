@@ -77,6 +77,7 @@ class Index extends Component
                 SecurityEvent::USER_DEACTIVATED => 'Usuario desactivado',
                 SecurityEvent::USER_REACTIVATED => 'Usuario reactivado',
                 SecurityEvent::TWO_FACTOR_REVOKED_BY_ADMIN => '2FA revocado por administrador',
+                SecurityEvent::RATE_LIMITED => 'Bloqueado por exceso de solicitudes',
             ],
         ]);
     }

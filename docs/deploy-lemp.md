@@ -81,7 +81,9 @@ php artisan migrate --force
 php artisan db:seed --class="Database\Seeders\CoreSeeder" --force
 ```
 
-`CoreSeeder` crea las pantallas base, el rol Administrador y un primer usuario administrador (ajusta el correo en `database/seeders/CoreSeeder.php` antes de este paso si no debe ser `victor.gonzalez@landit.com.mx`). Como el login es sin contraseña, este es el único usuario que existe hasta que él mismo invite a los demás desde la pantalla de "Configuración de acceso".
+`CoreSeeder` crea las pantallas base, el rol Administrador y un primer usuario administrador — el correo/nombre se toman de `MDS_ADMIN_EMAIL`/`MDS_ADMIN_NAME` en `.env` (no hace falta editar el seeder). Como el login es sin contraseña, este es el único usuario que existe hasta que él mismo invite a los demás desde la pantalla de "Configuración de acceso".
+
+Si el entorno acumuló datos de prueba (usuarios, bitácora, mensajes) antes de este primer deploy real, límpialos primero con `php artisan mds:clean-test-data` — ver [`docs/limpiar-datos-de-prueba.md`](limpiar-datos-de-prueba.md).
 
 Si vas a activar el módulo de ejemplo o cualquier módulo nuevo con su propio seeder:
 
@@ -224,9 +226,4 @@ supervisorctl restart mds-reverb:*
 
 ## 10. Usar este proyecto como plantilla para otro desarrollo
 
-1. Copia/clona el repo a la nueva carpeta de proyecto.
-2. Cambia `APP_NAME` en `.env` y en `composer.json`/`package.json` si aplica.
-3. Ajusta el correo del primer administrador en `database/seeders/CoreSeeder.php`.
-4. Borra el módulo `Modules/Ejemplo` (o consérvalo como referencia) y crea tus módulos de contenido reales con `php artisan module:make NombreModulo`.
-5. Corre `composer install`, `npm install`, configura `.env` para el nuevo entorno, `php artisan migrate --seed` con `CoreSeeder`.
-6. Todo lo demás (login sin contraseña, 2FA, perfiles/pantallas, invitaciones, notificaciones en tiempo real, pool de conexiones, bitácora de seguridad) ya queda listo — solo desarrollas el contenido del nuevo módulo.
+Ver guía completa: [`docs/nuevo-proyecto-desde-plantilla.md`](nuevo-proyecto-desde-plantilla.md). Resumen: clona el repo aparte, crea una BD nueva, ajusta `MDS_ADMIN_EMAIL`/`MDS_ADMIN_NAME` en el `.env` del proyecto nuevo (no hace falta tocar `CoreSeeder`), `migrate --seed`, y desarrolla el contenido específico como módulo(s) nuevo(s) — deja este repo (`mds`) intacto como base para agregar más funciones a futuro.

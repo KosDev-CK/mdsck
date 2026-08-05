@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Auth;
 
+use App\Concerns\GuardsAgainstFlooding;
 use App\Models\LoginCode;
 use App\Models\User;
 use App\Notifications\LoginCodeNotification;
@@ -13,6 +14,8 @@ use Livewire\Component;
 #[Layout('layouts.guest')]
 class VerifyLoginCode extends Component
 {
+    use GuardsAgainstFlooding;
+
     public string $code = '';
 
     protected function rules(): array
@@ -24,6 +27,12 @@ class VerifyLoginCode extends Component
 
     public function verifyCode(LoginSecurityManager $security)
     {
+        if ($this->tooManyRequests('login.verify-code')) {
+            $this->addError('code', 'Demasiadas solicitudes desde tu conexión. Intenta de nuevo en unos minutos.');
+
+            return;
+        }
+
         $this->validate();
 
         $genericError = 'Código inválido o expirado.';
@@ -70,6 +79,12 @@ class VerifyLoginCode extends Component
 
     public function resend()
     {
+        if ($this->tooManyRequests('login.resend')) {
+            session()->flash('status', 'Demasiadas solicitudes desde tu conexión. Intenta de nuevo en unos minutos.');
+
+            return;
+        }
+
         $user = $this->pendingUser();
 
         if ($user && $user->is_active && ! $user->isLocked()) {

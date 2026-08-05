@@ -39,4 +39,21 @@ return [
 
     'invitation_ttl_days' => (int) env('SECURITY_INVITATION_TTL_DAYS', 7),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Límite de solicitudes por IP (anti fuerza bruta / flood)
+    |--------------------------------------------------------------------------
+    |
+    | Independiente del bloqueo por cuenta de arriba: limita, por IP, cuántas
+    | veces se puede llamar a una acción sensible (pedir código, verificar
+    | código/2FA, aceptar invitación) en la ventana de tiempo definida. Cubre
+    | el caso de un atacante que reparte los intentos entre muchas cuentas o
+    | dispara solicitudes sin siquiera tener una cuenta válida.
+    |
+    */
+
+    'max_requests_per_minute' => (int) env('SECURITY_MAX_REQUESTS_PER_MINUTE', 50),
+
+    'request_throttle_decay_seconds' => (int) env('SECURITY_REQUEST_THROTTLE_DECAY_SECONDS', 60),
+
 ];

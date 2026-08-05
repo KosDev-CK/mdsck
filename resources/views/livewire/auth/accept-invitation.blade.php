@@ -24,6 +24,9 @@
     @elseif ($status === 'revoked')
         <h1 class="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Invitación revocada</h1>
         <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Esta invitación ya no es válida.</p>
+    @elseif ($status === 'rate_limited')
+        <h1 class="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Demasiadas solicitudes</h1>
+        <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Espera unos minutos e intenta de nuevo.</p>
     @else
         <h1 class="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Invitación no encontrada</h1>
         <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Verifica el enlace o pide una nueva invitación.</p>

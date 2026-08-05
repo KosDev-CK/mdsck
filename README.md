@@ -2,6 +2,8 @@
 
 Plantilla base para sitios internos con login, roles/permisos por pantalla, invitaciones, 2FA y notificaciones en tiempo real. Pensada para clonarse y reutilizarse en nuevos desarrollos — la parte de plataforma ya está resuelta, solo hace falta construir el contenido de cada módulo nuevo.
 
+> Si vas a retomar este proyecto con Claude Code, lee primero [`CLAUDE.md`](CLAUDE.md) — tiene el contexto completo de arquitectura y convenciones para no repetir la explicación en cada sesión nueva.
+
 ## Stack
 
 - Laravel 12 + MySQL (InnoDB forzado, ver `config/database.php`)
@@ -30,7 +32,7 @@ npm run build           # o "npm run dev" mientras desarrollas
 
 Corre `composer run dev` para levantar en paralelo Reverb, el worker de colas, los logs (`pail`) y Vite.
 
-El seeder crea las pantallas base, el rol **Administrador** y un primer usuario administrador (ver `database/seeders/CoreSeeder.php` — ajusta el correo antes de sembrar en un proyecto nuevo). Como el login es sin contraseña, ese es el único acceso hasta que ese usuario invite a los demás desde "Configuración de acceso".
+El seeder crea las pantallas base, el rol **Administrador** y un primer usuario administrador — correo/nombre vienen de `MDS_ADMIN_EMAIL`/`MDS_ADMIN_NAME` en `.env` (ver `config/mds.php`, no hace falta editar el seeder). Como el login es sin contraseña, ese es el único acceso hasta que ese usuario invite a los demás desde "Configuración de acceso".
 
 En dev, los correos se escriben en `storage/logs/laravel.log` (`MAIL_MAILER=log`) — ahí verás el código de acceso y los enlaces de invitación hasta que configures un SMTP real.
 
@@ -54,11 +56,7 @@ Desde "Configuración de acceso" también se puede desactivar/reactivar la cuent
 php artisan module:make MiModulo
 ```
 
-Sigue el patrón del módulo `Modules/Ejemplo` (incluido como referencia): su propia migración, modelo, componente Livewire y vista, resuelto por el mismo sistema de perfiles/pantallas del core. Para que aparezca en el menú y sea asignable a un perfil:
-
-1. Crea un registro en `screens` con `module`, `group_label` (la sección del menú donde debe agruparse, ej. "Módulos"), `route_name`, `permission_name` e `icon` (nombre de un ícono outline de [Heroicons](https://heroicons.com), ej. `cube`, sin el prefijo `o-`) — hazlo en el seeder del propio módulo, no en `CoreSeeder`, para que el módulo sea instalable/removible de forma independiente.
-2. Da de alta la ruta con el middleware `permission:{permission_name}` en `Modules/MiModulo/routes/web.php`.
-3. Corre `php artisan module:seed MiModulo`.
+Sigue el patrón del módulo `Modules/Ejemplo` (incluido como referencia): su propia migración, modelo, componente Livewire y vista, resuelto por el mismo sistema de perfiles/pantallas del core. Guía completa (registro en `screens`, ruta, asignación a perfiles): [`docs/agregar-pantallas.md`](docs/agregar-pantallas.md).
 
 El menú lateral agrupa automáticamente por `group_label`, es colapsable (el estado se guarda en `localStorage`) y se convierte en un panel deslizante en pantallas menores a `lg` (tablets y celulares).
 
@@ -77,6 +75,14 @@ El color de la barra superior solo aplica en modo claro (en modo oscuro se manti
 El nombre del sitio y la URL siguen viviendo en `.env` (`APP_NAME`, `APP_URL`) — no son parte de este branding dinámico, se ajustan al desplegar a cada entorno.
 
 Cualquier combinación de los 8 colores se puede guardar como **preset** reutilizable (configuración completa del sitio, no solo los 5 básicos) y volver a aplicarse después. Se siembran 3 de referencia en `database/seeders/BrandingPresetSeeder.php` (no eliminables): `Predeterminado` (los colores originales de la plantilla), `LandIT` y `Corporativo Kosmos` — ajusta o quita ese seeder en un proyecto nuevo.
+
+## Usar esta plantilla en otro proyecto
+
+Ver [`docs/nuevo-proyecto-desde-plantilla.md`](docs/nuevo-proyecto-desde-plantilla.md) — cómo clonar este repo para un sitio nuevo sin tocar este proyecto.
+
+## Limpiar datos de prueba
+
+`php artisan mds:clean-test-data` borra usuarios/invitaciones/bitácora/notificaciones de prueba conservando el administrador base. Ver [`docs/limpiar-datos-de-prueba.md`](docs/limpiar-datos-de-prueba.md).
 
 ## Despliegue a producción
 

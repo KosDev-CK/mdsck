@@ -34,9 +34,9 @@ class CoreSeeder extends Seeder
         $adminRole->syncPermissions(Screen::pluck('permission_name'));
 
         $admin = User::updateOrCreate(
-            ['email' => 'victor.gonzalez@landit.com.mx'],
+            ['email' => config('mds.admin_email')],
             [
-                'name' => 'Victor Gonzalez',
+                'name' => config('mds.admin_name'),
                 'is_active' => true,
                 'invitation_accepted_at' => now(),
             ]

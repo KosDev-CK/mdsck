@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Auth;
 
+use App\Concerns\GuardsAgainstFlooding;
 use App\Models\SecurityEvent;
 use App\Models\User;
 use App\Services\LoginSecurityManager;
@@ -13,6 +14,8 @@ use PragmaRX\Google2FA\Google2FA;
 #[Layout('layouts.guest')]
 class VerifyTwoFactor extends Component
 {
+    use GuardsAgainstFlooding;
+
     public string $code = '';
 
     public bool $usingRecoveryCode = false;
@@ -50,6 +53,12 @@ class VerifyTwoFactor extends Component
 
     public function verify(LoginSecurityManager $security)
     {
+        if ($this->tooManyRequests('login.verify-two-factor')) {
+            $this->addError('code', 'Demasiadas solicitudes desde tu conexión. Intenta de nuevo en unos minutos.');
+
+            return;
+        }
+
         $this->validate();
 
         $user = $this->currentLoginUser();
@@ -82,6 +91,12 @@ class VerifyTwoFactor extends Component
 
     public function verifyWithRecoveryCode(LoginSecurityManager $security)
     {
+        if ($this->tooManyRequests('login.verify-two-factor')) {
+            $this->addError('recoveryCode', 'Demasiadas solicitudes desde tu conexión. Intenta de nuevo en unos minutos.');
+
+            return;
+        }
+
         $this->validate(['recoveryCode' => ['required', 'string']]);
 
         $user = $this->currentLoginUser();

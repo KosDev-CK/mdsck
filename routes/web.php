@@ -23,7 +23,7 @@ Route::get('/', function () {
     return redirect()->route(Auth::check() ? 'dashboard' : 'login');
 });
 
-Route::middleware('guest')->group(function () {
+Route::middleware(['guest', 'throttle:login-pages'])->group(function () {
     Route::get('/login', RequestLoginCode::class)->name('login');
     Route::get('/login/verify', VerifyLoginCode::class)->name('login.verify');
     Route::get('/login/two-factor', VerifyTwoFactor::class)->name('login.two-factor');

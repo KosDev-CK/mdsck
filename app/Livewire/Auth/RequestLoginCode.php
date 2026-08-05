@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Auth;
 
+use App\Concerns\GuardsAgainstFlooding;
 use App\Models\LoginCode;
 use App\Models\User;
 use App\Notifications\LoginCodeNotification;
@@ -12,6 +13,8 @@ use Livewire\Component;
 #[Layout('layouts.guest')]
 class RequestLoginCode extends Component
 {
+    use GuardsAgainstFlooding;
+
     public string $email = '';
 
     protected function rules(): array
@@ -23,6 +26,12 @@ class RequestLoginCode extends Component
 
     public function sendCode()
     {
+        if ($this->tooManyRequests('login.send-code')) {
+            $this->addError('email', 'Demasiadas solicitudes desde tu conexión. Intenta de nuevo en unos minutos.');
+
+            return;
+        }
+
         $this->validate();
 
         $user = User::where('email', $this->email)->first();
