@@ -5,6 +5,8 @@
         ->get()
         ->filter(fn ($screen) => auth()->user()->can($screen->permission_name))
         ->groupBy(fn ($screen) => $screen->group_label ?? 'General');
+
+    $brandLogo = \App\Models\SiteSetting::current()->logoUrl();
 @endphp
 
 <!-- Backdrop (mobile/tablet only) -->
@@ -27,9 +29,13 @@
     class="fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-gray-900 text-gray-300 transition-all duration-200 lg:static lg:translate-x-0"
 >
     <div class="flex h-16 items-center justify-between border-b border-gray-800 px-4">
-        <span :class="{ 'lg:hidden': collapsed }" class="truncate text-lg font-semibold text-white">
-            {{ config('app.name') }}
-        </span>
+        @if ($brandLogo)
+            <img :class="{ 'lg:hidden': collapsed }" src="{{ $brandLogo }}" alt="{{ config('app.name') }}" class="h-8 max-w-[140px] object-contain">
+        @else
+            <span :class="{ 'lg:hidden': collapsed }" class="truncate text-lg font-semibold text-white">
+                {{ config('app.name') }}
+            </span>
+        @endif
 
         <button @click="toggleCollapsed()" class="hidden rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-white lg:inline-flex">
             <x-heroicon-o-chevron-double-left x-show="!collapsed" class="h-5 w-5" />

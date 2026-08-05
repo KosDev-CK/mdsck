@@ -4,6 +4,7 @@ use App\Livewire\Auth\AcceptInvitation;
 use App\Livewire\Auth\RequestLoginCode;
 use App\Livewire\Auth\VerifyLoginCode;
 use App\Livewire\Auth\VerifyTwoFactor;
+use App\Livewire\Branding\Manage as BrandingManage;
 use App\Livewire\Connections\Manage as ConnectionsManage;
 use App\Livewire\Dashboard;
 use App\Livewire\Invitations\Manage as InvitationsManage;
@@ -71,4 +72,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/security-log', SecurityLogIndex::class)
         ->middleware('permission:screens.security.view')
         ->name('security-log.index');
+
+    Route::get('/branding', BrandingManage::class)
+        ->middleware('permission:screens.branding.manage')
+        ->name('branding.index');
 });

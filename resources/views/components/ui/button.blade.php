@@ -10,9 +10,9 @@ $sizes = [
 ];
 
 $variants = [
-    'primary' => 'bg-indigo-600 text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400',
+    'primary' => 'bg-primary text-white hover:brightness-90',
     'secondary' => 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700',
-    'danger' => 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20',
+    'danger' => 'bg-danger/10 text-danger hover:bg-danger/20',
     'ghost' => 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800',
 ];
 @endphp

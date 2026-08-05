@@ -62,6 +62,14 @@ Activar/desactivar módulos instalados: pantalla "Módulos" (`/modules`).
 
 Pantalla "Conexiones a BD" (`/connections`) permite registrar conexiones adicionales (MySQL, PostgreSQL, SQL Server o APIs externas) que un módulo puede usar en tiempo de ejecución vía `DatabaseConnection::toConnectionConfig()`. El soporte para Oracle (yajra/laravel-oci8) se agrega cuando el primer módulo lo necesite — requiere instalar el Oracle Instant Client en el servidor.
 
+## Branding
+
+Pantalla "Branding" (`/branding`) permite configurar, sin tocar código: logotipo (se usa en el sidebar y en el encabezado de los correos), favicon, y 5 colores semánticos (Primario, Success, Danger, Warning, Info) que se aplican en vivo a `button`/`badge`/`alert` y demás componentes `x-ui.*` vía variables CSS (`--color-primary`, etc., inyectadas por request en `partials/branding-head.blade.php`).
+
+El nombre del sitio y la URL siguen viviendo en `.env` (`APP_NAME`, `APP_URL`) — no son parte de este branding dinámico, se ajustan al desplegar a cada entorno.
+
+Los colores se pueden guardar como **presets** reutilizables y volver a aplicarse después. Se siembran 2 de referencia (`LandIT` y `Corporativo Kosmos`, no eliminables) en `database/seeders/BrandingPresetSeeder.php` — ajusta o quita ese seeder en un proyecto nuevo.
+
 ## Despliegue a producción
 
 Ver [`docs/deploy-lemp.md`](docs/deploy-lemp.md).
