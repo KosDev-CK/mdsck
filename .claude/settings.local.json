@@ -18,7 +18,11 @@
       "mcp__claude-in-chrome__tabs_context_mcp",
       "Bash(grep -E \"^\\(home|user-plus|shield-check|users|circle-stack|squares-plus|lock-closed|cube|bars-3|x-mark|chevron-double-left|chevron-double-right\\)\\\\.svg$\")",
       "Bash(curl -s -o /dev/null -w \"dashboard -> %{http_code}\\\\n\" http://mds.test/dashboard)",
-      "Bash(\"/c/wamp64/bin/apache/apache2.4.62.1/bin/httpd.exe\" -t)"
+      "Bash(\"/c/wamp64/bin/apache/apache2.4.62.1/bin/httpd.exe\" -t)",
+      "Bash(cd /c/wamp64/www/portalck && npm install 2>&1 | tail -10)",
+      "Bash(\"/c/wamp64/bin/mysql/mysql9.1.0/bin/mysql.exe\" -u root -e \"CREATE DATABASE IF NOT EXISTS portalck CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; SHOW DATABASES LIKE 'portalck';\")",
+      "Bash(php -r \"echo bin2hex\\(random_bytes\\(16\\)\\), PHP_EOL;\")",
+      "Bash(php -r \"echo random_int\\(100000, 999999\\), PHP_EOL;\")"
     ]
   }
 }
