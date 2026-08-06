@@ -44,6 +44,10 @@ php artisan test
 
 Cubre autenticación passwordless, 2FA, bloqueo de cuenta, sesión única, invitaciones, perfiles/pantallas, pool de conexiones a BD, módulos, notificaciones, mensajería a usuarios, branding y bitácora de seguridad.
 
+## Pantalla de inicio por usuario
+
+Desde "Mi perfil", cada usuario puede elegir a qué pantalla llegar después de iniciar sesión (entre las que tiene permiso de ver), en vez del Dashboard por defecto.
+
 ## Mensajes a usuarios
 
 Pantalla "Mensajes" (`/messages`) permite a un administrador enviar un aviso (asunto + mensaje) a uno o varios usuarios, o a todos los usuarios activos. Llega como notificación de base de datos + broadcast, visible en la campana del topbar — que además del contador de pendientes muestra el total/leídas/sin leer, y permite eliminar una notificación una vez leída (no antes).

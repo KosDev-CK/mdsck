@@ -3,10 +3,12 @@
 namespace Tests\Feature\Profile;
 
 use App\Livewire\Profile\Show;
+use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use PragmaRX\Google2FA\Google2FA;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class ProfileTest extends TestCase
@@ -46,6 +48,73 @@ class ProfileTest extends TestCase
         $this->assertSame('TI', $fresh->area);
         $this->assertSame('EMP-123', $fresh->employee_number);
         $this->assertSame('Monterrey', $fresh->location);
+    }
+
+    public function test_a_user_can_set_their_home_screen_to_one_they_can_access(): void
+    {
+        $screen = Screen::create([
+            'name' => 'Conexiones a BD',
+            'slug' => 'connections',
+            'route_name' => 'connections.index',
+            'permission_name' => 'screens.connections.manage',
+            'order' => 1,
+        ]);
+
+        $role = Role::findOrCreate('Conexiones', 'web');
+        $role->givePermissionTo($screen->permission_name);
+
+        $user = User::factory()->create();
+        $user->assignRole($role);
+
+        Livewire::actingAs($user)
+            ->test(Show::class)
+            ->set('homeScreenId', $screen->id)
+            ->call('updateHomeScreen')
+            ->assertHasNoErrors();
+
+        $this->assertSame($screen->id, $user->fresh()->home_screen_id);
+    }
+
+    public function test_a_user_cannot_set_a_home_screen_they_cannot_access(): void
+    {
+        $screen = Screen::create([
+            'name' => 'Conexiones a BD',
+            'slug' => 'connections',
+            'route_name' => 'connections.index',
+            'permission_name' => 'screens.connections.manage',
+            'order' => 1,
+        ]);
+
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)
+            ->test(Show::class)
+            ->set('homeScreenId', $screen->id)
+            ->call('updateHomeScreen')
+            ->assertHasErrors('homeScreenId');
+
+        $this->assertNull($user->fresh()->home_screen_id);
+    }
+
+    public function test_a_user_can_reset_their_home_screen_to_the_default(): void
+    {
+        $screen = Screen::create([
+            'name' => 'Conexiones a BD',
+            'slug' => 'connections',
+            'route_name' => 'connections.index',
+            'permission_name' => 'screens.connections.manage',
+            'order' => 1,
+        ]);
+
+        $user = User::factory()->create(['home_screen_id' => $screen->id]);
+
+        Livewire::actingAs($user)
+            ->test(Show::class)
+            ->set('homeScreenId', null)
+            ->call('updateHomeScreen')
+            ->assertHasNoErrors();
+
+        $this->assertNull($user->fresh()->home_screen_id);
     }
 
     public function test_a_user_can_enable_two_factor_with_a_valid_code(): void

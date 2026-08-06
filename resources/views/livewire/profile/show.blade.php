@@ -61,6 +61,28 @@
     </x-ui.card>
 
     <x-ui.card padding="p-6">
+        <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Pantalla de inicio</h2>
+        <p class="text-sm text-gray-500 mb-4 dark:text-gray-400">Elige a qué pantalla quieres llegar después de iniciar sesión.</p>
+
+        <form wire:submit="updateHomeScreen" class="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+            <div class="w-full sm:w-64">
+                <label for="homeScreenId" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pantalla</label>
+                <select wire:model="homeScreenId" id="homeScreenId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    <option value="">Predeterminado (Dashboard)</option>
+                    @foreach ($this->availableHomeScreens as $screen)
+                        <option value="{{ $screen->id }}">{{ $screen->name }}</option>
+                    @endforeach
+                </select>
+                @error('homeScreenId') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+            </div>
+
+            <x-ui.button type="submit">
+                Guardar
+            </x-ui.button>
+        </form>
+    </x-ui.card>
+
+    <x-ui.card padding="p-6">
         <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Verificación en dos pasos</h2>
         <p class="text-sm text-gray-500 mb-4 dark:text-gray-400">Usa una app como Microsoft o Google Authenticator para reforzar tu acceso.</p>
 

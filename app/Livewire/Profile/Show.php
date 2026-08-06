@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Profile;
 
+use App\Models\Screen;
 use App\Models\SecurityEvent;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -27,6 +28,8 @@ class Show extends Component
 
     public string $location = '';
 
+    public ?int $homeScreenId = null;
+
     public bool $enablingTwoFactor = false;
 
     public string $pendingSecret = '';
@@ -47,6 +50,38 @@ class Show extends Component
         $this->area = $user->area ?? '';
         $this->employeeNumber = $user->employee_number ?? '';
         $this->location = $user->location ?? '';
+        $this->homeScreenId = $user->home_screen_id;
+    }
+
+    public function getAvailableHomeScreensProperty()
+    {
+        $user = auth()->user();
+
+        return Screen::whereNull('parent_id')
+            ->where('is_active', true)
+            ->where('slug', '!=', 'dashboard')
+            ->orderBy('order')
+            ->get()
+            ->filter(fn (Screen $screen) => $user->can($screen->permission_name));
+    }
+
+    public function updateHomeScreen()
+    {
+        $this->validate([
+            'homeScreenId' => ['nullable', 'integer', 'exists:screens,id'],
+        ]);
+
+        $allowedIds = $this->availableHomeScreens->pluck('id');
+
+        if ($this->homeScreenId && ! $allowedIds->contains($this->homeScreenId)) {
+            $this->addError('homeScreenId', 'No tienes acceso a esa pantalla.');
+
+            return;
+        }
+
+        auth()->user()->update(['home_screen_id' => $this->homeScreenId]);
+
+        session()->flash('status', 'Pantalla de inicio actualizada.');
     }
 
     public function updateName()

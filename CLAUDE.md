@@ -34,6 +34,8 @@ Para agregar una pantalla nueva y que aparezca en el menú + se pueda asignar a 
 
 El rol **Administrador** siempre tiene todos los permisos porque `CoreSeeder::run()` corre `$adminRole->syncPermissions(Screen::pluck('permission_name'))` cada vez que se siembra.
 
+**Pantalla de inicio por usuario**: cada usuario puede elegir desde "Mi perfil" a qué pantalla llegar después de iniciar sesión (`users.home_screen_id`, FK nullable a `screens`, `nullOnDelete`). `User::homeRouteName()` resuelve el nombre de ruta a usar — vuelve a `'dashboard'` si no hay preferencia, si la pantalla elegida se desactivó, o si el usuario ya no tiene el permiso correspondiente. Los 4 puntos donde se completa un login (`VerifyLoginCode`, `VerifyTwoFactor::verify`/`verifyWithRecoveryCode`, `AcceptInvitation`) redirigen con `redirect()->route($user->homeRouteName())` en vez de un `route('dashboard')` fijo.
+
 ## Estructura de carpetas relevante
 
 ```

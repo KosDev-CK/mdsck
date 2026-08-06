@@ -62,7 +62,7 @@ class AcceptInvitation extends Component
 
         $security->completeLogin($user, request());
 
-        return redirect()->route('dashboard');
+        return redirect()->route($user->homeRouteName());
     }
 
     public function render()

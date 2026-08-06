@@ -86,7 +86,7 @@ class VerifyTwoFactor extends Component
         session()->forget('login.two_factor_user_id');
         $security->completeLogin($user, request());
 
-        return redirect()->route('dashboard');
+        return redirect()->route($user->homeRouteName());
     }
 
     public function verifyWithRecoveryCode(LoginSecurityManager $security)
@@ -131,7 +131,7 @@ class VerifyTwoFactor extends Component
         session()->forget('login.two_factor_user_id');
         $security->completeLogin($user, request());
 
-        return redirect()->route('dashboard');
+        return redirect()->route($user->homeRouteName());
     }
 
     public function render()

@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Route;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
@@ -32,6 +33,7 @@ class User extends Authenticatable
         'area',
         'employee_number',
         'location',
+        'home_screen_id',
     ];
 
     /**
@@ -85,5 +87,30 @@ class User extends Authenticatable
     public function isLocked(): bool
     {
         return $this->locked_until !== null && $this->locked_until->isFuture();
+    }
+
+    public function homeScreen(): BelongsTo
+    {
+        return $this->belongsTo(Screen::class, 'home_screen_id');
+    }
+
+    /**
+     * Name of the route to land on after login. Falls back to "dashboard"
+     * if no preference was set, or if the chosen screen became inactive,
+     * lost its route, or the user no longer has permission for it.
+     */
+    public function homeRouteName(): string
+    {
+        $screen = $this->homeScreen;
+
+        if ($screen
+            && $screen->is_active
+            && Route::has($screen->route_name)
+            && $this->can($screen->permission_name)
+        ) {
+            return $screen->route_name;
+        }
+
+        return 'dashboard';
     }
 }
