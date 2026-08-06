@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Layout;
 
+use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -9,6 +10,20 @@ use Tests\TestCase;
 class SidebarRenderTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_the_sidebar_header_links_to_the_users_home_screen(): void
+    {
+        $this->seed(\Database\Seeders\CoreSeeder::class);
+
+        $admin = User::where('email', 'victor.gonzalez@landit.com.mx')->first();
+        $connections = Screen::where('slug', 'connections')->first();
+        $admin->update(['home_screen_id' => $connections->id]);
+
+        $response = $this->actingAs($admin)->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertSeeInOrder(['href="'.route('connections.index').'"', 'title="Ir a mi pantalla de inicio"'], false);
+    }
 
     public function test_the_dashboard_renders_the_grouped_sidebar_with_icons(): void
     {
