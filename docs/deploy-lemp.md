@@ -46,15 +46,18 @@ SESSION_DOMAIN=.tu-dominio.com
 BROADCAST_CONNECTION=reverb
 QUEUE_CONNECTION=database
 
-MAIL_MAILER=smtp
-MAIL_HOST={{tu servidor SMTP, ej. smtp.office365.com}}
-MAIL_PORT=587
-MAIL_USERNAME={{usuario}}
-MAIL_PASSWORD={{contraseña o app password}}
-MAIL_ENCRYPTION=tls
+MAIL_MAILER=graph
+AZURE_MAIL_TENANT_ID={{tenant ID del App Registration de este sitio}}
+AZURE_MAIL_CLIENT_ID={{client ID del App Registration de este sitio}}
+AZURE_MAIL_CLIENT_SECRET={{secreto del App Registration de este sitio}}
+AZURE_MAIL_SENDER=notificaciones@tu-dominio.com
 MAIL_FROM_ADDRESS=notificaciones@tu-dominio.com
 MAIL_FROM_NAME="${APP_NAME}"
+```
 
+Microsoft retiró la autenticación básica de SMTP AUTH — el envío real usa Microsoft Graph con OAuth2 (app-only), no usuario/contraseña. Cada sitio necesita su propio App Registration en Azure AD; pasos exactos en [`docs/correo-oauth2-azure.md`](correo-oauth2-azure.md). Si por algún motivo necesitas SMTP en vez de Graph, `MAIL_MAILER=smtp` sigue disponible con las variables clásicas (`MAIL_HOST`/`MAIL_USERNAME`/`MAIL_PASSWORD`/`MAIL_ENCRYPTION`).
+
+```env
 REVERB_APP_ID={{genera uno nuevo, distinto al de dev}}
 REVERB_APP_KEY={{genera uno nuevo}}
 REVERB_APP_SECRET={{genera uno nuevo}}

@@ -35,4 +35,25 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Microsoft Graph (envío de correo con OAuth2, sin SMTP)
+    |--------------------------------------------------------------------------
+    |
+    | Reemplaza SMTP + usuario/contraseña, que Microsoft está retirando.
+    | Cada sitio basado en esta plantilla necesita su propio App Registration
+    | en Entra ID (tenant/client id/secret propios) — ver
+    | docs/correo-oauth2-azure.md. "sender" es el buzón desde el que se
+    | envía (debe tener el permiso de aplicación Mail.Send concedido, e
+    | idealmente restringido a este buzón vía Application Access Policy).
+    |
+    */
+
+    'microsoft_graph' => [
+        'tenant_id' => env('AZURE_MAIL_TENANT_ID'),
+        'client_id' => env('AZURE_MAIL_CLIENT_ID'),
+        'client_secret' => env('AZURE_MAIL_CLIENT_SECRET'),
+        'sender' => env('AZURE_MAIL_SENDER', env('MAIL_FROM_ADDRESS')),
+    ],
+
 ];
