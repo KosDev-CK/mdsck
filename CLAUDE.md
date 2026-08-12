@@ -108,6 +108,12 @@ Push en vivo: Reverb (puerto 8080 en dev) + Echo en `layouts/app.blade.php` escu
 
 `AdminMessageNotification` (vía `App\Livewire\Messages\Send`, pantalla `/messages`) es el mecanismo para que un admin envíe avisos a usuarios seleccionados o a todos los activos.
 
+## Envío de correo: Microsoft Graph (OAuth2), no SMTP con contraseña
+
+Microsoft retiró la autenticación básica de SMTP AUTH — el mailer `graph` (`App\Mail\Transport\MicrosoftGraphTransport`, registrado en `AppServiceProvider::boot()` vía `Mail::extend`) envía por el endpoint `sendMail` de Microsoft Graph usando un token de aplicación (client credentials, sin usuario/contraseña), leyendo `config('services.microsoft_graph.*')` (`AZURE_MAIL_TENANT_ID`/`AZURE_MAIL_CLIENT_ID`/`AZURE_MAIL_CLIENT_SECRET`/`AZURE_MAIL_SENDER` en `.env`). El token se cachea (`Cache::remember`, ~50 min) para no pedir uno nuevo en cada correo. `smtp`/`log` siguen disponibles como mailers alternativos (`MAIL_MAILER` en `.env`) para dev o si algún día hace falta.
+
+**Cada sitio clonado de esta plantilla necesita su propio App Registration en Azure AD** (tenant/client id/secret distintos, nunca comparte credenciales entre proyectos) — pasos exactos en [`docs/correo-oauth2-azure.md`](docs/correo-oauth2-azure.md), incluye por qué Graph y no SMTP-OAuth2, permiso `Mail.Send` de aplicación + admin consent, y cómo acotar la app a un solo buzón con una Application Access Policy de Exchange Online.
+
 ## Localización de correos
 
 Laravel usa las vistas Markdown por defecto de `Illuminate\Notifications` (`@lang('Regards,')` etc.) como si fueran claves de traducción literales en inglés. `lang/es.json` (raíz del proyecto) las traduce — si agregas una notificación nueva con `->markdown(...)` o texto libre en inglés dentro de un `MailMessage`, revisa que no vuelva a aparecer texto sin traducir.
@@ -130,6 +136,7 @@ php artisan module:seed X     # sembrar el seeder de un módulo
 - **Nuevo proyecto desde esta plantilla** → [`docs/nuevo-proyecto-desde-plantilla.md`](docs/nuevo-proyecto-desde-plantilla.md)
 - **Agregar pantallas y asignarlas a perfiles** → [`docs/agregar-pantallas.md`](docs/agregar-pantallas.md)
 - **Limpiar datos de prueba antes de producción** → [`docs/limpiar-datos-de-prueba.md`](docs/limpiar-datos-de-prueba.md)
+- **Configurar correo con OAuth2/Microsoft Graph** → [`docs/correo-oauth2-azure.md`](docs/correo-oauth2-azure.md)
 - **Desplegar a LEMP en producción** → [`docs/deploy-lemp.md`](docs/deploy-lemp.md)
 
 ## Convenciones al trabajar en este repo

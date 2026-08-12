@@ -34,7 +34,11 @@ Corre `composer run dev` para levantar en paralelo Reverb, el worker de colas, l
 
 El seeder crea las pantallas base, el rol **Administrador** y un primer usuario administrador — correo/nombre vienen de `MDS_ADMIN_EMAIL`/`MDS_ADMIN_NAME` en `.env` (ver `config/mds.php`, no hace falta editar el seeder). Como el login es sin contraseña, ese es el único acceso hasta que ese usuario invite a los demás desde "Configuración de acceso".
 
-En dev, los correos se escriben en `storage/logs/laravel.log` (`MAIL_MAILER=log`) — ahí verás el código de acceso y los enlaces de invitación hasta que configures un SMTP real.
+En dev, los correos se escriben en `storage/logs/laravel.log` (`MAIL_MAILER=log`) — ahí verás el código de acceso y los enlaces de invitación hasta que configures el envío real.
+
+## Envío de correo
+
+El envío real usa `MAIL_MAILER=graph` (Microsoft Graph con OAuth2 app-only, sin usuario/contraseña) en vez de SMTP — Microsoft retiró la autenticación básica de SMTP AUTH. Requiere un App Registration propio en Azure AD por cada sitio. Guía completa: [`docs/correo-oauth2-azure.md`](docs/correo-oauth2-azure.md). `smtp`/`log` siguen disponibles como mailers alternativos si se necesitan.
 
 ## Pruebas
 
