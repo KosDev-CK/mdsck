@@ -1,5 +1,7 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-6 dark:text-gray-100">Bienvenido, {{ auth()->user()->name }}</h1>
+    @push('page-title')
+        Bienvenido, {{ auth()->user()->name }}
+    @endpush
 
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 xl:gap-6">
         <x-ui.card padding="p-5">

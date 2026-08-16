@@ -1,5 +1,8 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-1 dark:text-gray-100">Módulos</h1>
+    @push('page-title')
+        Módulos
+    @endpush
+
     <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Activa o desactiva módulos instalados sin afectar el resto del sitio.</p>
 
     <x-ui.card padding="p-5">

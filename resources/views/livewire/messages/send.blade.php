@@ -1,5 +1,7 @@
 <div class="max-w-3xl space-y-6">
-    <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Mensajes</h1>
+    @push('page-title')
+        Mensajes
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success">

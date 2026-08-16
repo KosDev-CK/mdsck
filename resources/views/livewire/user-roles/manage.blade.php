@@ -1,5 +1,7 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-6 dark:text-gray-100">Perfiles por usuario</h1>
+    @push('page-title')
+        Perfiles por usuario
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">

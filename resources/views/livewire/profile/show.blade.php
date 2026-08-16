@@ -1,5 +1,7 @@
 <div class="space-y-6 max-w-2xl">
-    <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Mi perfil</h1>
+    @push('page-title')
+        Mi perfil
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success">

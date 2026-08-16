@@ -1,5 +1,7 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-6 dark:text-gray-100">Bitácora de seguridad</h1>
+    @push('page-title')
+        Bitácora de seguridad
+    @endpush
 
     <x-ui.card padding="p-5" class="mb-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

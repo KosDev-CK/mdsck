@@ -1,5 +1,7 @@
 <div class="space-y-6">
-    <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Branding</h1>
+    @push('page-title')
+        Branding
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success">

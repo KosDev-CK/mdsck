@@ -1,9 +1,19 @@
-<header style="background-color: var(--topbar-bg)" class="h-16 shrink-0 border-b border-gray-200 flex items-center justify-between lg:justify-end px-4 sm:px-6 gap-4 dark:border-gray-800">
-    <button @click="sidebarOpen = true" class="text-gray-500 hover:text-gray-700 lg:hidden dark:text-gray-400 dark:hover:text-gray-200">
-        <x-heroicon-o-bars-3 class="h-6 w-6" />
-    </button>
+<header style="background-color: var(--topbar-bg)" class="h-16 shrink-0 border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 gap-3 dark:border-gray-800">
+    <div class="flex items-center gap-3 min-w-0 flex-1">
+        <button @click="sidebarOpen = true" class="shrink-0 text-gray-500 hover:text-gray-700 lg:hidden dark:text-gray-400 dark:hover:text-gray-200">
+            <x-heroicon-o-bars-3 class="h-6 w-6" />
+        </button>
 
-    <div class="flex items-center gap-2">
+        <h1 class="min-w-0 truncate text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+            @stack('page-title')
+        </h1>
+    </div>
+
+    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div class="flex items-center gap-2">
+            @stack('page-actions')
+        </div>
+
         <x-ui.theme-toggle />
 
         @livewire('notifications.bell')

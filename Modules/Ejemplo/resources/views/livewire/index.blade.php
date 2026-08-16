@@ -1,5 +1,8 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-1 dark:text-gray-100">Ejemplo</h1>
+    @push('page-title')
+        Ejemplo
+    @endpush
+
     <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">
         Módulo de referencia — así se ve un módulo de contenido aislado bajo <code>Modules/Ejemplo</code>,
         con su propia migración, modelo, componente y vista, resuelto vía el mismo sistema de perfiles/pantallas del core.

@@ -1,5 +1,7 @@
 <div>
-    <h1 class="text-lg font-semibold text-gray-900 mb-6 dark:text-gray-100">Configuración de acceso</h1>
+    @push('page-title')
+        Configuración de acceso
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">

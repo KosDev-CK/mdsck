@@ -1,10 +1,12 @@
 <div>
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Conexiones a BD</h1>
-        <x-ui.button wire:click="create">
+    @push('page-title')
+        Conexiones a BD
+    @endpush
+    @push('page-actions')
+        <x-ui.button wire:click="create" size="sm">
             Nueva conexión
         </x-ui.button>
-    </div>
+    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">
