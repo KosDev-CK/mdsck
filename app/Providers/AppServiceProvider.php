@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Mail\Transport\MicrosoftGraphTransport;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +24,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // IP(s) del reverse proxy de confianza (TRUSTED_PROXIES en .env), para que
+        // request()->ip() devuelva el cliente real y request()->isSecure() detecte
+        // https vía X-Forwarded-Proto. No puede fijarse en bootstrap/app.php: esa
+        // clausura corre antes de que "config" esté disponible en el contenedor.
+        TrustProxies::at(config('security.trusted_proxies'));
+
         // Defensa en profundidad sobre la carga de las pantallas de login/invitación por IP.
         // La protección real contra fuerza bruta vive en GuardsAgainstFlooding, dentro de
         // cada acción Livewire — esta ruta HTTP solo cubre la carga inicial de la página.
@@ -38,6 +45,7 @@ class AppServiceProvider extends ServiceProvider
                 clientId: config('services.microsoft_graph.client_id'),
                 clientSecret: config('services.microsoft_graph.client_secret'),
                 sender: config('services.microsoft_graph.sender'),
+                proxy: config('services.microsoft_graph.proxy'),
             );
         });
     }

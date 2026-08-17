@@ -56,4 +56,18 @@ return [
 
     'request_throttle_decay_seconds' => (int) env('SECURITY_REQUEST_THROTTLE_DECAY_SECONDS', 60),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Reverse proxy de confianza
+    |--------------------------------------------------------------------------
+    |
+    | IP(s) del proxy que termina el SSL en frente de este servidor (ver
+    | docs/deploy-lemp.md, sección 6.1). Necesario para que request()->ip()
+    | vea al cliente real (no al proxy) y request()->isSecure() detecte
+    | https vía X-Forwarded-Proto. Lista separada por comas en .env.
+    |
+    */
+
+    'trusted_proxies' => array_filter(explode(',', (string) env('TRUSTED_PROXIES', ''))),
+
 ];

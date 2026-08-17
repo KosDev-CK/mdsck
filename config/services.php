@@ -54,6 +54,11 @@ return [
         'client_id' => env('AZURE_MAIL_CLIENT_ID'),
         'client_secret' => env('AZURE_MAIL_CLIENT_SECRET'),
         'sender' => env('AZURE_MAIL_SENDER', env('MAIL_FROM_ADDRESS')),
+        // Forward proxy opcional (ej. http://10.0.0.5:3128) para cuando este
+        // servidor no tiene salida directa a internet y solo puede alcanzar
+        // login.microsoftonline.com/graph.microsoft.com a través de un proxy
+        // saliente. Ver docs/correo-oauth2-azure.md.
+        'proxy' => env('AZURE_MAIL_HTTP_PROXY'),
     ],
 
 ];

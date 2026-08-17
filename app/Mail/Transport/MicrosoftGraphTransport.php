@@ -25,6 +25,7 @@ class MicrosoftGraphTransport extends AbstractTransport
         private readonly string $clientId,
         private readonly string $clientSecret,
         private readonly string $sender,
+        private readonly ?string $proxy = null,
     ) {
         parent::__construct();
     }
@@ -37,7 +38,8 @@ class MicrosoftGraphTransport extends AbstractTransport
             throw new TransportException('El transporte de Microsoft Graph solo puede enviar mensajes Symfony\Component\Mime\Email.');
         }
 
-        $response = Http::withToken($this->accessToken())
+        $response = $this->httpClient()
+            ->withToken($this->accessToken())
             ->post("https://graph.microsoft.com/v1.0/users/{$this->sender}/sendMail", [
                 'message' => $this->buildMessagePayload($email),
                 'saveToSentItems' => false,
@@ -54,12 +56,14 @@ class MicrosoftGraphTransport extends AbstractTransport
             "microsoft-graph-mail-token:{$this->tenantId}:{$this->clientId}",
             now()->addMinutes(50),
             function () {
-                $response = Http::asForm()->post("https://login.microsoftonline.com/{$this->tenantId}/oauth2/v2.0/token", [
-                    'grant_type' => 'client_credentials',
-                    'client_id' => $this->clientId,
-                    'client_secret' => $this->clientSecret,
-                    'scope' => 'https://graph.microsoft.com/.default',
-                ]);
+                $response = $this->httpClient()
+                    ->asForm()
+                    ->post("https://login.microsoftonline.com/{$this->tenantId}/oauth2/v2.0/token", [
+                        'grant_type' => 'client_credentials',
+                        'client_id' => $this->clientId,
+                        'client_secret' => $this->clientSecret,
+                        'scope' => 'https://graph.microsoft.com/.default',
+                    ]);
 
                 if ($response->failed()) {
                     throw new TransportException("No se pudo obtener el token de Azure AD ({$response->status()}): {$response->body()}");
@@ -68,6 +72,18 @@ class MicrosoftGraphTransport extends AbstractTransport
                 return $response->json('access_token');
             }
         );
+    }
+
+    /**
+     * Cliente HTTP para hablar con Azure AD/Graph — pasa por un forward proxy
+     * (AZURE_MAIL_HTTP_PROXY) cuando este servidor no tiene salida directa a
+     * internet. Ver docs/correo-oauth2-azure.md.
+     */
+    protected function httpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        return $this->proxy
+            ? Http::withOptions(['proxy' => $this->proxy])
+            : Http::withOptions([]);
     }
 
     protected function buildMessagePayload(Email $email): array
