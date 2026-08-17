@@ -74,6 +74,70 @@
     </x-ui.card>
 
     <x-ui.card padding="p-6">
+        <h2 class="text-sm font-semibold text-gray-900 mb-4 dark:text-gray-100">Fondos de pantalla</h2>
+
+        <form wire:submit="saveBackgrounds" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pantallas externas (login)</label>
+                    <p class="text-xs text-gray-400 mb-2 dark:text-gray-500">Se muestra detrás del inicio de sesión, verificación de código, 2FA e invitaciones — cualquier pantalla fuera de la sesión.</p>
+
+                    <div class="flex items-center gap-4">
+                        <div class="h-16 w-28 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 dark:border-gray-700 dark:bg-gray-800">
+                            @if ($loginBackground)
+                                <img src="{{ $loginBackground->temporaryUrl() }}" class="h-full w-full object-cover" alt="Fondo de pantallas externas">
+                            @elseif ($settings->loginBackgroundUrl())
+                                <img src="{{ $settings->loginBackgroundUrl() }}" class="h-full w-full object-cover" alt="Fondo de pantallas externas">
+                            @else
+                                <span class="text-xs text-gray-400 dark:text-gray-500">Sin fondo</span>
+                            @endif
+                        </div>
+                        <div class="space-y-2">
+                            <input wire:model="loginBackground" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                            @if ($settings->loginBackgroundUrl())
+                                <button wire:click="removeLoginBackground" wire:confirm="¿Quitar el fondo de pantallas externas?" type="button" class="block text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
+                                    Quitar fondo
+                                </button>
+                            @endif
+                        </div>
+                    </div>
+                    @error('loginBackground') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Panel interno</label>
+                    <p class="text-xs text-gray-400 mb-2 dark:text-gray-500">Se muestra detrás del contenido, ya con la sesión iniciada (dashboard, pantallas, etc.).</p>
+
+                    <div class="flex items-center gap-4">
+                        <div class="h-16 w-28 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 dark:border-gray-700 dark:bg-gray-800">
+                            @if ($appBackground)
+                                <img src="{{ $appBackground->temporaryUrl() }}" class="h-full w-full object-cover" alt="Fondo del panel interno">
+                            @elseif ($settings->appBackgroundUrl())
+                                <img src="{{ $settings->appBackgroundUrl() }}" class="h-full w-full object-cover" alt="Fondo del panel interno">
+                            @else
+                                <span class="text-xs text-gray-400 dark:text-gray-500">Sin fondo</span>
+                            @endif
+                        </div>
+                        <div class="space-y-2">
+                            <input wire:model="appBackground" type="file" accept="image/*" class="text-sm text-gray-600 dark:text-gray-300">
+                            @if ($settings->appBackgroundUrl())
+                                <button wire:click="removeAppBackground" wire:confirm="¿Quitar el fondo del panel interno?" type="button" class="block text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
+                                    Quitar fondo
+                                </button>
+                            @endif
+                        </div>
+                    </div>
+                    @error('appBackground') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <x-ui.button type="submit">
+                Guardar fondos de pantalla
+            </x-ui.button>
+        </form>
+    </x-ui.card>
+
+    <x-ui.card padding="p-6">
         <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Colores</h2>
         <p class="text-sm text-gray-500 mb-4 dark:text-gray-400">Se aplican de inmediato a botones, alertas y estados en todo el sitio.</p>
 

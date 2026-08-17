@@ -18,6 +18,10 @@ class Manage extends Component
 
     public $favicon;
 
+    public $loginBackground;
+
+    public $appBackground;
+
     public string $primaryColor = '';
 
     public string $successColor = '';
@@ -123,6 +127,67 @@ class Manage extends Component
         $this->reset(['logo', 'favicon']);
 
         session()->flash('status', 'Identidad visual actualizada.');
+    }
+
+    public function saveBackgrounds(): void
+    {
+        $this->validate([
+            'loginBackground' => ['nullable', 'image', 'max:4096'],
+            'appBackground' => ['nullable', 'image', 'max:4096'],
+        ]);
+
+        $settings = SiteSetting::current();
+        $data = [];
+
+        if ($this->loginBackground) {
+            if ($settings->login_background_path) {
+                Storage::disk('public')->delete($settings->login_background_path);
+            }
+            $data['login_background_path'] = $this->loginBackground->store('branding', 'public');
+        }
+
+        if ($this->appBackground) {
+            if ($settings->app_background_path) {
+                Storage::disk('public')->delete($settings->app_background_path);
+            }
+            $data['app_background_path'] = $this->appBackground->store('branding', 'public');
+        }
+
+        if ($data) {
+            $settings->update($data);
+        }
+
+        $this->reset(['loginBackground', 'appBackground']);
+
+        session()->flash('status', 'Fondos de pantalla actualizados.');
+    }
+
+    public function removeLoginBackground(): void
+    {
+        $settings = SiteSetting::current();
+
+        if ($settings->login_background_path) {
+            Storage::disk('public')->delete($settings->login_background_path);
+            $settings->update(['login_background_path' => null]);
+        }
+
+        $this->reset('loginBackground');
+
+        session()->flash('status', 'Fondo de pantallas externas eliminado.');
+    }
+
+    public function removeAppBackground(): void
+    {
+        $settings = SiteSetting::current();
+
+        if ($settings->app_background_path) {
+            Storage::disk('public')->delete($settings->app_background_path);
+            $settings->update(['app_background_path' => null]);
+        }
+
+        $this->reset('appBackground');
+
+        session()->flash('status', 'Fondo del panel interno eliminado.');
     }
 
     public function removeLogo(): void

@@ -10,6 +10,8 @@ class SiteSetting extends Model
     protected $fillable = [
         'logo_path',
         'favicon_path',
+        'login_background_path',
+        'app_background_path',
         'primary_color',
         'success_color',
         'danger_color',
@@ -44,5 +46,15 @@ class SiteSetting extends Model
     public function faviconUrl(): ?string
     {
         return $this->favicon_path ? Storage::disk('public')->url($this->favicon_path) : null;
+    }
+
+    public function loginBackgroundUrl(): ?string
+    {
+        return $this->login_background_path ? Storage::disk('public')->url($this->login_background_path) : null;
+    }
+
+    public function appBackgroundUrl(): ?string
+    {
+        return $this->app_background_path ? Storage::disk('public')->url($this->app_background_path) : null;
     }
 }

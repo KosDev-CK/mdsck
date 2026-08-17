@@ -20,7 +20,11 @@
     @livewireStyles
     @include('partials.branding-head')
 </head>
-<body class="h-full bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100">
+@php $appBackground = \App\Models\SiteSetting::current()->appBackgroundUrl(); @endphp
+<body
+    @if ($appBackground) style="background-image: url('{{ $appBackground }}'); background-size: cover; background-position: center; background-attachment: fixed;" @endif
+    class="h-full bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100"
+>
     <div
         x-data="{
             sidebarOpen: false,

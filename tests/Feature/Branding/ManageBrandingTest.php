@@ -25,6 +25,7 @@ class ManageBrandingTest extends TestCase
             'slug' => 'branding',
             'route_name' => 'branding.index',
             'permission_name' => 'screens.branding.manage',
+            'icon' => 'swatch',
             'order' => 1,
         ]);
 
@@ -176,6 +177,78 @@ class ManageBrandingTest extends TestCase
 
         Storage::disk('public')->assertMissing('branding/existing-favicon.png');
         $this->assertNull(SiteSetting::current()->favicon_path);
+    }
+
+    public function test_an_admin_can_upload_login_and_app_backgrounds(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->set('loginBackground', UploadedFile::fake()->image('login-bg.jpg'))
+            ->set('appBackground', UploadedFile::fake()->image('app-bg.jpg'))
+            ->call('saveBackgrounds')
+            ->assertHasNoErrors();
+
+        $settings = SiteSetting::current();
+        Storage::disk('public')->assertExists($settings->login_background_path);
+        Storage::disk('public')->assertExists($settings->app_background_path);
+    }
+
+    public function test_an_admin_can_remove_the_login_background(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['login_background_path' => 'branding/existing-login-bg.jpg']);
+        Storage::disk('public')->put('branding/existing-login-bg.jpg', 'fake-content');
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('removeLoginBackground');
+
+        Storage::disk('public')->assertMissing('branding/existing-login-bg.jpg');
+        $this->assertNull(SiteSetting::current()->login_background_path);
+    }
+
+    public function test_an_admin_can_remove_the_app_background(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['app_background_path' => 'branding/existing-app-bg.jpg']);
+        Storage::disk('public')->put('branding/existing-app-bg.jpg', 'fake-content');
+
+        Livewire::actingAs($admin)
+            ->test(Manage::class)
+            ->call('removeAppBackground');
+
+        Storage::disk('public')->assertMissing('branding/existing-app-bg.jpg');
+        $this->assertNull(SiteSetting::current()->app_background_path);
+    }
+
+    public function test_the_login_background_appears_on_every_external_screen(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['login_background_path' => 'branding/login-bg.jpg']);
+        $backgroundUrl = SiteSetting::current()->loginBackgroundUrl();
+
+        $this->get(route('login'))->assertSee($backgroundUrl, false);
+        $this->get(route('login.verify'))->assertSee($backgroundUrl, false);
+
+        $this->withSession(['login.two_factor_user_id' => $admin->id])
+            ->get(route('login.two-factor'))
+            ->assertSee($backgroundUrl, false);
+    }
+
+    public function test_the_app_background_appears_once_authenticated(): void
+    {
+        Storage::fake('public');
+        $admin = $this->actingAdmin();
+        SiteSetting::current()->update(['app_background_path' => 'branding/app-bg.jpg']);
+        $backgroundUrl = SiteSetting::current()->appBackgroundUrl();
+
+        $this->actingAs($admin)->get(route('dashboard'))->assertSee($backgroundUrl, false);
     }
 
     public function test_applying_a_preset_replaces_the_active_colors(): void

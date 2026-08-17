@@ -89,6 +89,8 @@ docs/
 
 `BrandingPreset` guarda configuraciones completas (los mismos 8 colores) reutilizables y aplicables desde la pantalla `/branding`. Los presets `is_system=true` (sembrados) no se pueden borrar desde la UI.
 
+`SiteSetting` también guarda dos imágenes de fondo opcionales, independientes de los presets (igual que logo/favicon): `login_background_path` se aplica en `layouts/guest.blade.php` — compartido por **todas** las pantallas externas (login, verificación de código, 2FA, aceptar invitación), con un overlay semitransparente (`bg-white/70 dark:bg-gray-950/80`) detrás de la tarjeta para mantener legibilidad — y `app_background_path` se aplica en el `<body>` de `layouts/app.blade.php` (solo se ve a través de los huecos de `<main>`, ya que sidebar/topbar tienen su propio color de fondo opaco vía `SiteSetting`). Ambos se gestionan desde la tarjeta "Fondos de pantalla" en `/branding`.
+
 El nombre del sitio y la URL **no** son parte de este branding dinámico — siguen viviendo en `.env` (`APP_NAME`, `APP_URL`), se ajustan por entorno al desplegar.
 
 El color de la barra superior solo aplica en modo claro (`.dark` lo sobrescribe a gris neutro en `branding-head.blade.php`); los 2 colores del sidebar aplican siempre porque el sidebar siempre es oscuro, sin importar el tema.

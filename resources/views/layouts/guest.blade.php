@@ -20,10 +20,21 @@
     @livewireStyles
     @include('partials.branding-head')
 </head>
-@php $brandLogo = \App\Models\SiteSetting::current()->logoUrl(); @endphp
+@php
+    $brandSettings = \App\Models\SiteSetting::current();
+    $brandLogo = $brandSettings->logoUrl();
+    $guestBackground = $brandSettings->loginBackgroundUrl();
+@endphp
 <body class="h-full bg-gray-50 text-gray-900 antialiased dark:bg-gray-950 dark:text-gray-100">
-    <div class="min-h-screen flex flex-col items-center justify-center px-4">
-        <div class="mb-4 flex items-center gap-3">
+    <div
+        @if ($guestBackground) style="background-image: url('{{ $guestBackground }}'); background-size: cover; background-position: center;" @endif
+        class="relative min-h-screen flex flex-col items-center justify-center px-4"
+    >
+        @if ($guestBackground)
+            <div class="absolute inset-0 bg-white/70 dark:bg-gray-950/80"></div>
+        @endif
+
+        <div class="relative mb-4 flex items-center gap-3">
             @if ($brandLogo)
                 <img src="{{ $brandLogo }}" alt="{{ config('app.name') }}" class="h-9 max-w-[160px] object-contain">
             @else
@@ -32,7 +43,7 @@
             <x-ui.theme-toggle />
         </div>
 
-        <div class="w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8 dark:bg-gray-900 dark:border-gray-800">
+        <div class="relative w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8 dark:bg-gray-900 dark:border-gray-800">
             {{ $slot }}
         </div>
     </div>
