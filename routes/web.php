@@ -13,6 +13,7 @@ use App\Livewire\Modules\Manage as ModulesManage;
 use App\Livewire\Profile\Show as ProfileShow;
 use App\Livewire\Roles\Manage as RolesManage;
 use App\Livewire\SecurityLog\Index as SecurityLogIndex;
+use App\Livewire\Tools\QrGenerator;
 use App\Livewire\UserRoles\Manage as UserRolesManage;
 use App\Models\SecurityEvent;
 use Illuminate\Http\Request;
@@ -81,4 +82,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/messages', MessagesSend::class)
         ->middleware('permission:screens.messages.manage')
         ->name('messages.index');
+
+    Route::get('/herramientas/qr', QrGenerator::class)
+        ->middleware('permission:screens.qr-generator.manage')
+        ->name('qr-generator.index');
 });

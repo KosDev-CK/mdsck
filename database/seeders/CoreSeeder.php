@@ -24,6 +24,7 @@ class CoreSeeder extends Seeder
             ['name' => 'Bitácora de seguridad', 'slug' => 'security-log', 'route_name' => 'security-log.index', 'permission_name' => 'screens.security.view', 'icon' => 'lock-closed', 'group_label' => 'Sistema', 'order' => 7],
             ['name' => 'Branding', 'slug' => 'branding', 'route_name' => 'branding.index', 'permission_name' => 'screens.branding.manage', 'icon' => 'swatch', 'group_label' => 'Sistema', 'order' => 8],
             ['name' => 'Mensajes', 'slug' => 'messages', 'route_name' => 'messages.index', 'permission_name' => 'screens.messages.manage', 'icon' => 'megaphone', 'group_label' => 'Sistema', 'order' => 9],
+            ['name' => 'Generador de QR', 'slug' => 'qr-generator', 'route_name' => 'qr-generator.index', 'permission_name' => 'screens.qr-generator.manage', 'icon' => 'qr-code', 'group_label' => 'Herramientas', 'order' => 10],
         ];
 
         foreach ($screens as $screen) {
