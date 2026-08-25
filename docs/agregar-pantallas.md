@@ -21,6 +21,9 @@ El sidebar (`resources/views/partials/sidebar.blade.php`) filtra las pantallas c
 ## A) Agregar una pantalla dentro de un módulo (lo normal para contenido nuevo)
 
 1. Crea el módulo si no existe: `php artisan module:make NombreModulo` (usa `Modules/Ejemplo` como referencia de estructura: modelo, migración, componente Livewire, vista).
+
+    **Registra cada componente Livewire full-page del módulo con `Livewire::component(...)` en el `boot()` de su ServiceProvider** (ver `Modules/Ejemplo/app/Providers/EjemploServiceProvider.php` o `Modules/FormBuilder/app/Providers/FormBuilderServiceProvider.php`). Sin esto, la pantalla **carga bien** pero **cualquier acción Livewire** (`wire:click`, `wire:submit`, etc.) le muestra al usuario "This page has expired" — Livewire resuelve el nombre del componente hacia su clase asumiendo siempre el namespace de `config('livewire.class_namespace')` (`App\Livewire` por defecto), y como los componentes de un módulo viven fuera de ahí (`Modules\NombreModulo\Livewire\...`), esa resolución falla en cada petición a `/livewire/update` aunque la carga inicial de la página (que no la necesita) funcione perfecto — el error engaña porque parece un problema de sesión/CSRF y no lo es. `Livewire::test()` **no detecta este bug** porque no pasa por esa resolución, así que los tests pasan aunque la pantalla esté rota en el navegador real.
+
 2. En el seeder **del propio módulo** (no en `CoreSeeder` — así el módulo es instalable/removible sin tocar el core):
 
     ```php

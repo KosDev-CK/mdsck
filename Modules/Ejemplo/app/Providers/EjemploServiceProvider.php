@@ -2,8 +2,10 @@
 
 namespace Modules\Ejemplo\Providers;
 
-use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Livewire\Livewire;
+use Modules\Ejemplo\Livewire\Index;
+use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class EjemploServiceProvider extends ModuleServiceProvider
 {
@@ -33,6 +35,28 @@ class EjemploServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        /**
+         * Livewire's component name<->class round trip
+         * (Livewire\Mechanisms\ComponentRegistry::generateClassFromName()) always
+         * prepends config('livewire.class_namespace') ("App\Livewire" by default)
+         * when resolving a snapshot's name back to a class. It only *strips* that
+         * prefix on the forward direction if the class actually lives under it —
+         * so for any component outside App\Livewire (every module component),
+         * the initial page render works, but every subsequent Livewire action
+         * (wire:click, wire:submit, ...) fails server-side component resolution
+         * and surfaces to the user as a generic "This page has expired" prompt.
+         * An explicit alias sidesteps the broken reverse-lookup entirely — copy
+         * this pattern (one Livewire::component() call per full-page component)
+         * into every module cloned from this one, see
+         * Livewire\Mechanisms\ComponentRegistry.
+         */
+        Livewire::component('ejemplo.index', Index::class);
+    }
 
     /**
      * Define module schedules.

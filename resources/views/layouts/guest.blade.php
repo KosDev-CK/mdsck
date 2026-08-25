@@ -43,7 +43,7 @@
             <x-ui.theme-toggle />
         </div>
 
-        <div class="relative w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8 dark:bg-gray-900 dark:border-gray-800">
+        <div class="relative w-full {{ $maxWidth ?? 'max-w-sm' }} bg-white rounded-xl shadow-sm border border-gray-200 p-8 dark:bg-gray-900 dark:border-gray-800">
             {{ $slot }}
         </div>
     </div>

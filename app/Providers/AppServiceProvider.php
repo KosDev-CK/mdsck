@@ -37,6 +37,13 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(config('security.max_requests_per_minute'))->by($request->ip());
         });
 
+        // Mismo criterio que login-pages, pero en su propio bucket: tráfico pesado
+        // (o abusivo) hacia un enlace público de formulario por ticket no debe
+        // compartir destino con intentos reales de login desde la misma IP.
+        RateLimiter::for('public-form-pages', function ($request) {
+            return Limit::perMinute(config('security.max_requests_per_minute'))->by($request->ip());
+        });
+
         // Envío de correo vía Microsoft Graph (OAuth2 app-only), en vez de SMTP con
         // usuario/contraseña — ver docs/correo-oauth2-azure.md.
         Mail::extend('graph', function () {

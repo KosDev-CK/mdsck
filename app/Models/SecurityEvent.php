@@ -40,6 +40,10 @@ class SecurityEvent extends Model
 
     public const RATE_LIMITED = 'rate_limited';
 
+    public const TICKET_FORM_LINK_VERIFY_FAILED = 'ticket_form_link_verify_failed';
+
+    public const TICKET_FORM_LINK_SUBMITTED = 'ticket_form_link_submitted';
+
     protected $fillable = [
         'user_id',
         'email',

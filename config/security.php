@@ -41,6 +41,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Enlaces públicos de formulario por ticket (módulo FormBuilder)
+    |--------------------------------------------------------------------------
+    |
+    | Vigencia del enlace de un solo uso enviado al destinatario de un
+    | ticket, y máximo de intentos fallidos al escribir el correo de
+    | verificación antes de bloquear el enlace (independiente del límite
+    | de solicitudes por IP de abajo, que solo cubre el flood).
+    |
+    */
+
+    'ticket_link_ttl_hours' => (int) env('SECURITY_TICKET_LINK_TTL_HOURS', 24),
+
+    'ticket_link_max_verify_attempts' => (int) env('SECURITY_TICKET_LINK_MAX_VERIFY_ATTEMPTS', 5),
+
+    /*
+    |--------------------------------------------------------------------------
     | Límite de solicitudes por IP (anti fuerza bruta / flood)
     |--------------------------------------------------------------------------
     |
