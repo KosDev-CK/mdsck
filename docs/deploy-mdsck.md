@@ -169,10 +169,24 @@ systemctl enable mdsck-reverb mdsck-queue
 
 **6. Primer deploy — este app server NO tiene salida a internet, así que `git clone` en el servidor no funciona.** El código se construye en la máquina local (`composer install --no-dev`, `npm run build`) y se manda ya compilado por el canal SSH restringido — el servidor nunca necesita internet. Solo hay que crear el `.env` a mano ANTES del primer envío, porque el pipeline nunca lo toca ni lo sube (queda excluido del `rsync`).
 
-**6a. En el app server (root, SSH directo)** — crea la carpeta y el `.env` real primero:
+**6a. En el app server (root, SSH directo)** — crea la carpeta, el `.env` real y la estructura de `storage`/`bootstrap/cache`:
 ```bash
 mkdir -p /var/www/mdsck
 nano /var/www/mdsck/.env   # pega la plantilla de abajo con los valores reales
+
+# El script de deploy excluye storage/ y bootstrap/cache/ del rsync a propósito
+# (para no pisar logs/sesiones/archivos subidos en deploys futuros) — eso significa
+# que en un sitio NUEVO estas carpetas nunca las crea el pipeline, hay que hacerlo
+# a mano una sola vez o el primer deploy falla con "chmod: cannot access
+# '/var/www/mdsck/bootstrap/cache': No such file or directory".
+mkdir -p /var/www/mdsck/storage/framework/cache/data
+mkdir -p /var/www/mdsck/storage/framework/sessions
+mkdir -p /var/www/mdsck/storage/framework/views
+mkdir -p /var/www/mdsck/storage/logs
+mkdir -p /var/www/mdsck/storage/app/public
+mkdir -p /var/www/mdsck/bootstrap/cache
+chown -R www-data:www-data /var/www/mdsck
+chmod -R 775 /var/www/mdsck/storage /var/www/mdsck/bootstrap/cache
 ```
 
 **6b. En tu máquina local** — con los pasos 2–5 ya hechos, corre el pipeline normal:
