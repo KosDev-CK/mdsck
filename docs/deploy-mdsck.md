@@ -53,8 +53,16 @@ ss -tlnp | grep -E ":80[0-9][0-9]\b"
 **1. Base de datos** (en el app server o donde viva MySQL):
 ```sql
 CREATE DATABASE mdsck CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Crea el usuario para AMBOS hosts, no solo 127.0.0.1: MySQL resuelve la
+-- conexión entrante de PHP (DB_HOST=127.0.0.1) como 'localhost' vía DNS
+-- inverso, así que 'mdsck_app'@'127.0.0.1' solo no basta — pasó en el primer
+-- deploy real (2026-08-24), migrate fallaba con "Access denied for user
+-- 'mdsck_app'@'localhost'" hasta agregar esta segunda cuenta.
 CREATE USER 'mdsck_app'@'127.0.0.1' IDENTIFIED BY '{{contraseña segura}}';
+CREATE USER 'mdsck_app'@'localhost' IDENTIFIED BY '{{la misma contraseña}}';
 GRANT ALL PRIVILEGES ON mdsck.* TO 'mdsck_app'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON mdsck.* TO 'mdsck_app'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
@@ -115,14 +123,81 @@ visudo -c
 
 **4. Nginx** — copiar los dos bloques de `mdsck-deploy/nginx-mdsck.conf` (ya generado):
 ```bash
-# En el app server:
+# En el app server (172.16.11.89):
 # pega el bloque 1 en /etc/nginx/sites-available/mdsck
 ln -s /etc/nginx/sites-available/mdsck /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
+```
 
-# En el proxy externo (150.136.232.112):
-# pega el bloque 2 en /etc/nginx/sites-available/mdsck (mismo nombre, otro server)
-ln -s /etc/nginx/sites-available/mdsck /etc/nginx/sites-enabled/
+**En el proxy externo (150.136.232.112, `kosmos-proxy-2023`) el archivo NO se llama `mdsck`** — la convención real de este proxy nombra el archivo igual que el dominio: **`mds.ck.com.mx`** (confírmalo con `ls /etc/nginx/sites-available/ | grep ck.com.mx` antes de asumir el nombre — en el primer deploy real el symlink apuntó a `mdsck` y `nginx -t` falló con "No such file or directory" hasta corregir el nombre). El bloque real usado en producción (más completo que el genérico de `nginx-lemp.md` — incluye headers de seguridad, timeouts largos y logs propios, igual que los demás sitios de este proxy):
+
+```bash
+cat > /etc/nginx/sites-available/mds.ck.com.mx << 'EOF'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name mds.ck.com.mx;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+
+    server_name mds.ck.com.mx;
+
+    ssl_certificate     /etc/nginx/ssl/fullchain_ck_com_mx.crt;
+    ssl_certificate_key /etc/nginx/ssl/ck.com.mx.key;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    access_log /var/log/nginx/nginx.mds.ck.com.mx.access.log;
+    error_log  /var/log/nginx/nginx.mds.ck.com.mx.error.log;
+
+    add_header X-Xss-Protection "1; mode=block" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubdomains" always;
+    add_header Referrer-Policy "same-origin";
+    add_header Content-Security-Policy "frame-ancestors self https://mds.ck.com.mx" always;
+    add_header Permissions-Policy "geolocation=(), midi=(), sync-xhr=(), accelerometer=(), gyroscope=(), magnetometer=(), payment=(), camera=(), microphone=(), usb=(), fullscreen=(self)" always;
+    add_header X-Powered-By "CKSites" always;
+    add_header X-Permitted-Cross-Domain-Policies "none";
+    add_header Cross-Origin-Embedder-Policy "unsafe-none; report-to='default'";
+    add_header Cross-Origin-Opener-Policy "unsafe-none";
+    add_header Cross-Origin-Resource-Policy "cross-origin";
+
+    location / {
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+
+        proxy_headers_hash_max_size 512;
+        proxy_headers_hash_bucket_size 64;
+
+        proxy_buffering on;
+        proxy_pass http://172.16.11.89:80;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_cache_bypass $http_upgrade;
+        proxy_redirect off;
+    }
+
+    location ~ /\.ht {
+        deny all;
+    }
+}
+EOF
+ln -s /etc/nginx/sites-available/mds.ck.com.mx /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 
@@ -207,6 +282,7 @@ sudo -u www-data php8.3 artisan storage:link
 
 ```env
 APP_NAME="MDS CK"
+APP_KEY=
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://mds.ck.com.mx
@@ -233,9 +309,9 @@ MAIL_MAILER=graph
 AZURE_MAIL_TENANT_ID={{ya existe — confirmar valor}}
 AZURE_MAIL_CLIENT_ID={{ya existe — confirmar valor}}
 AZURE_MAIL_CLIENT_SECRET={{ya existe — confirmar valor}}
-AZURE_MAIL_SENDER=notificaciones@ck.com.mx
+AZURE_MAIL_SENDER={{buzón real ya autorizado en el App Registration — ver nota abajo}}
 AZURE_MAIL_HTTP_PROXY=http://172.16.11.69:3128
-MAIL_FROM_ADDRESS=notificaciones@ck.com.mx
+MAIL_FROM_ADDRESS="${AZURE_MAIL_SENDER}"
 MAIL_FROM_NAME="${APP_NAME}"
 
 TRUSTED_PROXIES=172.16.11.69
@@ -257,9 +333,11 @@ VITE_REVERB_SCHEME=https
 
 `REVERB_APP_ID/KEY/SECRET` ya fueron generados aleatoriamente para este sitio (2026-08-24) — no reutilizar los de `mds`/`portalck`/`operacionesck`. Los valores reales viven solo en `C:\wamp64\www\mdsck-deploy\production-vite.env` (local, no se commitea) y en el `.env` del servidor — nunca en este doc versionado, para no dejar secretos de producción en el historial de git. `AZURE_MAIL_TENANT_ID/CLIENT_ID/CLIENT_SECRET` quedan como placeholder por la misma razón — el App Registration ya existe, solo falta copiar los valores reales al `.env` del servidor.
 
+**`AZURE_MAIL_SENDER` — ojo con esto:** en el primer deploy real se dejó accidentalmente el placeholder de ejemplo (`notificaciones@ck.com.mx`, un buzón que no existe) y Microsoft Graph rechazó el envío con `404: The requested user 'notificaciones@ck.com.mx' is invalid.` al pedir el código de login (pantalla 500). Tiene que ser un buzón real que ya esté cubierto por la Application Access Policy del App Registration — revisa qué usan `portalck`/`operacionesck` (`grep AZURE_MAIL_SENDER /var/www/operacionesck/.env /var/www/portalck/.env`) si no tienes uno dedicado para `mdsck`. **Cada vez que edites `.env` a mano en el servidor, corre `php artisan config:cache` de nuevo** — si no, Laravel sigue sirviendo la config vieja cacheada y el cambio no se nota hasta la próxima vez que se recachee.
+
 **Confirmar/crear también:**
-- DNS: `mds.ck.com.mx` debe resolver a `150.136.232.112` (si `*.ck.com.mx` ya es wildcard DNS hacia el proxy, no hace falta nada nuevo — verificar con `nslookup mds.ck.com.mx`).
-- IP `from=` del paso 2 (autorización de la llave) — confirmar cuál es la IP real que ve `deployer` al conectar a través del proxy interno.
+- DNS: `mds.ck.com.mx` debe resolver a `150.136.232.112` — confirmado, ya resolvía (wildcard `*.ck.com.mx`), no hizo falta nada nuevo.
+- IP `from=` del paso 2 (autorización de la llave) — confirmado, `172.16.11.69` fue correcto.
 
 ## Checklist para el día a día (deploys posteriores al inicial)
 
@@ -278,6 +356,15 @@ VITE_REVERB_SCHEME=https
 
 1. Corre el `.ps1` desde PowerShell nativo, no desde Git Bash (el `tar` de MSYS no entiende rutas `C:\...`).
 2. En el proxy externo, symlinkea `sites-available` → `sites-enabled` — si se olvida, `nginx -t` pasa sin quejarse y el tráfico cae silenciosamente en el catch-all.
-3. El primer deploy no genera `APP_KEY` — hazlo a mano (paso 6 de arriba) o cualquier request tira 500.
+3. El primer deploy no genera `APP_KEY` — hazlo a mano (paso 6c de arriba) o cualquier request tira 500.
 4. Los seeders de módulo no corren solos — `module:seed` a mano tras cada módulo nuevo.
 5. El puerto local de Reverb es un bind real por proceso — nunca reutilices uno ya ocupado por otro sitio en este mismo appserver.
+
+## Gotchas nuevos descubiertos en el primer deploy real de `mdsck` (2026-08-24)
+
+6. **`APP_KEY=` debe existir como línea (aunque vacía) en el `.env` antes de correr `key:generate`.** Si la línea no está, `artisan key:generate` falla con "No APP_KEY variable was found in the .env file." — no basta con que la variable esté ausente, Laravel busca la línea para reemplazarla.
+7. **`storage/` y `bootstrap/cache/` no las crea el pipeline** — el script las excluye del `rsync` a propósito (para no pisar logs/sesiones/archivos subidos en deploys futuros). En un sitio nuevo hay que crearlas a mano (ver paso 6a) o el primer deploy falla con `chmod: cannot access '.../bootstrap/cache': No such file or directory`.
+8. **El usuario de MySQL necesita cuenta para `127.0.0.1` Y para `localhost`.** Aunque `DB_HOST=127.0.0.1` en el `.env`, MySQL puede resolver la conexión entrante como `'usuario'@'localhost'` — si solo existe la cuenta `@127.0.0.1`, `migrate` falla con `Access denied for user 'x'@'localhost'` aunque la contraseña sea correcta.
+9. **El nombre del archivo Nginx en el proxy externo no sigue el mismo patrón que en el app server.** En `kosmos-proxy-2023` los sitios `*.ck.com.mx` se nombran igual que el dominio (`mds.ck.com.mx`), no como el proyecto (`mdsck`) — verifica la convención real de ese proxy antes de crear el symlink, o `nginx -t` fallará con "No such file or directory" apuntando a un archivo que nunca existió.
+10. **`AZURE_MAIL_SENDER` con un buzón que no existe da 500 silencioso al pedir el código de login**, con el mensaje real solo visible en `storage/logs/laravel.log` (`Microsoft Graph rechazó el envío (404): The requested user '...' is invalid.`). Usa siempre un buzón real ya autorizado en el App Registration.
+11. **Cualquier edición manual de `.env` en el servidor necesita `php artisan config:cache` después**, o Laravel sigue usando la config vieja cacheada del deploy anterior.
