@@ -106,6 +106,7 @@ sudo -u www-data php8.3 artisan config:cache
 sudo -u www-data php8.3 artisan route:cache
 sudo -u www-data php8.3 artisan view:cache
 sudo -u www-data php8.3 artisan livewire:publish --assets
+sudo -u www-data php8.3 artisan db:seed --class=Database\\Seeders\\CoreSeeder --force
 
 systemctl reload php8.3-fpm
 systemctl restart mdsck-reverb mdsck-queue
@@ -120,6 +121,16 @@ echo 'deployer ALL=(root) NOPASSWD: /usr/local/bin/mdsck-deploy.sh' > /etc/sudoe
 chmod 440 /etc/sudoers.d/mdsck-deploy
 visudo -c
 ```
+
+La línea `db:seed --class=Database\Seeders\CoreSeeder` se agregó (2026-08-24) porque el pipeline automático solo corre `migrate`, no seeders — así que una pantalla nueva agregada al array `$screens` de `CoreSeeder` (ver [`agregar-pantallas.md`](agregar-pantallas.md)) nunca llegaba a producción aunque el código ya estuviera desplegado. `CoreSeeder` es idempotente (`updateOrCreate`), así que correrlo en cada deploy es seguro y no duplica ni resetea nada.
+
+**Si el servidor ya está provisionado** (como es el caso de `mdsck` desde el primer deploy real), esta línea no aparece sola — hay que parchear el archivo ya existente a mano, una sola vez, con acceso root directo (no por el canal restringido `deployer`, que solo puede invocar el script tal cual está, no editarlo):
+```bash
+# En el app server, como root:
+sed -i '/livewire:publish --assets/a sudo -u www-data php8.3 artisan db:seed --class=Database\\Seeders\\CoreSeeder --force' /usr/local/bin/mdsck-deploy.sh
+grep -A1 'livewire:publish' /usr/local/bin/mdsck-deploy.sh   # confirmar que quedó la línea nueva justo debajo
+```
+Después de este parche único, todos los deploys futuros vía `deploy-mdsck.ps1` quedan 100% automáticos: código + pantallas nuevas del `CoreSeeder` en un solo paso, sin intervención manual.
 
 **4. Nginx** — copiar los dos bloques de `mdsck-deploy/nginx-mdsck.conf` (ya generado):
 ```bash
