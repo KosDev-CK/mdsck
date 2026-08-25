@@ -132,6 +132,8 @@ grep -A1 'livewire:publish' /usr/local/bin/mdsck-deploy.sh   # confirmar que que
 ```
 Después de este parche único, todos los deploys futuros vía `deploy-mdsck.ps1` quedan 100% automáticos: código + pantallas nuevas del `CoreSeeder` en un solo paso, sin intervención manual.
 
+**Cuidado con las comillas al parchear** (mordió en el primer deploy real que ejecutó esta línea, 2026-08-25): el valor de `--class=` **debe ir entre comillas dobles** — `--class="Database\Seeders\CoreSeeder"`, tal como aparece en el paso manual de arriba (línea "de vuelta en el app server"). Si queda sin comillas, bash se come las diagonales invertidas **al ejecutar** esa línea del script (no al escribirla) — el valor que realmente le llega a PHP queda como `DatabaseSeedersCoreSeeder` (sin diagonales), Laravel le antepone su namespace por defecto, y el error real es `Class "Database\Seeders\DatabaseSeedersCoreSeeder" does not exist`. Como el script tiene `set -euo pipefail`, se detiene ahí mismo — **`systemctl reload php8.3-fpm` y `restart mdsck-reverb mdsck-queue` nunca corren**, aunque el código ya se haya sincronizado y las cachés ya se hayan reconstruido. Si esto pasa: corregir la línea a mano en el servidor (agregar las comillas dobles), confirmar con `grep -A1 'livewire:publish' /usr/local/bin/mdsck-deploy.sh`, y volver a correr `deploy-mdsck.ps1` — es seguro reintentarlo completo, `migrate` no repite lo ya aplicado.
+
 **4. Nginx** — copiar los dos bloques de `mdsck-deploy/nginx-mdsck.conf` (ya generado):
 ```bash
 # En el app server (172.16.11.89):
