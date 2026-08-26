@@ -2,11 +2,6 @@
     @push('page-title')
         Conexiones a BD
     @endpush
-    @push('page-actions')
-        <x-ui.button wire:click="create" size="sm">
-            Nueva conexión
-        </x-ui.button>
-    @endpush
 
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">
@@ -140,6 +135,13 @@
     @endif
 
     <x-ui.card padding="p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Conexiones a BD</h2>
+            <x-ui.button wire:click="create" size="sm">
+                Nueva conexión
+            </x-ui.button>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
