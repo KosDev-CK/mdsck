@@ -76,19 +76,59 @@
 
         <x-ui.card padding="p-5" class="lg:col-span-2">
             @if ($selectedForm)
-                <div class="flex items-center justify-between mb-4">
-                    <div>
-                        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $selectedForm->name }}</h2>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ $selectedForm->description }}</p>
+                @if ($editingDetails)
+                    <form wire:submit="saveDetails" class="mb-4 space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre</label>
+                            <input wire:model="editName" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                            @error('editName') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Descripción</label>
+                            <textarea wire:model="editDescription" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de descarga</label>
+                            <input wire:model="editSlug" type="text" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                            <p class="mt-1 text-xs text-gray-400">Se usa como nombre del archivo al descargar o imprimir un PDF (ej. "AltaUsuario-INC000555.pdf"). Solo letras, números y guiones.</p>
+                            @error('editSlug') <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p> @enderror
+                        </div>
+                        <div class="flex gap-2">
+                            <x-ui.button type="submit" size="sm">Guardar</x-ui.button>
+                            <x-ui.button type="button" size="sm" variant="secondary" wire:click="cancelEditDetails">Cancelar</x-ui.button>
+                        </div>
+                    </form>
+                @else
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $selectedForm->name }}</h2>
+                                <button type="button" wire:click="editDetails" class="text-xs text-primary hover:underline">Editar</button>
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ $selectedForm->description }}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <x-ui.button size="sm" variant="secondary" wire:click="togglePublish({{ $selectedForm->id }})">
+                                {{ $selectedForm->status === 'published' ? 'Despublicar' : 'Publicar' }}
+                            </x-ui.button>
+                            <a href="{{ route('formbuilder.forms.builder', $selectedForm) }}">
+                                <x-ui.button size="sm">Construir campos</x-ui.button>
+                            </a>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <x-ui.button size="sm" variant="secondary" wire:click="togglePublish({{ $selectedForm->id }})">
-                            {{ $selectedForm->status === 'published' ? 'Despublicar' : 'Publicar' }}
-                        </x-ui.button>
-                        <a href="{{ route('formbuilder.forms.builder', $selectedForm) }}">
-                            <x-ui.button size="sm">Construir campos</x-ui.button>
-                        </a>
+                @endif
+
+                <div class="mb-4 flex items-end gap-2">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Formato de PDF/impresión</label>
+                        <select wire:model="pdfTemplate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                            <option value="">Genérico (etiqueta: valor)</option>
+                            @foreach ($pdfTemplates as $key => $label)
+                                <option value="{{ $key }}">{{ $label }}</option>
+                            @endforeach
+                        </select>
                     </div>
+                    <x-ui.button size="sm" variant="secondary" wire:click="savePdfTemplate">Guardar</x-ui.button>
                 </div>
 
                 <div class="overflow-x-auto">

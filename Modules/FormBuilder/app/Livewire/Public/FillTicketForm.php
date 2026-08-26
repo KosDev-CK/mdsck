@@ -4,7 +4,9 @@ namespace Modules\FormBuilder\Livewire\Public;
 
 use App\Concerns\GuardsAgainstFlooding;
 use App\Models\SecurityEvent;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\URL;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Modules\FormBuilder\Models\Form;
@@ -53,7 +55,11 @@ class FillTicketForm extends Component
 
     public function verifyEmail()
     {
-        if (! $this->link || $this->status !== 'pending') {
+        // Allowed for a 'used' link too — the recipient may reload the page
+        // after submitting (losing the transient $justSubmitted flag) and
+        // still needs to re-prove their email to see/download their answer
+        // again. Nothing else (invalid/expired/locked) has anything to show.
+        if (! $this->link || ! in_array($this->status, ['pending', 'used'], true)) {
             return;
         }
 
@@ -67,7 +73,10 @@ class FillTicketForm extends Component
 
         if ($match) {
             $this->verified = true;
-            $this->initializeAnswers();
+
+            if ($this->status === 'pending') {
+                $this->initializeAnswers();
+            }
 
             return;
         }
@@ -339,10 +348,48 @@ class FillTicketForm extends Component
         ]);
     }
 
+    public function exportPdf()
+    {
+        if (! $this->verified || ! $this->link || $this->status !== 'used') {
+            return;
+        }
+
+        $link = $this->link->fresh(['form.fields', 'submission.answers']);
+        $form = $link->form;
+
+        $pdf = Pdf::loadView($form->pdfView(), ['form' => $form, 'link' => $link]);
+
+        return response()->streamDownload(
+            fn () => print $pdf->output(),
+            $form->downloadFilename($link->ticket_number)
+        );
+    }
+
+    /**
+     * A short-lived signed URL for "Imprimir" — a real, navigable GET link
+     * (a wire:click action can only trigger a download, never open a tab),
+     * scoped to this link. No separate email check on that route: reaching
+     * this point already proved the visitor knows both the token and the
+     * recipient email.
+     */
+    public function printUrl(): ?string
+    {
+        if (! $this->verified || ! $this->link || $this->status !== 'used') {
+            return null;
+        }
+
+        return URL::temporarySignedRoute(
+            'formbuilder.public.print',
+            now()->addMinutes(15),
+            ['ticketFormLink' => $this->link->id]
+        );
+    }
+
     public function render()
     {
         return view('formbuilder::livewire.public.fill-ticket-form', [
             'currentForm' => $this->currentForm(),
+            'printUrl' => $this->printUrl(),
         ]);
     }
 }

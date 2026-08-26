@@ -12,16 +12,31 @@
     @elseif ($status === 'locked')
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Enlace bloqueado</h1>
         <p class="text-sm text-gray-500 dark:text-gray-400">Este enlace se bloqueó por demasiados intentos de verificación. Solicita uno nuevo.</p>
-    @elseif ($status === 'used' && $justSubmitted)
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">¡Gracias!</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">Tu respuesta fue registrada correctamente.</p>
-    @elseif ($status === 'used')
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Formulario ya respondido</h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">Este enlace ya fue utilizado y no puede llenarse de nuevo.</p>
+    @elseif ($status === 'used' && $verified)
+        @if ($justSubmitted)
+            <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">¡Gracias!</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Tu respuesta fue registrada correctamente.</p>
+        @else
+            <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Formulario ya respondido</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Este enlace ya fue utilizado. Aquí puedes ver tu copia.</p>
+        @endif
+
+        <div class="flex gap-2">
+            <x-ui.button wire:click="exportPdf" class="flex-1 justify-center">Descargar PDF</x-ui.button>
+            @if ($printUrl)
+                <a href="{{ $printUrl }}" target="_blank" class="flex-1">
+                    <x-ui.button type="button" variant="secondary" class="w-full justify-center">Imprimir</x-ui.button>
+                </a>
+            @endif
+        </div>
     @elseif (! $verified)
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Confirma tu correo</h1>
         <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Para continuar, escribe el correo al que se envió este enlace.
+            @if ($status === 'used')
+                Este enlace ya fue respondido. Escribe el correo al que se envió para ver tu copia.
+            @else
+                Para continuar, escribe el correo al que se envió este enlace.
+            @endif
         </p>
 
         <form wire:submit="verifyEmail" class="space-y-4">

@@ -7,7 +7,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\FormBuilder\Livewire\Public\FillTicketForm;
 use Modules\FormBuilder\Models\Form;
+use Modules\FormBuilder\Models\FormAnswer;
 use Modules\FormBuilder\Models\FormField;
+use Modules\FormBuilder\Models\FormSubmission;
 use Modules\FormBuilder\Models\TicketFormLink;
 use Tests\TestCase;
 
@@ -106,5 +108,36 @@ class FillTicketFormTest extends TestCase
         Livewire::test(FillTicketForm::class, ['token' => $rawToken])
             ->assertSet('status', 'used')
             ->assertSet('justSubmitted', false);
+    }
+
+    public function test_revisiting_a_used_link_can_re_verify_to_see_and_download_the_copy(): void
+    {
+        [$rawToken, $link, $form] = $this->createLinkWithForm(['used_at' => now()]);
+
+        $field = $form->fields->first();
+        $submission = FormSubmission::create([
+            'form_id' => $form->id, 'ticket_form_link_id' => $link->id, 'submitted_at' => now(),
+        ]);
+        FormAnswer::create([
+            'submission_id' => $submission->id, 'form_field_id' => $field->id, 'value' => 'Juan Pérez',
+        ]);
+
+        $component = Livewire::test(FillTicketForm::class, ['token' => $rawToken])
+            ->assertSet('verified', false)
+            ->set('confirmedEmail', 'destinatario@example.com')
+            ->call('verifyEmail')
+            ->assertSet('verified', true);
+
+        $component->call('exportPdf')->assertFileDownloaded();
+
+        $this->assertNotNull($component->viewData('printUrl'));
+    }
+
+    public function test_print_url_is_not_exposed_before_verification(): void
+    {
+        [$rawToken] = $this->createLinkWithForm(['used_at' => now()]);
+
+        Livewire::test(FillTicketForm::class, ['token' => $rawToken])
+            ->assertViewHas('printUrl', null);
     }
 }

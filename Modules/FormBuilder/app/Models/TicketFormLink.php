@@ -67,6 +67,16 @@ class TicketFormLink extends Model
     }
 
     /**
+     * Whether the given internal user may view this link's detail/PDF/print
+     * screens — its creator, or any Administrador. Shared by Links\Show and
+     * the print controller so the rule can't drift between them.
+     */
+    public function viewableBy(User $user): bool
+    {
+        return $this->created_by === $user->id || $user->hasRole('Administrador');
+    }
+
+    /**
      * Single source of truth for the link's state, used both by the public
      * fill screen and by the internal "Mis Formularios" list/detail screens
      * — status must never be derived twice, independently, in two places.

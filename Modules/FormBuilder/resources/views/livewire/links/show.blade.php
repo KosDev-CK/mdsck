@@ -3,26 +3,36 @@
         Respuestas — Ticket {{ $ticketFormLink->ticket_number }}
     @endpush
     @push('page-actions')
+        @if ($ticketFormLink->submission)
+            <a href="{{ route('formbuilder.links.print', $ticketFormLink) }}" target="_blank">
+                <x-ui.button type="button" size="sm" variant="secondary">Imprimir</x-ui.button>
+            </a>
+        @endif
         <a href="{{ route('formbuilder.links.index') }}" class="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
             &larr; Volver a Mis Formularios
         </a>
     @endpush
 
     <x-ui.card padding="p-5" class="mb-6">
-        <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-            <div>
-                <dt class="text-gray-500 dark:text-gray-400">Formulario</dt>
-                <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->form->name }}</dd>
-            </div>
-            <div>
-                <dt class="text-gray-500 dark:text-gray-400">Correo destino</dt>
-                <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->recipient_email }}</dd>
-            </div>
-            <div>
-                <dt class="text-gray-500 dark:text-gray-400">Respondido</dt>
-                <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->submission?->submitted_at->format('d/m/Y H:i') }}</dd>
-            </div>
-        </dl>
+        <div class="flex items-start justify-between gap-4">
+            <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm flex-1">
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">Formulario</dt>
+                    <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->form->name }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">Correo destino</dt>
+                    <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->recipient_email }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500 dark:text-gray-400">Respondido</dt>
+                    <dd class="text-gray-900 dark:text-gray-100 font-medium">{{ $ticketFormLink->submission?->submitted_at->format('d/m/Y H:i') }}</dd>
+                </div>
+            </dl>
+            @if ($ticketFormLink->submission)
+                <x-ui.button size="sm" wire:click="exportPdf" class="shrink-0">Descargar PDF</x-ui.button>
+            @endif
+        </div>
     </x-ui.card>
 
     <x-ui.card padding="p-5">
