@@ -61,4 +61,87 @@ return [
         'proxy' => env('AZURE_MAIL_HTTP_PROXY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | ServiceDesk Plus Cloud (Modules/MesaServicio)
+    |--------------------------------------------------------------------------
+    |
+    | API REST v3 de ManageEngine ServiceDesk Plus Cloud, autenticada vía
+    | OAuth2 de Zoho Accounts. El "Self Client" registrado en la Zoho API
+    | Console produce un refresh_token permanente (canjeado una sola vez a
+    | partir de un grant token de ~10 min) — es ese refresh_token el que se
+    | guarda aquí, no el grant token. Con él se piden access tokens nuevos
+    | (~1h de vida) en cada request. Ver docs/servicedesk-plus-oauth.md.
+    | "api_domain"/"accounts_domain" nunca se hardcodean: SDP tiene ~10
+    | dominios regionales distintos (US/EU/IN/AU/JP/CA/UK) y cada instancia
+    | usa el suyo.
+    |
+    */
+
+    'servicedesk_plus' => [
+        'client_id' => env('SDP_CLIENT_ID'),
+        'client_secret' => env('SDP_CLIENT_SECRET'),
+        'refresh_token' => env('SDP_REFRESH_TOKEN'),
+        // Segmento de portal en la URL de la instancia SDP (ej. "tuempresa").
+        'portal' => env('SDP_PORTAL'),
+        'api_domain' => env('SDP_API_DOMAIN'),
+        'accounts_domain' => env('SDP_ACCOUNTS_DOMAIN'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Oracle EBS — Solicitudes Internas de Compra (Modules/GestionTI)
+    |--------------------------------------------------------------------------
+    |
+    | Un solo endpoint (Oracle Integration Cloud), Basic Auth, con el
+    | "método" seleccionado por query string (?method=requisition_header_line
+    | | requisition_header_approved). Ver
+    | Modules/GestionTI/app/Support/Ebs/EbsRequisitionsClient.php y
+    | docs/gestionti-progreso.md.
+    |
+    */
+
+    'ebs' => [
+        'base_url' => env('EBS_BASE_URL'),
+        'organization_code' => env('EBS_ORGANIZATION_CODE'),
+        'username' => env('EBS_USERNAME'),
+        'password' => env('EBS_PASSWORD'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | SharePoint vía Microsoft Graph — documentos digitalizados (Modules/GestionTI)
+    |--------------------------------------------------------------------------
+    |
+    | Migra el almacenamiento de `DocumentoDigitalizado` de local a
+    | SharePoint, configurable por tipo de documento (ver
+    | `Modules\GestionTI\Models\ConfiguracionDocumentos`). Reutiliza el mismo
+    | App Registration de Azure AD que ya usa el correo (`AZURE_MAIL_*`) —
+    | mismo tenant/client id/secret, solo cambia el permiso de aplicación
+    | consentido (`Sites.Selected` sobre el sitio específico, en vez de
+    | `Mail.Send`). "site_hostname"/"site_path" identifican el sitio de
+    | SharePoint (no hay `site_id` fijo, se resuelve en tiempo real vía
+    | Graph — más portable entre entornos). "carpetas" mapea cada
+    | `tipo_documento` a su carpeta dentro de la biblioteca default del
+    | sitio — ver `Modules\GestionTI\Support\SharePoint\SharePointClient::carpetaParaTipoDocumento()`
+    | para qué pasa si se activa un tipo sin carpeta configurada.
+    |
+    */
+
+    'sharepoint' => [
+        'tenant_id' => env('AZURE_MAIL_TENANT_ID'),
+        'client_id' => env('AZURE_MAIL_CLIENT_ID'),
+        'client_secret' => env('AZURE_MAIL_CLIENT_SECRET'),
+        'site_hostname' => env('SHAREPOINT_SITE_HOSTNAME'),
+        'site_path' => env('SHAREPOINT_SITE_PATH'),
+        'proxy' => env('AZURE_MAIL_HTTP_PROXY'),
+        'carpetas' => [
+            'sic' => env('SHAREPOINT_FOLDER_SIC'),
+            'responsiva' => env('SHAREPOINT_FOLDER_RESPONSIVA'),
+            'remision_proveedor' => env('SHAREPOINT_FOLDER_REMISION_PROVEEDOR'),
+            'factura' => env('SHAREPOINT_FOLDER_FACTURA'),
+            'orden_servicio' => env('SHAREPOINT_FOLDER_ORDEN_SERVICIO'),
+        ],
+    ],
+
 ];

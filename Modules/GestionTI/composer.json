@@ -1,0 +1,30 @@
+{
+    "name": "nwidart/gestionti",
+    "description": "",
+    "authors": [
+        {
+            "name": "Nicolas Widart",
+            "email": "n.widart@gmail.com"
+        }
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [],
+            "aliases": {
+
+            }
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Modules\\GestionTI\\": "app/",
+            "Modules\\GestionTI\\Database\\Factories\\": "database/factories/",
+            "Modules\\GestionTI\\Database\\Seeders\\": "database/seeders/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Modules\\GestionTI\\Tests\\": "tests/"
+        }
+    }
+}

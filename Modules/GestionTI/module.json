@@ -1,0 +1,11 @@
+{
+    "name": "GestionTI",
+    "alias": "gestionti",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\GestionTI\\Providers\\GestionTIServiceProvider"
+    ],
+    "files": []
+}

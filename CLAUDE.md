@@ -139,6 +139,7 @@ php artisan module:seed X     # sembrar el seeder de un módulo
 - **Agregar pantallas y asignarlas a perfiles** → [`docs/agregar-pantallas.md`](docs/agregar-pantallas.md)
 - **Limpiar datos de prueba antes de producción** → [`docs/limpiar-datos-de-prueba.md`](docs/limpiar-datos-de-prueba.md)
 - **Configurar correo con OAuth2/Microsoft Graph** → [`docs/correo-oauth2-azure.md`](docs/correo-oauth2-azure.md)
+- **Acceso a SharePoint (documentos digitalizados) vía Microsoft Graph** → [`docs/sharepoint-graph-integracion.md`](docs/sharepoint-graph-integracion.md)
 - **Desplegar a LEMP en producción** → [`docs/deploy-lemp.md`](docs/deploy-lemp.md)
 
 ## Convenciones al trabajar en este repo
