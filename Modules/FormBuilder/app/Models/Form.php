@@ -18,6 +18,8 @@ class Form extends Model
      */
     public const PDF_TEMPLATES = [
         'alta_usuario' => 'Alta de Usuario (Solicitud de accesos)',
+        'oracle_responsabilidades' => 'Solicitud Responsabilidades Oracle',
+        'oracle_flujo_aprobacion' => 'Solicitud de Flujo de Aprobación Oracle',
     ];
 
     protected $fillable = [

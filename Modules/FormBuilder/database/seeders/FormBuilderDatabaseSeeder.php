@@ -43,5 +43,7 @@ class FormBuilderDatabaseSeeder extends Seeder
         Role::findOrCreate('Administrador', 'web')->givePermissionTo(
             collect($screens)->pluck('permission_name')->all()
         );
+
+        $this->call(OracleFormsSeeder::class);
     }
 }
