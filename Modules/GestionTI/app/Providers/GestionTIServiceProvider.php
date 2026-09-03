@@ -84,6 +84,7 @@ class GestionTIServiceProvider extends ModuleServiceProvider
             organizationCode: (string) config('services.ebs.organization_code'),
             username: (string) config('services.ebs.username'),
             password: (string) config('services.ebs.password'),
+            proxy: config('services.ebs.proxy'),
         ));
 
         // Fase 5 (SharePoint) — mismo criterio que EbsRequisitionsClient de

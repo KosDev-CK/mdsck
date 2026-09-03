@@ -33,6 +33,7 @@ class EbsRequisitionsClient
         private readonly string $organizationCode,
         private readonly string $username,
         private readonly string $password,
+        private readonly ?string $proxy = null,
     ) {
     }
 
@@ -65,7 +66,8 @@ class EbsRequisitionsClient
 
         // Body raw JSON vacío "{}" — no un arreglo PHP vacío (json_encode([])
         // produciría "[]", no "{}"), tal como lo espera el flujo de EBS.
-        $response = Http::withBasicAuth($this->username, $this->password)
+        $response = $this->httpClient()
+            ->withBasicAuth($this->username, $this->password)
             ->withBody('{}', 'application/json')
             ->post($url);
 
@@ -87,5 +89,19 @@ class EbsRequisitionsClient
         }
 
         return $payload['payload']['requisitions'] ?? [];
+    }
+
+    /**
+     * Cliente HTTP para hablar con Oracle Integration Cloud — mismo soporte
+     * de forward proxy opcional que `MicrosoftGraphTransport::httpClient()`
+     * y `SharePointClient::httpClient()`, para cuando este servidor no tiene
+     * salida directa a internet (confirmado el caso del app server de
+     * producción de `mdsck` — ver `docs/gestionti-progreso.md`).
+     */
+    private function httpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        return $this->proxy
+            ? Http::withOptions(['proxy' => $this->proxy])
+            : Http::withOptions([]);
     }
 }

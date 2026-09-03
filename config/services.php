@@ -97,7 +97,9 @@ return [
     | "método" seleccionado por query string (?method=requisition_header_line
     | | requisition_header_approved). Ver
     | Modules/GestionTI/app/Support/Ebs/EbsRequisitionsClient.php y
-    | docs/gestionti-progreso.md.
+    | docs/gestionti-progreso.md. Soporta el mismo forward proxy opcional que
+    | Graph/SharePoint (AZURE_MAIL_HTTP_PROXY) para cuando el app server no
+    | tiene salida directa a internet.
     |
     */
 
@@ -106,6 +108,12 @@ return [
         'organization_code' => env('EBS_ORGANIZATION_CODE'),
         'username' => env('EBS_USERNAME'),
         'password' => env('EBS_PASSWORD'),
+        // Mismo forward proxy que ya usan Graph/SharePoint (reutiliza
+        // AZURE_MAIL_HTTP_PROXY a propósito, es el mismo servidor proxy de
+        // salida) para cuando el app server no tiene salida directa a
+        // internet — confirmado el caso en producción de mdsck, ver
+        // docs/gestionti-progreso.md.
+        'proxy' => env('AZURE_MAIL_HTTP_PROXY'),
     ],
 
     /*
