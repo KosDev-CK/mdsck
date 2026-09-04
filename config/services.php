@@ -148,6 +148,7 @@ return [
             'responsiva' => env('SHAREPOINT_FOLDER_RESPONSIVA'),
             'remision_proveedor' => env('SHAREPOINT_FOLDER_REMISION_PROVEEDOR'),
             'factura' => env('SHAREPOINT_FOLDER_FACTURA'),
+            'factura_xml' => env('SHAREPOINT_FOLDER_FACTURA_XML'),
             'orden_servicio' => env('SHAREPOINT_FOLDER_ORDEN_SERVICIO'),
         ],
     ],

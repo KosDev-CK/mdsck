@@ -35,6 +35,7 @@ class ConfiguracionDocumentos extends Model
         'responsiva',
         'remision_proveedor',
         'factura',
+        'factura_xml',
         'orden_servicio',
     ];
 

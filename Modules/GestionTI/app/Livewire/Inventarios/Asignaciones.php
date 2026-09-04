@@ -277,6 +277,30 @@ class Asignaciones extends Component
         session()->flash('status', 'Asignación registrada correctamente.');
     }
 
+    /**
+     * Quita la responsiva vinculada a una asignación (el técnico subió/eligió
+     * el archivo equivocado) — borra el `DocumentoDigitalizado` (nunca el
+     * archivo real en SharePoint/disco, ver `DocumentoDigitalizado::quitar()`)
+     * y limpia la FK, dejando la asignación en el mismo estado que antes de
+     * adjuntar nada: "Adjuntar responsiva firmada" vuelve a aparecer para
+     * corregirlo, y el archivo original queda libre de nuevo en "Buscar en
+     * SharePoint" (`DocumentoDigitalizado::driveItemIdsVinculados()` ya no lo
+     * cuenta como vinculado).
+     */
+    public function quitarResponsiva(int $id): void
+    {
+        $assignment = AssetAssignment::findOrFail($id);
+
+        if ($assignment->documento_responsiva_id === null) {
+            return;
+        }
+
+        DocumentoDigitalizado::quitar($assignment->documento_responsiva_id);
+        $assignment->update(['documento_responsiva_id' => null]);
+
+        session()->flash('status', 'Responsiva desvinculada — puedes adjuntar la correcta desde el listado.');
+    }
+
     public function openAttach(int $id): void
     {
         $assignment = AssetAssignment::findOrFail($id);
@@ -481,7 +505,7 @@ class Asignaciones extends Component
     public function render()
     {
         $records = AssetAssignment::query()
-            ->with(['asset', 'empleado', 'sic', 'responsableEntrega'])
+            ->with(['asset', 'empleado', 'sic', 'responsableEntrega', 'documentoResponsiva'])
             ->when($this->search !== '', function ($q) {
                 $q->where(function ($q) {
                     $q->whereHas('asset', fn ($q2) => $q2->where('codigo', 'like', "%{$this->search}%"))

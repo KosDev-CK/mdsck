@@ -79,6 +79,19 @@ class Recepciones extends Component
     /** @var array<int, array{driveItemId: string, nombre: string, webUrl: string}> */
     public array $sharePointArchivos = [];
 
+    /** 'documentoRemision' (modal de crear) | 'attachDocumentoRemision' (modal de adjuntar después de una recepción ya guardada). */
+    public string $sharePointTarget = 'documentoRemision';
+
+    public ?int $attachingId = null;
+
+    public bool $showAttachModal = false;
+
+    /** Remisión digitalizada — modal "Adjuntar remisión" sobre una recepción ya guardada (corrige un documento faltante/equivocado sin reabrir la recepción). */
+    public $attachDocumentoRemision;
+
+    /** @var array{driveItemId: string, nombre: string, webUrl: string}|null */
+    public ?array $attachDocumentoRemisionVinculado = null;
+
     #[Url(as: 'search')]
     public string $search = '';
 
@@ -179,15 +192,17 @@ class Recepciones extends Component
     }
 
     /**
-     * Abre el modal "Buscar en SharePoint" (Fase 5, punto 5) para vincular
-     * un archivo ya existente en la carpeta de "remisión de proveedor" —
-     * sin subir nada. Misma idea que `Asignaciones::openSharePointBuscar()`,
-     * simplificada aquí a un solo destino posible (`documentoRemision`, esta
-     * pantalla no tiene un 2do punto de subida diferido). Excluye los
-     * archivos que ya quedaron vinculados a otro registro.
+     * Abre el modal "Buscar en SharePoint" (Fase 5, punto 5) para vincular un
+     * archivo ya existente en la carpeta de "remisión de proveedor" — sin
+     * subir nada. Misma idea que `Asignaciones::openSharePointBuscar()`.
+     * `$target` indica a qué propiedad de "vinculado" va el archivo elegido:
+     * 'documentoRemision' desde el modal de crear, o 'attachDocumentoRemision'
+     * desde el modal de adjuntar después. Excluye los archivos que ya
+     * quedaron vinculados a otro registro.
      */
-    public function openSharePointBuscar(): void
+    public function openSharePointBuscar(string $target = 'documentoRemision'): void
     {
+        $this->sharePointTarget = $target;
         $this->sharePointSearch = '';
         $this->resetValidation('sharePointArchivos');
 
@@ -213,8 +228,13 @@ class Recepciones extends Component
             return;
         }
 
-        $this->documentoRemisionVinculado = $archivo;
-        $this->documentoRemision = null;
+        if ($this->sharePointTarget === 'attachDocumentoRemision') {
+            $this->attachDocumentoRemisionVinculado = $archivo;
+            $this->attachDocumentoRemision = null;
+        } else {
+            $this->documentoRemisionVinculado = $archivo;
+            $this->documentoRemision = null;
+        }
 
         $this->cancelSharePointBuscar();
     }
@@ -224,6 +244,82 @@ class Recepciones extends Component
         $this->showSharePointModal = false;
         $this->sharePointSearch = '';
         $this->sharePointArchivos = [];
+    }
+
+    /**
+     * Quita la remisión vinculada a una recepción ya guardada (el técnico
+     * subió/eligió el archivo equivocado) — borra el `DocumentoDigitalizado`
+     * (nunca el archivo real, ver `DocumentoDigitalizado::quitar()`) y limpia
+     * la FK. Única mutación permitida sobre una recepción ya guardada — todo
+     * lo demás (cantidades, folio, fechas) sigue siendo inmutable a
+     * propósito, ver el comentario de clase.
+     */
+    public function quitarRemision(int $id): void
+    {
+        $recepcion = Recepcion::findOrFail($id);
+
+        if ($recepcion->documento_remision_id === null) {
+            return;
+        }
+
+        DocumentoDigitalizado::quitar($recepcion->documento_remision_id);
+        $recepcion->update(['documento_remision_id' => null]);
+
+        session()->flash('status', 'Remisión desvinculada — puedes adjuntar la correcta desde el listado.');
+    }
+
+    public function openAttach(int $id): void
+    {
+        $recepcion = Recepcion::findOrFail($id);
+
+        if ($recepcion->documento_remision_id !== null) {
+            return;
+        }
+
+        $this->attachingId = $id;
+        $this->attachDocumentoRemision = null;
+        $this->attachDocumentoRemisionVinculado = null;
+        $this->resetValidation();
+        $this->showAttachModal = true;
+    }
+
+    public function confirmAttach(): void
+    {
+        if (! $this->attachDocumentoRemision && ! $this->attachDocumentoRemisionVinculado) {
+            $this->addError('attachDocumentoRemision', 'Sube un archivo o vincula uno existente de SharePoint.');
+
+            return;
+        }
+
+        if ($this->attachDocumentoRemision) {
+            $this->validate(['attachDocumentoRemision' => 'file|mimes:pdf,jpg,jpeg,png|max:5120']);
+        }
+
+        $recepcion = Recepcion::findOrFail($this->attachingId);
+
+        if ($recepcion->documento_remision_id !== null) {
+            $this->cancelAttach();
+
+            return;
+        }
+
+        $documento = $this->attachDocumentoRemision
+            ? DocumentoDigitalizado::storeUploaded($this->attachDocumentoRemision, $recepcion, 'remision_proveedor', auth()->id())
+            : DocumentoDigitalizado::linkExisting($this->attachDocumentoRemisionVinculado, $recepcion, 'remision_proveedor', auth()->id());
+
+        $recepcion->update(['documento_remision_id' => $documento->id]);
+
+        $this->cancelAttach();
+        session()->flash('status', 'Remisión adjuntada correctamente.');
+    }
+
+    public function cancelAttach(): void
+    {
+        $this->showAttachModal = false;
+        $this->attachingId = null;
+        $this->attachDocumentoRemision = null;
+        $this->attachDocumentoRemisionVinculado = null;
+        $this->resetValidation();
     }
 
     /**
@@ -499,7 +595,7 @@ class Recepciones extends Component
     public function render()
     {
         $records = Recepcion::query()
-            ->with(['solicitudProveedor.vendor', 'recibidoPor'])
+            ->with(['solicitudProveedor.vendor', 'recibidoPor', 'documentoRemision'])
             ->when($this->search !== '', function ($q) {
                 $q->where('folio_remision', 'like', "%{$this->search}%")
                     ->orWhereHas('solicitudProveedor', fn ($q) => $q->where('folio', 'like', "%{$this->search}%"));

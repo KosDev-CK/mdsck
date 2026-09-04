@@ -835,4 +835,53 @@ class AsignacionesTest extends TestCase
         $this->assertCount(1, $filtrados);
         $this->assertSame('maria-lopez.pdf', $filtrados[0]['nombre']);
     }
+
+    /**
+     * Corrige un técnico que subió/vinculó la responsiva equivocada: quitar
+     * borra el `DocumentoDigitalizado` y libera la FK, pero el archivo real
+     * en el disco (o SharePoint) sigue existiendo — solo se rompe la
+     * relación, nunca el archivo.
+     */
+    public function test_quitar_responsiva_unlinks_without_deleting_the_physical_file(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+
+        $sic = $this->sicAutorizada();
+        $asset = $this->asset('KOS-LAPTOP-000012', 'en_stock');
+        $validador = $this->validador();
+
+        $documento = \Modules\GestionTI\Models\DocumentoDigitalizado::storeUploaded(
+            UploadedFile::fake()->create('equivocada.pdf', 50, 'application/pdf'),
+            $asset,
+            'responsiva',
+            null
+        );
+
+        $assignment = AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => $sic->empleado_id,
+            'sic_id' => $sic->id,
+            'fecha_asignacion' => '2026-09-01',
+            'estado_equipo_entrega' => 'nuevo',
+            'responsable_entrega_id' => $validador->id,
+            'documento_responsiva_id' => $documento->id,
+        ]);
+
+        Livewire::test(Asignaciones::class)
+            ->call('quitarResponsiva', $assignment->id)
+            ->assertSet('showAttachModal', false);
+
+        $assignment->refresh();
+        $this->assertNull($assignment->documento_responsiva_id);
+        $this->assertDatabaseMissing('documentos_digitalizados', ['id' => $documento->id]);
+        Storage::disk('public')->assertExists($documento->referencia);
+
+        // La asignación vuelve a permitir adjuntar (ya no tiene documento).
+        Livewire::test(Asignaciones::class)
+            ->call('openAttach', $assignment->id)
+            ->assertSet('showAttachModal', true);
+    }
 }

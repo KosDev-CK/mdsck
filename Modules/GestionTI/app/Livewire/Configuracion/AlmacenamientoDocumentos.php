@@ -50,7 +50,8 @@ class AlmacenamientoDocumentos extends Component
             'sic' => 'Adjunto de Solicitud de SIC',
             'responsiva' => 'Responsiva de Asignación de Activo',
             'remision_proveedor' => 'Remisión de Recepción de Proveedor',
-            'factura' => 'Factura',
+            'factura' => 'Factura (PDF)',
+            'factura_xml' => 'Factura (XML/CFDI)',
             'orden_servicio' => 'Orden de Servicio de Mantenimiento',
             default => $tipoDocumento,
         };

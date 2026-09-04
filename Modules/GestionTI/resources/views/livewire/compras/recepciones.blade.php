@@ -53,8 +53,24 @@
                         @php($estatusSolicitud = $record->solicitudProveedor?->estatus)
                         <x-ui.badge :color="$estatusColors[$estatusSolicitud] ?? 'gray'">{{ $estatusLabels[$estatusSolicitud] ?? $estatusSolicitud }}</x-ui.badge>
                     </td>
-                    <td class="py-2">
+                    <td class="py-2 space-x-2 whitespace-nowrap">
                         <button type="button" wire:click="exportActaPdf({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Generar PDF</button>
+
+                        @if ($record->documentoRemision)
+                            <a href="{{ $record->documentoRemision->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver remisión</a>
+                            <button
+                                type="button"
+                                wire:click="quitarRemision({{ $record->id }})"
+                                wire:confirm="¿Quitar la remisión vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta recepción."
+                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
+                            >
+                                Quitar
+                            </button>
+                        @else
+                            <button type="button" wire:click="openAttach({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
+                                Adjuntar remisión
+                            </button>
+                        @endif
                     </td>
                 </tr>
             @endforeach
@@ -201,6 +217,34 @@
 
             <div class="flex justify-end gap-2">
                 <x-ui.button type="button" variant="secondary" wire:click="cancel">Cancelar</x-ui.button>
+                <x-ui.button type="submit">Guardar</x-ui.button>
+            </div>
+        </form>
+    </x-ui.modal>
+
+    <x-ui.modal model="showAttachModal" title="Adjuntar remisión">
+        <form wire:submit="confirmAttach" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Remisión digitalizada</label>
+
+                @if ($attachDocumentoRemisionVinculado)
+                    <div class="flex items-center justify-between rounded-md bg-gray-50 dark:bg-gray-800/50 p-2 text-sm">
+                        <span class="text-gray-700 dark:text-gray-300">Vinculado de SharePoint: {{ $attachDocumentoRemisionVinculado['nombre'] }}</span>
+                        <button type="button" wire:click="$set('attachDocumentoRemisionVinculado', null)" class="text-xs text-red-600 hover:text-red-500 dark:text-red-400">Quitar</button>
+                    </div>
+                @else
+                    <input wire:model="attachDocumentoRemision" type="file" accept="image/*,.pdf" class="mt-1 block w-full text-sm text-gray-600 dark:text-gray-300">
+                    <div wire:loading wire:target="attachDocumentoRemision" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Subiendo...</div>
+                    <button type="button" wire:click="openSharePointBuscar('attachDocumentoRemision')" class="mt-1 text-xs text-primary hover:underline">Buscar en SharePoint</button>
+                @endif
+
+                @error('attachDocumentoRemision')
+                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <x-ui.button type="button" variant="secondary" wire:click="cancelAttach">Cancelar</x-ui.button>
                 <x-ui.button type="submit">Guardar</x-ui.button>
             </div>
         </form>

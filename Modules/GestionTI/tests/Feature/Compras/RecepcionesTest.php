@@ -5,7 +5,9 @@ namespace Modules\GestionTI\Tests\Feature\Compras;
 use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Models\ArticuloSolicitud;
@@ -667,5 +669,86 @@ class RecepcionesTest extends TestCase
         $filtrados = $component->viewData('sharePointArchivosFiltrados');
         $this->assertCount(1, $filtrados);
         $this->assertSame('remision-002.pdf', $filtrados[0]['nombre']);
+    }
+
+    /**
+     * Única mutación permitida sobre una recepción ya guardada (ver el
+     * comentario de clase de `Recepciones` sobre por qué no hay `edit()`):
+     * adjuntar la remisión que faltó/se equivocó al capturar, vía un modal
+     * separado — no reabre ni permite tocar cantidades/folio/fechas.
+     */
+    public function test_attach_remision_action_works_on_an_existing_recepcion_without_a_document(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        $recepcion = Recepcion::create([
+            'solicitud_proveedor_id' => $solicitud->id,
+            'folio_remision' => 'REM-SIN-DOC',
+            'fecha_recepcion' => '2026-09-01',
+            'recibido_por_id' => $validador->id,
+            'ubicacion_id' => $ubicacion->id,
+        ]);
+
+        $file = UploadedFile::fake()->create('remision-tardia.pdf', 100, 'application/pdf');
+
+        Livewire::test(Recepciones::class)
+            ->call('openAttach', $recepcion->id)
+            ->assertSet('showAttachModal', true)
+            ->set('attachDocumentoRemision', $file)
+            ->call('confirmAttach')
+            ->assertHasNoErrors();
+
+        $recepcion->refresh();
+        $this->assertNotNull($recepcion->documento_remision_id);
+        Storage::disk('public')->assertExists($recepcion->documentoRemision->referencia);
+    }
+
+    /**
+     * Corrige un técnico que subió/vinculó la remisión equivocada: quitar
+     * borra el `DocumentoDigitalizado` y libera la FK, pero el archivo real
+     * sigue existiendo — solo se rompe la relación.
+     */
+    public function test_quitar_remision_unlinks_without_deleting_the_physical_file(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        $documento = DocumentoDigitalizado::storeUploaded(
+            UploadedFile::fake()->create('equivocada.pdf', 50, 'application/pdf'),
+            $solicitud,
+            'remision_proveedor',
+            null
+        );
+
+        $recepcion = Recepcion::create([
+            'solicitud_proveedor_id' => $solicitud->id,
+            'folio_remision' => 'REM-A-CORREGIR',
+            'fecha_recepcion' => '2026-09-01',
+            'recibido_por_id' => $validador->id,
+            'ubicacion_id' => $ubicacion->id,
+            'documento_remision_id' => $documento->id,
+        ]);
+
+        Livewire::test(Recepciones::class)
+            ->call('quitarRemision', $recepcion->id)
+            ->assertSet('showAttachModal', false);
+
+        $recepcion->refresh();
+        $this->assertNull($recepcion->documento_remision_id);
+        $this->assertDatabaseMissing('documentos_digitalizados', ['id' => $documento->id]);
+        Storage::disk('public')->assertExists($documento->referencia);
+
+        Livewire::test(Recepciones::class)
+            ->call('openAttach', $recepcion->id)
+            ->assertSet('showAttachModal', true);
     }
 }

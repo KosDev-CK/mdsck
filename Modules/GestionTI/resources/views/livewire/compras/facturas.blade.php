@@ -67,6 +67,34 @@
                     <td class="py-2 text-right space-x-2 whitespace-nowrap">
                         <button wire:click="edit({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
 
+                        @php($adjuntoPdf = $record->documentoAdjunto('factura'))
+                        @if ($adjuntoPdf)
+                            <a href="{{ $adjuntoPdf->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver PDF</a>
+                            <button
+                                wire:click="quitarAdjunto({{ $record->id }}, 'factura')"
+                                wire:confirm="¿Quitar el PDF de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
+                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
+                            >
+                                Quitar PDF
+                            </button>
+                        @endif
+
+                        @php($adjuntoXmlFila = $record->documentoAdjunto('factura_xml'))
+                        @if ($adjuntoXmlFila)
+                            @if ($adjuntoXmlFila->proveedor_almacenamiento === 'local')
+                                <button wire:click="verXml({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Ver XML</button>
+                            @else
+                                <a href="{{ $adjuntoXmlFila->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver XML</a>
+                            @endif
+                            <button
+                                wire:click="quitarAdjunto({{ $record->id }}, 'factura_xml')"
+                                wire:confirm="¿Quitar el XML de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
+                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
+                            >
+                                Quitar XML
+                            </button>
+                        @endif
+
                         @if ($record->estatus === 'recibida')
                             <button
                                 wire:click="marcarRegistrada({{ $record->id }})"
@@ -132,19 +160,46 @@
                 <x-ui.input label="Ejercicio fiscal (opcional)" name="form.ejercicio_fiscal" wire:model="form.ejercicio_fiscal" />
             </div>
 
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Adjunto (factura)</label>
-                <input wire:model="adjunto" type="file" accept="image/*,.pdf" class="mt-1 block w-full text-sm text-gray-600 dark:text-gray-300">
-                <div wire:loading wire:target="adjunto" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Subiendo...</div>
-                @error('adjunto')
-                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-                @enderror
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Factura (PDF)</label>
 
-                @if ($currentAdjunto)
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Adjunto actual: <a href="{{ $currentAdjunto->url() }}" target="_blank" class="text-primary hover:underline">{{ $currentAdjunto->nombre_archivo }}</a>
-                    </p>
-                @endif
+                    @if ($currentAdjunto)
+                        <div class="mt-1 flex items-center justify-between rounded-md bg-gray-50 dark:bg-gray-800/50 p-2 text-sm">
+                            <a href="{{ $currentAdjunto->url() }}" target="_blank" class="text-primary hover:underline">{{ $currentAdjunto->nombre_archivo }}</a>
+                            <button type="button" wire:click="quitarAdjunto({{ $editingId }}, 'factura')" wire:confirm="¿Quitar el PDF? El archivo no se borra de SharePoint/disco." class="text-xs text-red-600 hover:text-red-500 dark:text-red-400">Quitar</button>
+                        </div>
+                    @else
+                        <input wire:model="adjunto" type="file" accept="image/*,.pdf" class="mt-1 block w-full text-sm text-gray-600 dark:text-gray-300">
+                        <div wire:loading wire:target="adjunto" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Subiendo...</div>
+                    @endif
+
+                    @error('adjunto')
+                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Factura (XML/CFDI)</label>
+
+                    @if ($currentAdjuntoXml)
+                        <div class="mt-1 flex items-center justify-between rounded-md bg-gray-50 dark:bg-gray-800/50 p-2 text-sm">
+                            @if ($currentAdjuntoXml->proveedor_almacenamiento === 'local')
+                                <button type="button" wire:click="verXml({{ $editingId }})" class="text-primary hover:underline">{{ $currentAdjuntoXml->nombre_archivo }}</button>
+                            @else
+                                <a href="{{ $currentAdjuntoXml->url() }}" target="_blank" class="text-primary hover:underline">{{ $currentAdjuntoXml->nombre_archivo }}</a>
+                            @endif
+                            <button type="button" wire:click="quitarAdjunto({{ $editingId }}, 'factura_xml')" wire:confirm="¿Quitar el XML? El archivo no se borra de SharePoint/disco." class="text-xs text-red-600 hover:text-red-500 dark:text-red-400">Quitar</button>
+                        </div>
+                    @else
+                        <input wire:model="adjuntoXml" type="file" accept=".xml" class="mt-1 block w-full text-sm text-gray-600 dark:text-gray-300">
+                        <div wire:loading wire:target="adjuntoXml" class="text-xs text-gray-500 dark:text-gray-400 mt-1">Subiendo...</div>
+                    @endif
+
+                    @error('adjuntoXml')
+                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
 
             <div>
@@ -185,6 +240,50 @@
                 <x-ui.button type="submit">Guardar</x-ui.button>
             </div>
         </form>
+    </x-ui.modal>
+
+    <x-ui.modal model="showXmlModal" title="Ver XML" max-width="max-w-3xl">
+        @if ($xmlPreview)
+            <div class="space-y-4">
+                <p class="text-sm font-medium text-gray-900 dark:text-gray-100">{{ $xmlPreview['nombre'] }}</p>
+
+                @if ($xmlPreview['parsed'])
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 text-sm">
+                        <div>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">UUID (folio fiscal)</dt>
+                            <dd class="text-gray-900 dark:text-gray-100">{{ $xmlPreview['parsed']['uuid'] ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Fecha de emisión</dt>
+                            <dd class="text-gray-900 dark:text-gray-100">{{ $xmlPreview['parsed']['fecha'] ?? '—' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Total</dt>
+                            <dd class="text-gray-900 dark:text-gray-100">{{ $xmlPreview['parsed']['total'] ?? '—' }} {{ $xmlPreview['parsed']['moneda'] ?? '' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Emisor</dt>
+                            <dd class="text-gray-900 dark:text-gray-100">{{ $xmlPreview['parsed']['emisor_nombre'] ?? '—' }} ({{ $xmlPreview['parsed']['emisor_rfc'] ?? '—' }})</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Receptor</dt>
+                            <dd class="text-gray-900 dark:text-gray-100">{{ $xmlPreview['parsed']['receptor_nombre'] ?? '—' }} ({{ $xmlPreview['parsed']['receptor_rfc'] ?? '—' }})</dd>
+                        </div>
+                    </dl>
+                @else
+                    <x-ui.alert variant="warning">No se pudo interpretar este archivo como un CFDI — se muestra el contenido crudo abajo.</x-ui.alert>
+                @endif
+
+                <div>
+                    <p class="mb-1 text-xs text-gray-500 dark:text-gray-400">XML completo</p>
+                    <pre class="max-h-72 overflow-auto rounded-md bg-gray-900 p-3 text-xs text-gray-100 whitespace-pre-wrap break-all">{{ $xmlPreview['raw'] }}</pre>
+                </div>
+            </div>
+        @endif
+
+        <div class="mt-4 flex justify-end">
+            <x-ui.button type="button" variant="secondary" wire:click="cancelVerXml">Cerrar</x-ui.button>
+        </div>
     </x-ui.modal>
 
     <x-ui.help-modal titulo="Facturación" :pdf-url="route('gestionti.ayuda.pdf', 'facturas')">

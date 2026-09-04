@@ -9,6 +9,7 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Illuminate\Support\Facades\Storage;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\Invoice;
@@ -16,6 +17,7 @@ use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\Recepcion;
 use Modules\GestionTI\Models\RecepcionLinea;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Support\Cfdi\CfdiReader;
 
 /**
  * Facturación (sección 7.9 del spec original) — SIN Orden de Compra. Ver
@@ -49,10 +51,31 @@ class Facturas extends Component
      */
     public array $recepcionIds = [];
 
-    /** Adjunto (factura digitalizada) — propiedad de nivel superior, mismo convenio de WithFileUploads ya usado en el resto del módulo. */
+    /** Adjunto PDF (factura digitalizada, `tipo_documento = 'factura'`) — propiedad de nivel superior, mismo convenio de WithFileUploads ya usado en el resto del módulo. */
     public $adjunto;
 
     public ?DocumentoDigitalizado $currentAdjunto = null;
+
+    /**
+     * Adjunto XML/CFDI (`tipo_documento = 'factura_xml'`) — independiente del
+     * PDF: una factura real trae ambos por separado y pueden llegar o
+     * corregirse en momentos distintos.
+     */
+    public $adjuntoXml;
+
+    public ?DocumentoDigitalizado $currentAdjuntoXml = null;
+
+    /**
+     * Resumen del CFDI para el modal "Ver XML" — `null` mientras el modal
+     * está cerrado. `parsed` es el arreglo de `CfdiReader::parse()` (o
+     * `null` si el XML no se pudo interpretar como CFDI, en cuyo caso el
+     * modal solo muestra `raw`).
+     *
+     * @var array{nombre: string, parsed: ?array, raw: string}|null
+     */
+    public ?array $xmlPreview = null;
+
+    public bool $showXmlModal = false;
 
     #[Url(as: 'search')]
     public string $search = '';
@@ -87,6 +110,7 @@ class Facturas extends Component
             'recepcionIds' => 'nullable|array',
             'recepcionIds.*' => 'exists:recepciones,id',
             'adjunto' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'adjuntoXml' => 'nullable|file|mimes:xml|max:5120',
         ];
     }
 
@@ -168,6 +192,8 @@ class Facturas extends Component
         $this->recepcionIds = [];
         $this->adjunto = null;
         $this->currentAdjunto = null;
+        $this->adjuntoXml = null;
+        $this->currentAdjuntoXml = null;
         $this->resetValidation();
         $this->showModal = true;
     }
@@ -188,9 +214,74 @@ class Facturas extends Component
         ];
         $this->recepcionIds = $record->recepciones->pluck('id')->all();
         $this->adjunto = null;
-        $this->currentAdjunto = $record->documentoAdjunto();
+        $this->currentAdjunto = $record->documentoAdjunto('factura');
+        $this->adjuntoXml = null;
+        $this->currentAdjuntoXml = $record->documentoAdjunto('factura_xml');
         $this->resetValidation();
         $this->showModal = true;
+    }
+
+    /**
+     * Quita un adjunto (PDF o XML) subido/vinculado por error — borra solo el
+     * `DocumentoDigitalizado` (nunca el archivo real, ver
+     * `DocumentoDigitalizado::quitar()`); como `Invoice::documentoAdjunto()`
+     * no depende de una FK dedicada (llave genérica), no hace falta limpiar
+     * nada más — la próxima vez que se abra "Editar" el campo aparece vacío,
+     * listo para adjuntar el correcto.
+     */
+    public function quitarAdjunto(int $facturaId, string $tipoDocumento): void
+    {
+        $record = Invoice::findOrFail($facturaId);
+        $documento = $record->documentoAdjunto($tipoDocumento);
+
+        if (! $documento) {
+            return;
+        }
+
+        DocumentoDigitalizado::quitar($documento->id);
+
+        if ($this->editingId === $facturaId) {
+            if ($tipoDocumento === 'factura_xml') {
+                $this->currentAdjuntoXml = null;
+            } else {
+                $this->currentAdjunto = null;
+            }
+        }
+
+        session()->flash('status', 'Documento desvinculado — edita la factura para adjuntar el correcto.');
+    }
+
+    /**
+     * Abre el modal "Ver XML": lee el contenido del CFDI del disco local y lo
+     * interpreta con `CfdiReader` para mostrar sus campos clave, más el XML
+     * crudo debajo. Solo aplica a documentos guardados localmente — uno en
+     * SharePoint se abre directo con su `url()` (ver la vista), leer su
+     * contenido real requeriría autenticarse contra Graph solo para mostrar
+     * una vista previa, fuera de alcance por ahora.
+     */
+    public function verXml(int $facturaId): void
+    {
+        $record = Invoice::findOrFail($facturaId);
+        $documento = $record->documentoAdjunto('factura_xml');
+
+        if (! $documento || $documento->proveedor_almacenamiento !== 'local') {
+            return;
+        }
+
+        $contenido = Storage::disk('public')->get($documento->referencia);
+
+        $this->xmlPreview = [
+            'nombre' => $documento->nombre_archivo,
+            'parsed' => CfdiReader::parse($contenido),
+            'raw' => $contenido,
+        ];
+        $this->showXmlModal = true;
+    }
+
+    public function cancelVerXml(): void
+    {
+        $this->showXmlModal = false;
+        $this->xmlPreview = null;
     }
 
     public function save(): void
@@ -241,10 +332,15 @@ class Facturas extends Component
             if ($this->adjunto) {
                 DocumentoDigitalizado::storeUploaded($this->adjunto, $record, 'factura', auth()->id());
             }
+
+            if ($this->adjuntoXml) {
+                DocumentoDigitalizado::storeUploaded($this->adjuntoXml, $record, 'factura_xml', auth()->id());
+            }
         });
 
         $this->showModal = false;
         $this->adjunto = null;
+        $this->adjuntoXml = null;
         session()->flash('status', 'Guardado correctamente.');
     }
 
@@ -256,6 +352,8 @@ class Facturas extends Component
         $this->recepcionIds = [];
         $this->adjunto = null;
         $this->currentAdjunto = null;
+        $this->adjuntoXml = null;
+        $this->currentAdjuntoXml = null;
         $this->resetValidation();
     }
 

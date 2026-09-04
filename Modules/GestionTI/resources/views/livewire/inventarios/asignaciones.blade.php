@@ -49,7 +49,16 @@
                     <td class="py-2 text-right space-x-2 whitespace-nowrap">
                         <button wire:click="exportResponsivaPdf({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Generar PDF</button>
 
-                        @if (! $record->documento_responsiva_id)
+                        @if ($record->documentoResponsiva)
+                            <a href="{{ $record->documentoResponsiva->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver responsiva</a>
+                            <button
+                                wire:click="quitarResponsiva({{ $record->id }})"
+                                wire:confirm="¿Quitar la responsiva vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta asignación."
+                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
+                            >
+                                Quitar
+                            </button>
+                        @else
                             <button wire:click="openAttach({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
                                 Adjuntar responsiva firmada
                             </button>

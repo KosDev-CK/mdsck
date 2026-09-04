@@ -456,6 +456,135 @@ class FacturasTest extends TestCase
         Storage::disk('public')->assertExists($documento->referencia);
     }
 
+    /**
+     * El PDF y el XML/CFDI son adjuntos independientes (`tipo_documento`
+     * distinto) — pueden subirse juntos o por separado, y `documentoAdjunto()`
+     * ya no los confunde entre sí (antes de este cambio no filtraba por tipo).
+     */
+    public function test_uploading_pdf_and_xml_together_creates_two_independent_documentos(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+
+        $pdf = UploadedFile::fake()->create('factura.pdf', 100, 'application/pdf');
+        $xml = UploadedFile::fake()->create('factura.xml', 10, 'text/xml');
+
+        Livewire::test(Facturas::class)
+            ->call('create')
+            ->set('form.folio_factura', 'FAC-PDF-XML')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.monto_total', 100)
+            ->set('adjunto', $pdf)
+            ->set('adjuntoXml', $xml)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $invoice = Invoice::where('folio_factura', 'FAC-PDF-XML')->firstOrFail();
+
+        $documentoPdf = $invoice->documentoAdjunto('factura');
+        $documentoXml = $invoice->documentoAdjunto('factura_xml');
+
+        $this->assertNotNull($documentoPdf);
+        $this->assertNotNull($documentoXml);
+        $this->assertNotSame($documentoPdf->id, $documentoXml->id);
+        $this->assertSame('factura.pdf', $documentoPdf->nombre_archivo);
+        $this->assertSame('factura.xml', $documentoXml->nombre_archivo);
+    }
+
+    /**
+     * "Quitar" borra únicamente el `DocumentoDigitalizado` del tipo indicado
+     * — el otro adjunto (y el archivo físico de ambos) no se toca.
+     */
+    public function test_quitar_adjunto_unlinks_only_the_given_type_without_deleting_the_physical_file(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+
+        $invoice = Invoice::create([
+            'folio_factura' => 'FAC-QUITAR',
+            'vendor_id' => $vendor->id,
+            'fecha_recepcion' => '2026-09-01',
+            'monto_total' => 100,
+            'moneda' => 'MXN',
+            'estatus' => Invoice::ESTATUS_RECIBIDA,
+        ]);
+
+        $documentoPdf = \Modules\GestionTI\Models\DocumentoDigitalizado::storeUploaded(
+            UploadedFile::fake()->create('equivocado.pdf', 50, 'application/pdf'),
+            $invoice,
+            'factura',
+            null
+        );
+        $documentoXml = \Modules\GestionTI\Models\DocumentoDigitalizado::storeUploaded(
+            UploadedFile::fake()->create('correcto.xml', 10, 'text/xml'),
+            $invoice,
+            'factura_xml',
+            null
+        );
+
+        Livewire::test(Facturas::class)
+            ->call('quitarAdjunto', $invoice->id, 'factura');
+
+        $this->assertDatabaseMissing('documentos_digitalizados', ['id' => $documentoPdf->id]);
+        $this->assertDatabaseHas('documentos_digitalizados', ['id' => $documentoXml->id]);
+        Storage::disk('public')->assertExists($documentoPdf->referencia);
+        $this->assertNull($invoice->documentoAdjunto('factura'));
+        $this->assertNotNull($invoice->documentoAdjunto('factura_xml'));
+    }
+
+    /**
+     * "Ver XML" interpreta el CFDI real (vía `CfdiReader`) y expone sus
+     * campos clave a la vista — verificado aquí a nivel de propiedad del
+     * componente, la vista solo los imprime.
+     */
+    public function test_ver_xml_parses_a_real_cfdi_and_exposes_it_to_the_view(): void
+    {
+        Storage::fake('public');
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+
+        $invoice = Invoice::create([
+            'folio_factura' => 'FAC-VER-XML',
+            'vendor_id' => $vendor->id,
+            'fecha_recepcion' => '2026-09-01',
+            'monto_total' => 500,
+            'moneda' => 'MXN',
+            'estatus' => Invoice::ESTATUS_RECIBIDA,
+        ]);
+
+        $cfdi = <<<'XML'
+            <?xml version="1.0" encoding="UTF-8"?>
+            <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"
+                Version="4.0" Fecha="2026-09-01T09:00:00" Total="500.00" Moneda="MXN">
+                <cfdi:Emisor Rfc="PRV010101AB1" Nombre="Proveedor de Prueba" />
+                <cfdi:Receptor Rfc="KOS020202XY2" Nombre="Kosmos" />
+                <cfdi:Complemento>
+                    <tfd:TimbreFiscalDigital UUID="AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE" />
+                </cfdi:Complemento>
+            </cfdi:Comprobante>
+            XML;
+
+        \Modules\GestionTI\Models\DocumentoDigitalizado::storeUploaded(
+            UploadedFile::fake()->createWithContent('cfdi.xml', $cfdi),
+            $invoice,
+            'factura_xml',
+            null
+        );
+
+        $component = Livewire::test(Facturas::class)
+            ->call('verXml', $invoice->id)
+            ->assertSet('showXmlModal', true);
+
+        $preview = $component->get('xmlPreview');
+        $this->assertSame('cfdi.xml', $preview['nombre']);
+        $this->assertSame('AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE', $preview['parsed']['uuid']);
+        $this->assertSame('PRV010101AB1', $preview['parsed']['emisor_rfc']);
+        $this->assertStringContainsString('<cfdi:Comprobante', $preview['raw']);
+    }
+
     public function test_screen_is_seeded_and_visible_to_administrador(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);

@@ -72,11 +72,15 @@ class Invoice extends Model
      * (a diferencia de `AssetAssignment.documento_responsiva_id`/
      * `Recepcion.documento_remision_id`, que sí son columnas explícitas) —
      * mismo patrón de llave genérica que `SolicitudSicBorrador::documentoAdjunto()`.
+     * `$tipoDocumento` distingue el PDF (`'factura'`, default — el único que
+     * existía antes) del CFDI XML (`'factura_xml'`), ya que una factura real
+     * puede tener ambos adjuntos independientes al mismo tiempo.
      */
-    public function documentoAdjunto(): ?DocumentoDigitalizado
+    public function documentoAdjunto(string $tipoDocumento = 'factura'): ?DocumentoDigitalizado
     {
         return DocumentoDigitalizado::where('entidad_relacionada', class_basename(self::class))
             ->where('entidad_id', $this->id)
+            ->where('tipo_documento', $tipoDocumento)
             ->latest('fecha_subida')
             ->first();
     }

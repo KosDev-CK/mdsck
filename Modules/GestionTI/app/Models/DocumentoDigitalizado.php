@@ -144,6 +144,23 @@ class DocumentoDigitalizado extends Model
     }
 
     /**
+     * Quita la relación de un documento subido por error (técnico equivocado
+     * de archivo) — borra únicamente este registro, **nunca** el archivo
+     * físico en SharePoint/disco. Quien llama es responsable de limpiar
+     * cualquier FK dedicada que apunte a este id (`AssetAssignment.documento_responsiva_id`,
+     * `Recepcion.documento_remision_id`) — los tipos que solo usan la llave
+     * genérica (`entidad_relacionada`/`entidad_id`, ej. `Invoice`) no
+     * necesitan ese paso extra, `documentoAdjunto()` deja de encontrarlo
+     * automáticamente en cuanto el registro se borra. Borrar el archivo real
+     * (si algún día hace falta) queda fuera de alcance a propósito — se hace
+     * a mano en SharePoint/el disco, decisión explícita del usuario.
+     */
+    public static function quitar(int $documentoId): void
+    {
+        static::whereKey($documentoId)->delete();
+    }
+
+    /**
      * URL para abrir/descargar el documento — resuelve según
      * `proveedor_almacenamiento`: 'local' usa el disco `public` como
      * siempre; 'sharepoint' usa el `webUrl` ya persistido en `url_externa`
