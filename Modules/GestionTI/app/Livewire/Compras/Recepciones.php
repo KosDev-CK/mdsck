@@ -183,7 +183,8 @@ class Recepciones extends Component
      * un archivo ya existente en la carpeta de "remisión de proveedor" —
      * sin subir nada. Misma idea que `Asignaciones::openSharePointBuscar()`,
      * simplificada aquí a un solo destino posible (`documentoRemision`, esta
-     * pantalla no tiene un 2do punto de subida diferido).
+     * pantalla no tiene un 2do punto de subida diferido). Excluye los
+     * archivos que ya quedaron vinculados a otro registro.
      */
     public function openSharePointBuscar(): void
     {
@@ -191,7 +192,11 @@ class Recepciones extends Component
         $this->resetValidation('sharePointArchivos');
 
         try {
-            $this->sharePointArchivos = app(SharePointClient::class)->listarArchivosParaTipo('remision_proveedor');
+            $vinculados = DocumentoDigitalizado::driveItemIdsVinculados('remision_proveedor');
+            $this->sharePointArchivos = collect(app(SharePointClient::class)->listarArchivosParaTipo('remision_proveedor'))
+                ->reject(fn (array $archivo) => in_array($archivo['driveItemId'], $vinculados, true))
+                ->values()
+                ->all();
         } catch (SharePointException $e) {
             $this->sharePointArchivos = [];
             $this->addError('sharePointArchivos', 'No se pudo conectar con SharePoint: '.$e->getMessage());

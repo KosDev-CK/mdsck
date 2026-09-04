@@ -11,6 +11,7 @@ use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\CentroCosto;
+use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EstatusActivo;
@@ -598,5 +599,73 @@ class RecepcionesTest extends TestCase
         $this->assertSame('remision-001.pdf', $documento->nombre_archivo);
 
         Http::assertNotSent(fn ($request) => $request->method() === 'PUT');
+    }
+
+    /**
+     * Mismo criterio que `AsignacionesTest` — un archivo ya vinculado a otro
+     * registro no debe volver a ofrecerse en el modal "Buscar en SharePoint".
+     */
+    public function test_buscar_en_sharepoint_excluye_archivos_ya_vinculados(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        config([
+            'services.sharepoint.tenant_id' => 'tenant-1',
+            'services.sharepoint.client_id' => 'client-1',
+            'services.sharepoint.client_secret' => 'secret-1',
+            'services.sharepoint.site_hostname' => 'grupokosmosmexico.sharepoint.com',
+            'services.sharepoint.site_path' => '/sites/Landit',
+            'services.sharepoint.carpetas' => ['remision_proveedor' => 'Remisiones de Proveedor'],
+        ]);
+        $this->app->forgetInstance(\Modules\GestionTI\Support\SharePoint\SharePointClient::class);
+
+        DocumentoDigitalizado::create([
+            'entidad_relacionada' => 'Recepcion',
+            'entidad_id' => 0,
+            'tipo_documento' => 'remision_proveedor',
+            'proveedor_almacenamiento' => 'sharepoint',
+            'referencia' => 'sp-rem-1',
+            'url_externa' => 'https://example/remision-001.pdf',
+            'nombre_archivo' => 'remision-001.pdf',
+            'fecha_subida' => now(),
+            'subido_por_id' => null,
+        ]);
+
+        Http::fake(function ($request) {
+            $url = $request->url();
+
+            if (str_starts_with($url, 'https://login.microsoftonline.com/')) {
+                return Http::response(['access_token' => 'fake-token']);
+            }
+
+            if (preg_match('#/v1\.0/sites/[^/]+/drive$#', $url)) {
+                return Http::response(['id' => 'drive-1']);
+            }
+
+            if (str_contains($url, '/v1.0/sites/') && $request->method() === 'GET') {
+                return Http::response(['id' => 'site-1']);
+            }
+
+            if (str_contains($url, ':/children')) {
+                return Http::response(['value' => [
+                    ['id' => 'sp-rem-1', 'name' => 'remision-001.pdf', 'webUrl' => 'https://example/remision-001.pdf', 'file' => []],
+                    ['id' => 'sp-rem-2', 'name' => 'remision-002.pdf', 'webUrl' => 'https://example/remision-002.pdf', 'file' => []],
+                ]]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('openSharePointBuscar')
+            ->assertSet('showSharePointModal', true);
+
+        $filtrados = $component->viewData('sharePointArchivosFiltrados');
+        $this->assertCount(1, $filtrados);
+        $this->assertSame('remision-002.pdf', $filtrados[0]['nombre']);
     }
 }

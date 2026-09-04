@@ -14,6 +14,7 @@ use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\AssetAssignment;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\ConfiguracionDocumentos;
+use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EstatusActivo;
@@ -765,5 +766,73 @@ class AsignacionesTest extends TestCase
         // pegarle a Graph — solo 1 GET de listado real ocurrió (el de
         // `openSharePointBuscar`) — y elegir/guardar nunca subió nada.
         Http::assertNotSent(fn ($request) => $request->method() === 'PUT');
+    }
+
+    /**
+     * Un archivo ya vinculado a otro registro (`DocumentoDigitalizado`
+     * existente con ese `driveItemId`) no debe volver a ofrecerse en el
+     * modal "Buscar en SharePoint" — evita relacionar el mismo archivo dos
+     * veces por error.
+     */
+    public function test_buscar_en_sharepoint_excluye_archivos_ya_vinculados(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusAsignado();
+
+        config([
+            'services.sharepoint.tenant_id' => 'tenant-1',
+            'services.sharepoint.client_id' => 'client-1',
+            'services.sharepoint.client_secret' => 'secret-1',
+            'services.sharepoint.site_hostname' => 'grupokosmosmexico.sharepoint.com',
+            'services.sharepoint.site_path' => '/sites/Landit',
+            'services.sharepoint.carpetas' => ['responsiva' => 'Responsivas Asignación de Activos'],
+        ]);
+        $this->app->forgetInstance(\Modules\GestionTI\Support\SharePoint\SharePointClient::class);
+
+        DocumentoDigitalizado::create([
+            'entidad_relacionada' => 'AssetAssignment',
+            'entidad_id' => 0,
+            'tipo_documento' => 'responsiva',
+            'proveedor_almacenamiento' => 'sharepoint',
+            'referencia' => 'sp-1',
+            'url_externa' => 'https://example/juan-perez.pdf',
+            'nombre_archivo' => 'juan-perez.pdf',
+            'fecha_subida' => now(),
+            'subido_por_id' => null,
+        ]);
+
+        Http::fake(function ($request) {
+            $url = $request->url();
+
+            if (str_starts_with($url, 'https://login.microsoftonline.com/')) {
+                return Http::response(['access_token' => 'fake-token']);
+            }
+
+            if (preg_match('#/v1\.0/sites/[^/]+/drive$#', $url)) {
+                return Http::response(['id' => 'drive-1']);
+            }
+
+            if (str_contains($url, '/v1.0/sites/') && $request->method() === 'GET') {
+                return Http::response(['id' => 'site-1']);
+            }
+
+            if (str_contains($url, ':/children')) {
+                return Http::response(['value' => [
+                    ['id' => 'sp-1', 'name' => 'juan-perez.pdf', 'webUrl' => 'https://example/juan-perez.pdf', 'file' => []],
+                    ['id' => 'sp-2', 'name' => 'maria-lopez.pdf', 'webUrl' => 'https://example/maria-lopez.pdf', 'file' => []],
+                ]]);
+            }
+
+            return Http::response([], 404);
+        });
+
+        $component = Livewire::test(Asignaciones::class)
+            ->call('create')
+            ->call('openSharePointBuscar', 'documentoResponsiva')
+            ->assertSet('showSharePointModal', true);
+
+        $filtrados = $component->viewData('sharePointArchivosFiltrados');
+        $this->assertCount(1, $filtrados);
+        $this->assertSame('maria-lopez.pdf', $filtrados[0]['nombre']);
     }
 }

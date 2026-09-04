@@ -54,6 +54,23 @@ class DocumentoDigitalizado extends Model
     }
 
     /**
+     * `driveItemId` de todos los archivos de SharePoint ya vinculados (subidos
+     * o elegidos vía "Buscar en SharePoint") para un `$tipoDocumento` dado —
+     * usado para excluirlos del listado del modal "Buscar en SharePoint" y
+     * así no ofrecer un archivo que ya quedó relacionado con otro registro.
+     *
+     * @return array<int, string>
+     */
+    public static function driveItemIdsVinculados(string $tipoDocumento): array
+    {
+        return static::query()
+            ->where('tipo_documento', $tipoDocumento)
+            ->where('proveedor_almacenamiento', 'sharepoint')
+            ->pluck('referencia')
+            ->all();
+    }
+
+    /**
      * Guarda un archivo subido vía Livewire (`WithFileUploads`). Si
      * `$tipoDocumento` está marcado en `ConfiguracionDocumentos` para ir a
      * SharePoint, sube el binario vía `SharePointClient` y crea el registro

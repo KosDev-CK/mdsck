@@ -345,7 +345,9 @@ class Asignaciones extends Component
      * 'attachDocumento' desde el modal de adjuntar después. La lista
      * completa de la carpeta se trae una sola vez de Graph; el filtro por
      * nombre (`sharePointSearch`) se aplica en memoria en `render()`, sin
-     * volver a pegarle a Graph por cada tecla.
+     * volver a pegarle a Graph por cada tecla. Excluye los archivos que ya
+     * quedaron vinculados a otro registro (`DocumentoDigitalizado::driveItemIdsVinculados()`)
+     * para no ofrecer dos veces el mismo archivo.
      */
     public function openSharePointBuscar(string $target): void
     {
@@ -354,7 +356,11 @@ class Asignaciones extends Component
         $this->resetValidation('sharePointArchivos');
 
         try {
-            $this->sharePointArchivos = app(SharePointClient::class)->listarArchivosParaTipo('responsiva');
+            $vinculados = DocumentoDigitalizado::driveItemIdsVinculados('responsiva');
+            $this->sharePointArchivos = collect(app(SharePointClient::class)->listarArchivosParaTipo('responsiva'))
+                ->reject(fn (array $archivo) => in_array($archivo['driveItemId'], $vinculados, true))
+                ->values()
+                ->all();
         } catch (SharePointException $e) {
             $this->sharePointArchivos = [];
             $this->addError('sharePointArchivos', 'No se pudo conectar con SharePoint: '.$e->getMessage());
