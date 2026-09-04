@@ -783,7 +783,17 @@ Con el formato/contenido de Tickets y Dashboard de TI ya aprobados por el usuari
 
 **Verificado**: cada agente corrió los tests de sus propias pantallas antes de reportar (402/402 tests de `Modules/GestionTI` en cada corrida independiente). Verificación final consolidada tras la limpieza: `AyudaPdfControllerTest` extendido a los 21 slugs (antes solo probaba `tickets`/`dashboard`) — los 21 PDFs se generan correctamente vía HTTP real con Dompdf. Suite completa de `Modules/GestionTI` re-corrida una vez más tras la limpieza final del atributo `model`.
 
-**No verificado**: recorrido visual en navegador de las 19 pantallas nuevas (ninguno de los 5 agentes tuvo herramienta de navegador disponible en su sesión) — la validación fue 100% vía tests de Livewire + generación real de PDF. Si el usuario nota algo raro visualmente en alguna pantalla nueva, no está cubierto por esta verificación.
+**No verificado por los agentes**: recorrido visual en navegador de las 19 pantallas nuevas (ninguno de los 5 agentes tuvo herramienta de navegador disponible en su sesión) — la validación fue 100% vía tests de Livewire + generación real de PDF.
+
+## Revisión, corrección y despliegue del sistema de Ayuda (2026-09-04)
+
+Sesión de cierre sobre el rollout de arriba, con checklist completo en `docs/gestionti-checklist-revision-sesion.md`:
+
+- **Verificación visual real en navegador** (pendiente desde el rollout): las 21 pantallas confirmadas con el ícono "?", título y slug de PDF correctos. Modal probado en claro/oscuro. 3 PDFs descargados y revisados (incluyendo uno de 2 páginas) — el membrete llega a sangre completa en todas las páginas.
+- **Auditoría de contenido contra el código real** (4 agentes en paralelo, uno por grupo de pantallas): de los 21 archivos de `resources/ayuda/data/`, se encontraron y corrigieron 8 imprecisiones en 6 archivos — la más relevante, `solicitudes-proveedor.php` afirmaba que el origen debía ser "una SIC autorizada" cuando el código acepta una SIC en cualquier estatus (y de hecho no exige ningún origen). El resto son omisiones menores (botón "Exportar a Excel" no documentado en 3 catálogos, un par de campos de listado/ficha no cubiertos).
+- **Icono agregado también a las pantallas `Show`** (petición explícita del usuario): `PresupuestoProyectos\Show` y `Inventarios\FichaActivo\Show` ahora reutilizan el mismo contenido de Ayuda que su pantalla hermana (`Manage`/`Buscar`).
+- **Commit y deploy**: todo lo anterior + el rollout completo de las 19 pantallas (nunca se había commiteado) quedó en el commit `c0a9a98` ("Add per-screen Ayuda system to GestionTI"), sobre `428e283`. Desplegado a producción el mismo día vía `deploy-mdsck.ps1 -Force` (`-Force` necesario porque `Modules/MesaServicio/` — un módulo no relacionado, en desarrollo por otro hilo de trabajo en este mismo repo — sigue sin commitear en el working tree; el flag solo ignora esa advertencia, `git archive HEAD` de todos modos solo empaqueta lo commiteado). Deploy sin migraciones nuevas ("Nothing to migrate"), sin cambios de permisos/Screens. Confirmado con `curl` que `https://mds.ck.com.mx/login` responde 200 tras el deploy.
+- **No verificado en producción**: la reasignación de roles (sesión anterior) no se pudo re-confirmar en vivo esta vez — la llave SSH de deploy es de comando forzado (solo corre el script de deploy, sin shell/tinker) y el login de producción requiere un código enviado al correo real del usuario. Confirmado en su lugar que el commit desplegado no toca `screens`/`role_has_permissions`, así que no pudo haber afectado la asignación ya confirmada antes.
 
 ## Insumos pendientes del usuario (no bloquean el trabajo en curso)
 
