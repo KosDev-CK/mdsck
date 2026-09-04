@@ -3,6 +3,10 @@
         Ficha de Activo
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     <x-ui.card padding="p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <input
@@ -32,4 +36,8 @@
 
         <div class="mt-4">{{ $records->links() }}</div>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Ficha de Activo" :pdf-url="route('gestionti.ayuda.pdf', 'ficha-activo')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('ficha-activo')])
+    </x-ui.help-modal>
 </div>

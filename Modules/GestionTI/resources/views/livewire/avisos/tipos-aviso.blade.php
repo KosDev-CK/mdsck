@@ -3,6 +3,10 @@
         Configuración de Avisos
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -109,4 +113,8 @@
             </div>
         </form>
     </x-ui.modal>
+
+    <x-ui.help-modal titulo="Configuración de Avisos" :pdf-url="route('gestionti.ayuda.pdf', 'tipos-aviso')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('tipos-aviso')])
+    </x-ui.help-modal>
 </div>

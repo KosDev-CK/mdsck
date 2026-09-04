@@ -3,6 +3,10 @@
         Presupuesto por Proyecto
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -115,4 +119,8 @@
             </div>
         </form>
     </x-ui.modal>
+
+    <x-ui.help-modal titulo="Presupuesto por Proyecto" :pdf-url="route('gestionti.ayuda.pdf', 'presupuestos-proyecto')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('presupuestos-proyecto')])
+    </x-ui.help-modal>
 </div>

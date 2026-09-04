@@ -195,10 +195,17 @@ class BusquedaGlobalTest extends TestCase
         $withoutPermission = $this->userWithPermissions();
         $this->actingAs($withoutPermission);
 
+        // No se agrega assertDontSee('Activos') aparte: la modal de ayuda
+        // ("?", ver AyudaCatalog::contenido('busqueda-global')) menciona
+        // "Activos" como categoría buscable de forma genérica para
+        // cualquiera que pueda abrir la pantalla, sin importar su permiso
+        // sobre Ficha de Activo — no es una fuga de datos, es documentación.
+        // assertDontSee($asset->codigo) + assertSee('Sin resultados') ya
+        // prueban que la categoría real de resultados no se calculó ni se
+        // renderizó (mismo criterio ya aplicado en DashboardTest).
         Livewire::test(BusquedaGlobal::class)
             ->set('query', 'COND0R')
             ->assertDontSee($asset->codigo)
-            ->assertDontSee('Activos')
             ->assertSee('Sin resultados');
     }
 

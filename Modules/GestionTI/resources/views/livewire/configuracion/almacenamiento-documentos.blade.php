@@ -3,6 +3,10 @@
         Configuración de Almacenamiento
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success">{{ session('status') }}</x-ui.alert>
     @endif
@@ -36,4 +40,8 @@
             </div>
         </form>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Configuración de Almacenamiento" :pdf-url="route('gestionti.ayuda.pdf', 'almacenamiento-documentos')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('almacenamiento-documentos')])
+    </x-ui.help-modal>
 </div>

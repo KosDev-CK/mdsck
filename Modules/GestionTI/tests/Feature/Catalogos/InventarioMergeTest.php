@@ -47,12 +47,20 @@ class InventarioMergeTest extends TestCase
     {
         $this->actingAs($this->actingUser());
 
+        // No se usa assertDontSee('Fusionar duplicados') a secas: la modal
+        // de ayuda ("?", ver AyudaCatalog::contenido('catalogos-inventario'))
+        // explica el concepto "Fusionar duplicados" de forma genérica para
+        // toda la pantalla, sin importar la pestaña activa — no es un bug,
+        // es documentación (mismo criterio ya aplicado en DashboardTest). Se
+        // verifica en su lugar la ausencia del botón real, único por tener
+        // el atributo wire:click="openMerge" (la modal de ayuda es texto
+        // estático, sin ese atributo).
         Livewire::test(Inventario::class)
             ->assertSee('Fusionar duplicados')
             ->call('setTab', 'periodicidad_mantenimiento')
-            ->assertDontSee('Fusionar duplicados')
+            ->assertDontSee('wire:click="openMerge"', false)
             ->call('setTab', 'stock_minimo')
-            ->assertDontSee('Fusionar duplicados');
+            ->assertDontSee('wire:click="openMerge"', false);
     }
 
     public function test_merging_two_tipo_equipo_reassigns_every_reference_and_deletes_the_duplicate(): void

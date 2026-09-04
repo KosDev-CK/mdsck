@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\GestionTI\Http\Controllers\Ayuda\AyudaPdfController;
 use Modules\GestionTI\Http\Controllers\Catalogos\ComprasExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\EmpleadosExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\InventarioExportController;
@@ -33,6 +34,15 @@ use Modules\GestionTI\Livewire\PresupuestoProyectos\Show as PresupuestoProyectos
 // Las rutas de cada pantalla se agregan aquí conforme se construyen
 // (ver docs/agregar-pantallas.md). Cada grupo va protegido por su
 // propio permiso `screens.<slug>.<verbo>`.
+
+// PDF de ayuda de una pantalla (ver Modules\GestionTI\Support\Ayuda\AyudaCatalog)
+// — solo `auth`, no un permiso de pantalla específico: es contenido
+// instructivo genérico, no datos de negocio.
+Route::middleware(['auth'])->group(function () {
+    Route::get('/gestionti/ayuda/{slug}/pdf', AyudaPdfController::class)
+        ->name('gestionti.ayuda.pdf')
+        ->where('slug', '[a-z0-9-]+');
+});
 
 // Ruta deliberadamente NO "/dashboard" — esa ya la usa el core
 // (App\Livewire\Dashboard, ruta nombrada "dashboard") para el dashboard

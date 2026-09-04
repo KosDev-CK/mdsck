@@ -3,6 +3,10 @@
         Solicitud a Proveedores
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -169,4 +173,8 @@
             </div>
         </form>
     </x-ui.modal>
+
+    <x-ui.help-modal titulo="Solicitud a Proveedores" :pdf-url="route('gestionti.ayuda.pdf', 'solicitudes-proveedor')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('solicitudes-proveedor')])
+    </x-ui.help-modal>
 </div>

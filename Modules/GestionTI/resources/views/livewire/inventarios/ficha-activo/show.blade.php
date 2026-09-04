@@ -3,6 +3,10 @@
         Ficha de Activo — {{ $asset->codigo }}
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @php
         // Mismos tokens semánticos que usa `x-ui.badge` internamente (ver
         // resources/views/components/ui/badge.blade.php) — nunca un color de
@@ -81,4 +85,8 @@
             </ul>
         @endif
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Ficha de Activo" :pdf-url="route('gestionti.ayuda.pdf', 'ficha-activo')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('ficha-activo')])
+    </x-ui.help-modal>
 </div>

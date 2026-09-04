@@ -3,6 +3,10 @@
         Búsqueda Global
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     <x-ui.card padding="p-5">
         <div class="mb-5">
             <x-ui.input
@@ -60,4 +64,8 @@
             </div>
         @endif
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Búsqueda Global" :pdf-url="route('gestionti.ayuda.pdf', 'busqueda-global')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('busqueda-global')])
+    </x-ui.help-modal>
 </div>

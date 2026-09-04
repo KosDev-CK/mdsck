@@ -3,6 +3,10 @@
         Recepción de Proveedor
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -234,4 +238,8 @@
             </div>
         </div>
     </x-ui.modal>
+
+    <x-ui.help-modal titulo="Recepción de Proveedor" :pdf-url="route('gestionti.ayuda.pdf', 'recepciones')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('recepciones')])
+    </x-ui.help-modal>
 </div>

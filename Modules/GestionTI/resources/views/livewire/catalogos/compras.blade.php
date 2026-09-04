@@ -3,6 +3,10 @@
         Catálogos de Compras
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -156,4 +160,8 @@
             </form>
         </x-ui.modal>
     @endif
+
+    <x-ui.help-modal titulo="Catálogos de Compras" :pdf-url="route('gestionti.ayuda.pdf', 'catalogos-compras')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('catalogos-compras')])
+    </x-ui.help-modal>
 </div>

@@ -3,6 +3,10 @@
         Dashboard
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     {{-- Sección 1 — Métricas globales. Cada tarjeta solo aparece si el
          componente calculó su dato (permiso real, no solo visual — ver
          Dashboard::render()). --}}
@@ -175,4 +179,8 @@
             </div>
         @endif
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Dashboard de TI" :pdf-url="route('gestionti.ayuda.pdf', 'dashboard')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('dashboard')])
+    </x-ui.help-modal>
 </div>

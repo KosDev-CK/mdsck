@@ -3,6 +3,10 @@
         Historial de Avisos
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     <x-ui.card padding="p-5">
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-5 mb-4">
             <x-ui.select label="Tipo de aviso" name="tipoAvisoFilter" wire:model.live="tipoAvisoFilter">
@@ -53,4 +57,8 @@
 
         <div class="mt-4">{{ $records->links() }}</div>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Historial de Avisos" :pdf-url="route('gestionti.ayuda.pdf', 'avisos-historial')">
+        @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('avisos-historial')])
+    </x-ui.help-modal>
 </div>

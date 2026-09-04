@@ -1,0 +1,17 @@
+<?php
+
+return [
+    'titulo' => 'Stock',
+    'concepto' => 'Esta pantalla es el catálogo consultable de todos los equipos (Activos) que existen en el inventario de TI, sin importar su estatus actual — en almacén, reservados para una SIC, ya asignados a un empleado, en reparación o dados de baja. Además de consultar y filtrar, permite dos acciones operativas sobre el inventario físico: reasignar la SIC de un equipo reservado, y trasladar un equipo entre ubicaciones/almacenes.',
+    'resuelve' => 'Concentra en un solo lugar la visibilidad de todo el inventario con filtros combinables (ubicación, tipo de equipo, marca, empresa, estatus) y búsqueda libre, además de avisar de forma proactiva cuando el stock disponible de un tipo de equipo en una ubicación cae por debajo del mínimo configurado — algo que antes requería revisar manualmente. También resuelve dos excepciones operativas reales: cuando una SIC para la que se había reservado un equipo cambia (hay que "liberar" ese equipo hacia otra SIC), y cuando un equipo físicamente cambia de almacén sin que eso implique una asignación a una persona.',
+    'proceso' => [],
+    'campos' => [
+        ['nombre' => 'Buscador (código, número de serie o service tag)', 'explicacion' => 'Búsqueda libre por cualquiera de esos 3 identificadores del equipo.'],
+        ['nombre' => 'Filtro de ubicación / tipo de equipo / marca / estatus', 'explicacion' => 'Filtros independientes, combinables entre sí, sobre las propiedades directas del Activo.'],
+        ['nombre' => 'Filtro de empresa', 'explicacion' => 'Un Activo no tiene una empresa propia hasta que se asigna a un empleado — este filtro solo tiene efecto sobre equipos en estatus "asignado" (busca la empresa del empleado que lo tiene asignado actualmente, no cuenta asignaciones ya devueltas). Un equipo en stock o reservado nunca aparece al filtrar por empresa.'],
+        ['nombre' => 'Alertas de stock bajo mínimo', 'explicacion' => 'Aviso que aparece arriba de la tabla por cada combinación de tipo de equipo + ubicación cuyo stock disponible (contando solo equipos en estatus "en stock" — ni reservados ni asignados cuentan como disponibles) esté por debajo del mínimo configurado en Catálogos. Es informativo, no bloquea ninguna acción.'],
+        ['nombre' => 'SIC reservada', 'explicacion' => 'Columna que muestra, solo para equipos en estatus "reservado", el folio de la SIC para la que ese equipo está apartado. En cualquier otro estatus se muestra vacío.'],
+        ['nombre' => 'Reasignar SIC', 'explicacion' => 'Acción disponible solo sobre equipos "reservados". Permite cambiar, de forma excepcional, la SIC a la que ese equipo específico está apartado — por ejemplo, si la solicitud original se canceló pero el equipo ya se había separado y conviene dárselo a otra SIC autorizada pendiente en su lugar. Requiere elegir la nueva SIC (solo se listan SICs autorizadas que todavía no tienen una asignación) y capturar un motivo obligatorio. Cada reasignación queda registrada en una bitácora interna con la SIC anterior, la nueva y quién la hizo.'],
+        ['nombre' => 'Trasladar', 'explicacion' => 'Acción disponible sobre equipos "en stock" o "reservado" (un equipo ya asignado a una persona no vive en un almacén, así que no aplica). Registra el movimiento físico de un equipo de su ubicación actual a otra, con comentarios opcionales, y actualiza la ubicación del Activo. No aplica a traslados de equipos asignados a personas, ni sustituye una asignación.'],
+    ],
+];
