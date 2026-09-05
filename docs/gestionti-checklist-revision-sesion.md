@@ -95,6 +95,6 @@ Confirmados **sin errores** (contenido correcto tal cual, sin cambios): `dashboa
 
 ## 6. Pendientes explícitos ya identificados (fuera de esta sesión, no bloquean el commit)
 
-- [ ] SharePoint go-live: permiso `Sites.Selected` en Azure, acceso al sitio, carpeta faltante "Remisiones de Proveedor", variables `.env` de producción.
+- [x] SharePoint go-live: permiso `Sites.Selected` concedido y probado en dev y producción (2026-09-04). Carpeta "Remisiones de Proveedor" confirmada existente por el usuario — ver `docs/gestionti-progreso.md`.
 - [ ] Migración de histórico de inventario a producción (`gestionti:importar-histórico`) — pendiente el Excel real.
-- [ ] Plantilla Excel corporativa para exportar Presupuesto por Proyecto (hoy usa placeholder).
+- [x] Plantilla Excel corporativa para exportar Presupuesto por Proyecto — implementada 2026-09-04 (ver `docs/gestionti-progreso.md`, sección "Presupuesto por Proyecto — alineado con el Excel corporativo real").
