@@ -43,19 +43,79 @@ class ProyectoPresupuestoArticulo extends Model
         'antivirus' => 'Antivirus',
     ];
 
+    /**
+     * Agrupación contable de 5 valores fijos que exige el Excel corporativo
+     * real (ver la migración `add_excel_corporativo_fields_to_presupuesto`)
+     * — orden fijo a propósito, es el mismo orden numerado (1-5) en que
+     * aparecen las secciones en ese documento y en el export.
+     */
+    public const CATEGORIAS_CONTABLES = [
+        'aplicativos',
+        'infraestructura',
+        'telco',
+        'ciberseguridad',
+        'gastos_implementacion',
+    ];
+
+    public const CATEGORIA_CONTABLE_LABELS = [
+        'aplicativos' => 'Aplicativos',
+        'infraestructura' => 'Infraestructura',
+        'telco' => 'Telco',
+        'ciberseguridad' => 'Ciberseguridad',
+        'gastos_implementacion' => 'Gastos de Implementación',
+    ];
+
+    public const TIPOS_SERVICIO = [
+        'consultoria',
+        'equipo',
+        'servicio',
+        'licencia',
+        'envio',
+    ];
+
+    public const TIPO_SERVICIO_LABELS = [
+        'consultoria' => 'Consultoría',
+        'equipo' => 'Equipo',
+        'servicio' => 'Servicio',
+        'licencia' => 'Licencia',
+        'envio' => 'Envío',
+    ];
+
+    public const CASHFLOW_ONE_TIME = 'one_time';
+
+    public const CASHFLOW_ON_GOING = 'on_going';
+
+    public const CASHFLOW_TIPOS = [
+        self::CASHFLOW_ONE_TIME,
+        self::CASHFLOW_ON_GOING,
+    ];
+
+    public const CASHFLOW_LABELS = [
+        self::CASHFLOW_ONE_TIME => 'One Time',
+        self::CASHFLOW_ON_GOING => 'On going',
+    ];
+
     protected $fillable = [
         'proyecto_id',
         'categoria',
+        'categoria_contable',
         'descripcion',
         'cantidad',
         'responsable_costo_id',
         'costo_unitario',
+        'proveedor',
+        'razon_social_facturada',
+        'tipo_servicio',
+        'cashflow_tipo',
+        'no_meses',
+        'costo_unitario_usd',
         'estatus_captura',
         'fecha_captura',
     ];
 
     protected $casts = [
         'costo_unitario' => 'decimal:2',
+        'costo_unitario_usd' => 'decimal:2',
         'fecha_captura' => 'date',
     ];
 

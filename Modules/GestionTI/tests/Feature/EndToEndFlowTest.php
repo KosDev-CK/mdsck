@@ -235,6 +235,7 @@ class EndToEndFlowTest extends TestCase
         Livewire::test(PresupuestoShow::class, ['proyectoPresupuesto' => $proyecto])
             ->call('openArticuloModal')
             ->set('articuloForm.categoria', 'laptops_desktops')
+            ->set('articuloForm.categoria_contable', 'infraestructura')
             ->set('articuloForm.descripcion', 'Laptop para gerente E2E')
             ->set('articuloForm.cantidad', 2)
             ->set('articuloForm.responsable_costo_id', $pmEmpleado->id)
@@ -251,8 +252,9 @@ class EndToEndFlowTest extends TestCase
         $this->assertSame(ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS, $proyecto->fresh()->estatus);
 
         Livewire::test(PresupuestoShow::class, ['proyectoPresupuesto' => $proyecto->fresh()])
-            ->set("costoInputs.{$articuloPresupuesto->id}", 15000)
-            ->call('capturarCosto', $articuloPresupuesto->id)
+            ->call('openCosto', $articuloPresupuesto->id)
+            ->set('costoForm.costo_unitario', 15000)
+            ->call('guardarCosto')
             ->assertHasNoErrors();
 
         $articuloPresupuesto->refresh();

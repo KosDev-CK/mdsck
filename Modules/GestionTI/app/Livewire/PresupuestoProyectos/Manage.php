@@ -52,6 +52,7 @@ class Manage extends Component
             'form.pm_responsable_id' => 'required|exists:empleados,id',
             'form.fecha_solicitud' => 'required|date',
             'form.fecha_limite_captura' => 'required|date',
+            'form.factor_administrativo' => 'required|numeric|min:1',
         ];
     }
 
@@ -76,6 +77,7 @@ class Manage extends Component
             'pm_responsable_id' => null,
             'fecha_solicitud' => now()->format('Y-m-d'),
             'fecha_limite_captura' => now()->addDays(15)->format('Y-m-d'),
+            'factor_administrativo' => '1.0350',
         ];
         $this->resetValidation();
         $this->showModal = true;

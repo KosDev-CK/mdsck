@@ -29,6 +29,9 @@
             'rechazado' => 'red',
         ];
         $categoriaLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_LABELS;
+        $categoriaContableLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_CONTABLE_LABELS;
+        $tipoServicioLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::TIPO_SERVICIO_LABELS;
+        $cashflowLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CASHFLOW_LABELS;
         $capturaLabels = ['pendiente' => 'Pendiente', 'capturado' => 'Capturado'];
         $capturaColors = ['pendiente' => 'amber', 'capturado' => 'emerald'];
         $autorizacionLabels = ['pendiente' => 'Pendiente', 'aprobado' => 'Aprobado', 'rechazado' => 'Rechazado'];
@@ -111,32 +114,38 @@
             </div>
         </div>
 
-        <x-ui.table :headers="['Categoría', 'Descripción', 'Cantidad', 'Responsable de costo', 'Costo unitario', 'Estatus de captura', '']" :empty="$proyectoPresupuesto->articulos->isEmpty()" empty-description="Agrega el primero con el botón Agregar artículo.">
+        <x-ui.table :headers="['Categoría', 'Categoría contable', 'Descripción', 'Cantidad', 'Responsable de costo', 'Costo / proveedor', 'Estatus de captura', '']" :empty="$proyectoPresupuesto->articulos->isEmpty()" empty-description="Agrega el primero con el botón Agregar artículo.">
             @foreach ($proyectoPresupuesto->articulos as $articulo)
                 <tr wire:key="articulo-{{ $articulo->id }}" class="border-b border-gray-50 dark:border-gray-800">
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaLabels[$articulo->categoria] ?? $articulo->categoria }}</td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaContableLabels[$articulo->categoria_contable] ?? $articulo->categoria_contable ?? '—' }}</td>
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $articulo->descripcion }}</td>
                     <td class="py-2">{{ $articulo->cantidad }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $articulo->responsableCosto?->nombre }}</td>
                     <td class="py-2">
                         @if ($proyectoPresupuesto->estatus === 'en_captura_costos' && $articulo->estatus_captura === 'pendiente')
-                            <div class="flex items-center gap-2">
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    wire:model="costoInputs.{{ $articulo->id }}"
-                                    class="w-28 rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                                >
-                                <button type="button" wire:click="capturarCosto({{ $articulo->id }})" class="text-sm text-primary hover:brightness-90">
-                                    Guardar costo
-                                </button>
-                            </div>
-                            @error("costoInputs.{$articulo->id}")
-                                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
-                            @enderror
+                            <button type="button" wire:click="openCosto({{ $articulo->id }})" class="text-sm text-primary hover:brightness-90">
+                                Capturar costo
+                            </button>
                         @elseif ($articulo->costo_unitario !== null)
-                            ${{ number_format($articulo->costo_unitario, 2) }}
+                            <div class="text-gray-900 dark:text-gray-100">
+                                ${{ number_format($articulo->costo_unitario, 2) }}
+                                @if ($articulo->costo_unitario_usd !== null)
+                                    <span class="text-gray-500 dark:text-gray-400">/ US${{ number_format($articulo->costo_unitario_usd, 2) }}</span>
+                                @endif
+                            </div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ $articulo->proveedor ?? '—' }}
+                                @if ($articulo->cashflow_tipo)
+                                    · {{ $cashflowLabels[$articulo->cashflow_tipo] ?? $articulo->cashflow_tipo }}
+                                    @if ($articulo->no_meses)
+                                        ({{ $articulo->no_meses }} {{ \Illuminate\Support\Str::plural('mes', $articulo->no_meses) }})
+                                    @endif
+                                @endif
+                            </div>
+                            @if ($proyectoPresupuesto->estatus === 'en_captura_costos')
+                                <button type="button" wire:click="openCosto({{ $articulo->id }})" class="text-xs text-primary hover:underline">Editar costo</button>
+                            @endif
                         @else
                             <x-ui.badge color="amber">Pendiente</x-ui.badge>
                         @endif
@@ -193,12 +202,26 @@
 
     <x-ui.modal model="showArticuloModal" :title="($editingArticuloId ? 'Editar' : 'Nuevo') . ' — Artículo'">
         <form wire:submit="saveArticulo" class="space-y-4">
-            <x-ui.select label="Categoría" name="articuloForm.categoria" wire:model="articuloForm.categoria">
-                <option value="">Selecciona...</option>
-                @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_LABELS as $value => $label)
-                    <option value="{{ $value }}">{{ $label }}</option>
-                @endforeach
-            </x-ui.select>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <x-ui.select label="Categoría" name="articuloForm.categoria" wire:model="articuloForm.categoria">
+                    <option value="">Selecciona...</option>
+                    @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_LABELS as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.select
+                    label="Categoría contable"
+                    name="articuloForm.categoria_contable"
+                    wire:model="articuloForm.categoria_contable"
+                    hint="Agrupación del Excel de presupuesto que se firma — independiente de la Categoría de arriba."
+                >
+                    <option value="">Selecciona...</option>
+                    @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_CONTABLE_LABELS as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+            </div>
 
             <x-ui.input label="Descripción" name="articuloForm.descripcion" wire:model="articuloForm.descripcion" />
 
@@ -215,6 +238,48 @@
 
             <div class="flex justify-end gap-2">
                 <x-ui.button type="button" variant="secondary" wire:click="cancelArticulo">Cancelar</x-ui.button>
+                <x-ui.button type="submit">Guardar</x-ui.button>
+            </div>
+        </form>
+    </x-ui.modal>
+
+    <x-ui.modal model="showCostoModal" title="Capturar costo" max-width="max-w-2xl">
+        <form wire:submit="guardarCosto" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <x-ui.input label="Costo unitario (MXN)" name="costoForm.costo_unitario" type="number" step="0.01" min="0" wire:model="costoForm.costo_unitario" />
+                <x-ui.input label="Costo unitario (USD, opcional)" name="costoForm.costo_unitario_usd" type="number" step="0.01" min="0" wire:model="costoForm.costo_unitario_usd" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <x-ui.input label="Proveedor (opcional)" name="costoForm.proveedor" wire:model="costoForm.proveedor" />
+                <x-ui.input label="Razón social facturada (opcional)" name="costoForm.razon_social_facturada" wire:model="costoForm.razon_social_facturada" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <x-ui.select label="Tipo de servicio (opcional)" name="costoForm.tipo_servicio" wire:model="costoForm.tipo_servicio">
+                    <option value="">Sin especificar</option>
+                    @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::TIPO_SERVICIO_LABELS as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.select
+                    label="CashFlow (opcional)"
+                    name="costoForm.cashflow_tipo"
+                    wire:model="costoForm.cashflow_tipo"
+                    hint="Determina si el costo va al total 'One Time' o 'On going' del Excel exportado."
+                >
+                    <option value="">Sin especificar</option>
+                    @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CASHFLOW_LABELS as $value => $label)
+                        <option value="{{ $value }}">{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.input label="No. de meses" name="costoForm.no_meses" type="number" min="1" wire:model="costoForm.no_meses" />
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <x-ui.button type="button" variant="secondary" wire:click="cancelCosto">Cancelar</x-ui.button>
                 <x-ui.button type="submit">Guardar</x-ui.button>
             </div>
         </form>

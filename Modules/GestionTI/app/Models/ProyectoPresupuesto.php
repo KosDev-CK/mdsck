@@ -27,12 +27,14 @@ class ProyectoPresupuesto extends Model
         'pm_responsable_id',
         'fecha_solicitud',
         'fecha_limite_captura',
+        'factor_administrativo',
         'estatus',
     ];
 
     protected $casts = [
         'fecha_solicitud' => 'date',
         'fecha_limite_captura' => 'date',
+        'factor_administrativo' => 'decimal:4',
     ];
 
     public function empresa()

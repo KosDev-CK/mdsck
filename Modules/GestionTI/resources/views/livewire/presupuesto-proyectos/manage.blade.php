@@ -113,6 +113,16 @@
                 <x-ui.input label="Fecha límite de captura" name="form.fecha_limite_captura" type="date" wire:model="form.fecha_limite_captura" />
             </div>
 
+            <x-ui.input
+                label="Factor administrativo"
+                name="form.factor_administrativo"
+                type="number"
+                step="0.0001"
+                min="1"
+                wire:model="form.factor_administrativo"
+                hint="Se aplica sobre los totales del Excel exportado (One Time, On going y Total). No se puede cambiar después de crear el proyecto."
+            />
+
             <div class="flex justify-end gap-2">
                 <x-ui.button type="button" variant="secondary" wire:click="cancel">Cancelar</x-ui.button>
                 <x-ui.button type="submit">Guardar</x-ui.button>

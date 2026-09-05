@@ -50,15 +50,18 @@ class Show extends Component
 
     public array $articuloForm = [];
 
-    /**
-     * Costo unitario editable por artículo (indexado por id de artículo,
-     * `wire:model="costoInputs.<id>"`) — inicializado una sola vez en
-     * `mount()` (no en `render()`) para no pisar ediciones de una fila
-     * cuando una acción sobre OTRA fila dispara un nuevo render.
-     *
-     * @var array<int, mixed>
-     */
-    public array $costoInputs = [];
+    // --- Captura de costo (fase `en_captura_costos`) ---
+    // Reemplaza el input inline de un solo número que existía antes de
+    // alinear la captura con el Excel corporativo real (ver
+    // docs/gestionti-progreso.md) — ahora son 7 campos (proveedor, razón
+    // social, tipo de servicio, cashflow, meses, costo MXN/USD), ya no caben
+    // en una celda de tabla.
+
+    public bool $showCostoModal = false;
+
+    public ?int $costoArticuloId = null;
+
+    public array $costoForm = [];
 
     // --- Autorización ---
 
@@ -78,7 +81,6 @@ class Show extends Component
     public function mount(ProyectoPresupuesto $proyectoPresupuesto): void
     {
         $this->proyectoPresupuesto = $proyectoPresupuesto;
-        $this->costoInputs = $proyectoPresupuesto->articulos()->pluck('costo_unitario', 'id')->all();
     }
 
     // ==================================================================
@@ -96,6 +98,7 @@ class Show extends Component
         $this->editingArticuloId = null;
         $this->articuloForm = [
             'categoria' => '',
+            'categoria_contable' => '',
             'descripcion' => '',
             'cantidad' => 1,
             'responsable_costo_id' => null,
@@ -115,6 +118,7 @@ class Show extends Component
         $this->editingArticuloId = $id;
         $this->articuloForm = [
             'categoria' => $articulo->categoria,
+            'categoria_contable' => $articulo->categoria_contable,
             'descripcion' => $articulo->descripcion,
             'cantidad' => $articulo->cantidad,
             'responsable_costo_id' => $articulo->responsable_costo_id,
@@ -139,6 +143,7 @@ class Show extends Component
 
         $this->validate([
             'articuloForm.categoria' => ['required', Rule::in(ProyectoPresupuestoArticulo::CATEGORIAS)],
+            'articuloForm.categoria_contable' => ['required', Rule::in(ProyectoPresupuestoArticulo::CATEGORIAS_CONTABLES)],
             'articuloForm.descripcion' => 'required|string|max:255',
             'articuloForm.cantidad' => 'required|integer|min:1',
             'articuloForm.responsable_costo_id' => 'required|exists:empleados,id',
@@ -147,8 +152,7 @@ class Show extends Component
         if ($this->editingArticuloId) {
             $this->proyectoPresupuesto->articulos()->where('id', $this->editingArticuloId)->update($this->articuloForm);
         } else {
-            $nuevo = $this->proyectoPresupuesto->articulos()->create($this->articuloForm);
-            $this->costoInputs[$nuevo->id] = null;
+            $this->proyectoPresupuesto->articulos()->create($this->articuloForm);
         }
 
         $this->showArticuloModal = false;
@@ -162,17 +166,16 @@ class Show extends Component
         }
 
         $this->proyectoPresupuesto->articulos()->where('id', $id)->delete();
-        unset($this->costoInputs[$id]);
         session()->flash('status', 'Artículo eliminado.');
     }
 
     /**
-     * Captura inline del costo unitario de un artículo — solo mientras el
-     * proyecto está `en_captura_costos`. Si con esta captura TODOS los
-     * artículos del proyecto quedan `capturado`, el proyecto transiciona
-     * automáticamente a `completo`.
+     * Abre el modal de captura de costo — reemplaza el input inline de un
+     * solo número (ver comentario de propiedades arriba). Precarga lo que ya
+     * se haya capturado antes, para poder corregir un dato sin perder el
+     * resto.
      */
-    public function capturarCosto(int $articuloId): void
+    public function openCosto(int $articuloId): void
     {
         if ($this->proyectoPresupuesto->estatus !== ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS) {
             return;
@@ -184,15 +187,63 @@ class Show extends Component
             return;
         }
 
+        $this->costoArticuloId = $articuloId;
+        $this->costoForm = [
+            'costo_unitario' => $articulo->costo_unitario,
+            'costo_unitario_usd' => $articulo->costo_unitario_usd,
+            'proveedor' => $articulo->proveedor,
+            'razon_social_facturada' => $articulo->razon_social_facturada,
+            'tipo_servicio' => $articulo->tipo_servicio,
+            'cashflow_tipo' => $articulo->cashflow_tipo,
+            'no_meses' => $articulo->no_meses ?? 1,
+        ];
+        $this->resetValidation();
+        $this->showCostoModal = true;
+    }
+
+    public function cancelCosto(): void
+    {
+        $this->showCostoModal = false;
+        $this->costoArticuloId = null;
+        $this->costoForm = [];
+        $this->resetValidation();
+    }
+
+    /**
+     * Guarda los 7 campos de costo/proveedor/forma de pago de un artículo —
+     * solo mientras el proyecto está `en_captura_costos`. Solo
+     * `costo_unitario` es obligatorio (mismo criterio que el resto del
+     * módulo: no bloquear la captura por datos que a veces no se conocen
+     * todavía). Si con esta captura TODOS los artículos del proyecto quedan
+     * `capturado`, el proyecto transiciona automáticamente a `completo`
+     * (misma lógica que ya existía en `capturarCosto()`).
+     */
+    public function guardarCosto(): void
+    {
+        if ($this->proyectoPresupuesto->estatus !== ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS) {
+            return;
+        }
+
+        $articulo = $this->proyectoPresupuesto->articulos()->find($this->costoArticuloId);
+
+        if (! $articulo) {
+            return;
+        }
+
         $this->validate([
-            "costoInputs.$articuloId" => 'required|numeric|min:0',
+            'costoForm.costo_unitario' => 'required|numeric|min:0',
+            'costoForm.costo_unitario_usd' => 'nullable|numeric|min:0',
+            'costoForm.proveedor' => 'nullable|string|max:255',
+            'costoForm.razon_social_facturada' => 'nullable|string|max:255',
+            'costoForm.tipo_servicio' => ['nullable', Rule::in(ProyectoPresupuestoArticulo::TIPOS_SERVICIO)],
+            'costoForm.cashflow_tipo' => ['nullable', Rule::in(ProyectoPresupuestoArticulo::CASHFLOW_TIPOS)],
+            'costoForm.no_meses' => 'nullable|integer|min:1',
         ]);
 
-        $articulo->update([
-            'costo_unitario' => $this->costoInputs[$articuloId],
+        $articulo->update(array_merge($this->costoForm, [
             'estatus_captura' => ProyectoPresupuestoArticulo::ESTATUS_CAPTURA_CAPTURADO,
             'fecha_captura' => now()->format('Y-m-d'),
-        ]);
+        ]));
 
         $todoCapturado = $this->proyectoPresupuesto->articulos()
             ->where('estatus_captura', ProyectoPresupuestoArticulo::ESTATUS_CAPTURA_PENDIENTE)
@@ -209,6 +260,7 @@ class Show extends Component
             );
         }
 
+        $this->cancelCosto();
         session()->flash('status', 'Costo capturado.');
     }
 

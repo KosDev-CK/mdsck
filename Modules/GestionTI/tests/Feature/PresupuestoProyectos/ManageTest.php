@@ -92,6 +92,47 @@ class ManageTest extends TestCase
         $record = ProyectoPresupuesto::where('nombre_proyecto', 'Nuevo Centro Guadalajara')->firstOrFail();
 
         $this->assertSame(ProyectoPresupuesto::ESTATUS_ARMADO, $record->estatus);
+        // Prefill de `create()`, ver Manage::create() — confirma que el
+        // factor se guarda aunque el usuario no lo toque.
+        $this->assertEquals(1.035, $record->factor_administrativo);
+    }
+
+    /**
+     * `factor_administrativo` varía por proyecto (confirmado con el
+     * usuario) — se puede capturar un valor distinto al default antes de
+     * guardar, y `min:1` rechaza valores sin sentido (un factor menor a 1
+     * implicaría descontar del total, no es el caso de uso real).
+     */
+    public function test_factor_administrativo_can_be_customized_and_is_validated(): void
+    {
+        $this->actingAs($this->actingUser());
+        $empresa = $this->empresa();
+        $centroCosto = $this->centroCosto($empresa);
+        $area = $this->area();
+        $pm = $this->empleado();
+
+        Livewire::test(Manage::class)
+            ->call('create')
+            ->set('form.nombre_proyecto', 'Proyecto Factor Custom')
+            ->set('form.empresa_id', $empresa->id)
+            ->set('form.centro_costo_id', $centroCosto->id)
+            ->set('form.direccion_centro', 'Av. Siempre Viva 123')
+            ->set('form.area_operativa_solicitante_id', $area->id)
+            ->set('form.pm_responsable_id', $pm->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.fecha_limite_captura', '2026-09-15')
+            ->set('form.factor_administrativo', '1.10')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $record = ProyectoPresupuesto::where('nombre_proyecto', 'Proyecto Factor Custom')->firstOrFail();
+        $this->assertEquals(1.1, $record->factor_administrativo);
+
+        Livewire::test(Manage::class)
+            ->call('create')
+            ->set('form.factor_administrativo', '0.5')
+            ->call('save')
+            ->assertHasErrors(['form.factor_administrativo' => 'min']);
     }
 
     public function test_required_fields_are_validated(): void

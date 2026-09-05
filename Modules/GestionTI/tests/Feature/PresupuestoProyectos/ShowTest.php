@@ -76,6 +76,7 @@ class ShowTest extends TestCase
 
         return $proyecto->articulos()->create(array_merge([
             'categoria' => 'laptops_desktops',
+            'categoria_contable' => 'infraestructura',
             'descripcion' => 'Laptop para gerente',
             'cantidad' => 1,
             'responsable_costo_id' => $responsable->id,
@@ -99,6 +100,7 @@ class ShowTest extends TestCase
         $component = Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
             ->call('openArticuloModal')
             ->set('articuloForm.categoria', 'laptops_desktops')
+            ->set('articuloForm.categoria_contable', 'infraestructura')
             ->set('articuloForm.descripcion', 'Laptop Dell')
             ->set('articuloForm.cantidad', 3)
             ->set('articuloForm.responsable_costo_id', $responsable->id)
@@ -165,8 +167,9 @@ class ShowTest extends TestCase
         $this->agregarArticulo($proyecto);
 
         Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
-            ->set("costoInputs.{$articulo->id}", 15000.50)
-            ->call('capturarCosto', $articulo->id)
+            ->call('openCosto', $articulo->id)
+            ->set('costoForm.costo_unitario', 15000.50)
+            ->call('guardarCosto')
             ->assertHasNoErrors();
 
         $articulo->refresh();
@@ -178,6 +181,51 @@ class ShowTest extends TestCase
         $this->assertSame(ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS, $proyecto->fresh()->estatus);
     }
 
+    /**
+     * Los 6 campos de proveedor/forma de pago capturados junto con el costo
+     * — todos opcionales, solo `costo_unitario` es requerido (ver comentario
+     * de `Show::guardarCosto()`).
+     */
+    public function test_capturar_costo_saves_proveedor_and_cashflow_fields(): void
+    {
+        $this->actingAs($this->actingUser());
+        $proyecto = $this->proyecto(['estatus' => ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS]);
+        $articulo = $this->agregarArticulo($proyecto);
+
+        Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
+            ->call('openCosto', $articulo->id)
+            ->set('costoForm.costo_unitario', 621)
+            ->set('costoForm.costo_unitario_usd', 32.68)
+            ->set('costoForm.proveedor', 'TBD')
+            ->set('costoForm.razon_social_facturada', 'Land IT')
+            ->set('costoForm.tipo_servicio', 'equipo')
+            ->set('costoForm.cashflow_tipo', 'on_going')
+            ->set('costoForm.no_meses', 12)
+            ->call('guardarCosto')
+            ->assertHasNoErrors();
+
+        $articulo->refresh();
+        $this->assertEquals(621, $articulo->costo_unitario);
+        $this->assertEquals(32.68, $articulo->costo_unitario_usd);
+        $this->assertSame('TBD', $articulo->proveedor);
+        $this->assertSame('Land IT', $articulo->razon_social_facturada);
+        $this->assertSame('equipo', $articulo->tipo_servicio);
+        $this->assertSame('on_going', $articulo->cashflow_tipo);
+        $this->assertSame(12, $articulo->no_meses);
+    }
+
+    public function test_capturar_costo_only_requires_costo_unitario(): void
+    {
+        $this->actingAs($this->actingUser());
+        $proyecto = $this->proyecto(['estatus' => ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS]);
+        $articulo = $this->agregarArticulo($proyecto);
+
+        Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
+            ->call('openCosto', $articulo->id)
+            ->call('guardarCosto')
+            ->assertHasErrors(['costoForm.costo_unitario' => 'required']);
+    }
+
     public function test_capturing_the_last_pending_articulo_transitions_proyecto_to_completo(): void
     {
         $this->actingAs($this->actingUser());
@@ -186,14 +234,16 @@ class ShowTest extends TestCase
         $dos = $this->agregarArticulo($proyecto);
 
         Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
-            ->set("costoInputs.{$uno->id}", 100)
-            ->call('capturarCosto', $uno->id);
+            ->call('openCosto', $uno->id)
+            ->set('costoForm.costo_unitario', 100)
+            ->call('guardarCosto');
 
         $this->assertSame(ProyectoPresupuesto::ESTATUS_EN_CAPTURA_COSTOS, $proyecto->fresh()->estatus);
 
         Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto->fresh()])
-            ->set("costoInputs.{$dos->id}", 200)
-            ->call('capturarCosto', $dos->id);
+            ->call('openCosto', $dos->id)
+            ->set('costoForm.costo_unitario', 200)
+            ->call('guardarCosto');
 
         $this->assertSame(ProyectoPresupuesto::ESTATUS_COMPLETO, $proyecto->fresh()->estatus);
     }
@@ -341,7 +391,7 @@ class ShowTest extends TestCase
     }
 
     /**
-     * Confirma que `capturarCosto()` dispara `PRESUPUESTO_LISTO_PARA_AUTORIZAR`
+     * Confirma que `guardarCosto()` dispara `PRESUPUESTO_LISTO_PARA_AUTORIZAR`
      * (Fase 4, "Configuración de Avisos") exactamente cuando el último
      * artículo pendiente queda capturado — mismo momento en que el proyecto
      * transiciona a `completo`.
@@ -358,8 +408,9 @@ class ShowTest extends TestCase
         $articulo = $this->agregarArticulo($proyecto);
 
         Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
-            ->set("costoInputs.{$articulo->id}", 100)
-            ->call('capturarCosto', $articulo->id);
+            ->call('openCosto', $articulo->id)
+            ->set('costoForm.costo_unitario', 100)
+            ->call('guardarCosto');
 
         Notification::assertSentTo($pmUser, AvisoNotification::class);
         $this->assertSame(2, AvisoEnviado::where('destinatario_user_id', $pmUser->id)->count());
