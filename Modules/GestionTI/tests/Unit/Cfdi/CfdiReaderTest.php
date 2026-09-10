@@ -2,11 +2,15 @@
 
 namespace Modules\GestionTI\Tests\Unit\Cfdi;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\GestionTI\Support\Cfdi\CfdiReader;
 use Tests\TestCase;
 
 class CfdiReaderTest extends TestCase
 {
+    use RefreshDatabase;
+
+
     private const CFDI_VALIDO = <<<'XML'
         <?xml version="1.0" encoding="UTF-8"?>
         <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" xmlns:tfd="http://www.sat.gob.mx/TimbreFiscalDigital"
