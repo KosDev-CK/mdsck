@@ -22,7 +22,12 @@
       "Bash(cd /c/wamp64/www/portalck && npm install 2>&1 | tail -10)",
       "Bash(\"/c/wamp64/bin/mysql/mysql9.1.0/bin/mysql.exe\" -u root -e \"CREATE DATABASE IF NOT EXISTS portalck CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; SHOW DATABASES LIKE 'portalck';\")",
       "Bash(php -r \"echo bin2hex\\(random_bytes\\(16\\)\\), PHP_EOL;\")",
-      "Bash(php -r \"echo random_int\\(100000, 999999\\), PHP_EOL;\")"
+      "Bash(php -r \"echo random_int\\(100000, 999999\\), PHP_EOL;\")",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File \"C:\\\\wamp64\\\\www\\\\mdsck-deploy\\\\deploy-mdsck.ps1\" -Force)",
+      "Read(//c/Users/VictorHugoGonzalezOl/.ssh/**)",
+      "Read(//c/Users/VictorHugoGonzalezOl/.ssh/mdsck-deploy/**)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
