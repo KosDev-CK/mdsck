@@ -135,6 +135,13 @@ server {
     root /var/www/mds/public;
     index index.php;
 
+    # Default de Nginx es 1M — la pantalla /branding permite subir fondos de
+    # hasta 4MB (ver Manage.php), así que sin esto cualquier subida de fondo
+    # (y cualquier archivo >1M en general) falla con 413 antes de llegar a
+    # Laravel. Si este sitio está detrás de OTRO Nginx que hace de reverse
+    # proxy (ver §6.1), el límite tiene que subirse en AMBOS, no solo aquí.
+    client_max_body_size 10m;
+
     ssl_certificate     /etc/letsencrypt/live/tu-dominio.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/tu-dominio.com/privkey.pem;
 
@@ -217,6 +224,11 @@ server {
     root /var/www/tu-sitio/public;
     index index.php;
 
+    # Ver nota de client_max_body_size en el bloque de la §6 — aplica igual
+    # aquí, y ADEMÁS hay que subirlo en el bloque del proxy externo de abajo,
+    # porque la petición pasa por los dos Nginx.
+    client_max_body_size 10m;
+
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
@@ -259,6 +271,8 @@ server {
 
     ssl_certificate     /ruta/al/wildcard/fullchain.pem;
     ssl_certificate_key /ruta/al/wildcard/privkey.pem;
+
+    client_max_body_size 10m;
 
     location / {
         proxy_pass http://<IP_DEL_APP_SERVER>:80;
@@ -525,7 +539,13 @@ rsync -a --delete \
   --exclude ".env" \
   --exclude "storage/" \
   --exclude "bootstrap/cache/" \
+  --exclude "public/storage" \
   "$TMP/extracted/" "$SITE_DIR/"
+# public/storage es un symlink creado por "artisan storage:link", nunca se
+# commitea (está en .gitignore) — sin este exclude, git archive lo omite del
+# paquete y --delete lo borra del servidor en CADA deploy, dejando el logo,
+# el favicon y cualquier fondo de /branding en 404 hasta que alguien vuelve a
+# correr storage:link a mano. Bug real, encontrado en mdsck 2026-09-10.
 
 chown -R www-data:www-data "$SITE_DIR"
 find "$SITE_DIR" -type d -exec chmod 755 {} \;

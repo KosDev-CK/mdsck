@@ -93,6 +93,7 @@ rsync -a --delete \
   --exclude ".env" \
   --exclude "storage/" \
   --exclude "bootstrap/cache/" \
+  --exclude "public/storage" \
   "$TMP/extracted/" "$SITE_DIR/"
 
 chown -R www-data:www-data "$SITE_DIR"
@@ -164,6 +165,11 @@ server {
 
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    # Default de Nginx es 1M — /branding permite fondos de hasta 4MB. Sube
+    # esto también en /etc/nginx/sites-available/mdsck del app server
+    # (172.16.11.89), la petición pasa por los dos Nginx.
+    client_max_body_size 10m;
 
     access_log /var/log/nginx/nginx.mds.ck.com.mx.access.log;
     error_log  /var/log/nginx/nginx.mds.ck.com.mx.error.log;
@@ -381,3 +387,16 @@ VITE_REVERB_SCHEME=https
 9. **El nombre del archivo Nginx en el proxy externo no sigue el mismo patrón que en el app server.** En `kosmos-proxy-2023` los sitios `*.ck.com.mx` se nombran igual que el dominio (`mds.ck.com.mx`), no como el proyecto (`mdsck`) — verifica la convención real de ese proxy antes de crear el symlink, o `nginx -t` fallará con "No such file or directory" apuntando a un archivo que nunca existió.
 10. **`AZURE_MAIL_SENDER` con un buzón que no existe da 500 silencioso al pedir el código de login**, con el mensaje real solo visible en `storage/logs/laravel.log` (`Microsoft Graph rechazó el envío (404): The requested user '...' is invalid.`). Usa siempre un buzón real ya autorizado en el App Registration.
 11. **Cualquier edición manual de `.env` en el servidor necesita `php artisan config:cache` después**, o Laravel sigue usando la config vieja cacheada del deploy anterior.
+
+## Incidente 2026-09-10: logo/favicon/fondos en 404 + 413 al subir un fondo nuevo en `/branding`
+
+Dos bugs distintos, encontrados juntos al probar las nuevas secciones de branding en producción:
+
+12. **Cada deploy borraba el symlink `public/storage`**, dejando cualquier imagen servida desde ahí (logo, favicon, fondos de `/branding`) en 404 hasta recrearlo a mano. Causa: `public/storage` está en `.gitignore` (lo crea `artisan storage:link`, nunca se commitea), así que `git archive HEAD` nunca lo incluye en el paquete — y el `rsync -a --delete` del script remoto borra en el servidor cualquier archivo que no esté en el paquete y no esté explícitamente excluido. El exclude list original (`.env`, `storage/`, `bootstrap/cache/`) no cubría `public/storage`. Ya se agregó `--exclude "public/storage"` al bloque de rsync de arriba y a la plantilla genérica en `deploy-lemp.md` §9.1.2 — pero **el archivo ya provisionado en el app server (`/usr/local/bin/mdsck-deploy.sh`) necesita el mismo parche a mano, con acceso root**, porque el canal `deployer` solo puede *ejecutar* ese script, no editarlo:
+    ```bash
+    sed -i 's#--exclude "bootstrap/cache/" \\#--exclude "bootstrap/cache/" \\\n  --exclude "public/storage" \\#' /usr/local/bin/mdsck-deploy.sh
+    grep -A1 'bootstrap/cache' /usr/local/bin/mdsck-deploy.sh   # confirmar que quedó la línea nueva justo debajo
+    ```
+    Corregido en caliente el 2026-09-10 corriendo `sudo -u www-data php8.3 artisan storage:link` directo en el app server — no hizo falta un redeploy completo. **Portalck y operacionesck comparten el mismo script/patrón** (mismo app server, mismo modelo) y probablemente tengan el mismo bug latente — pendiente confirmar/parchar ahí también.
+
+13. **413 al subir el fondo de login/panel interno** (`livewire/upload-file` devolviendo 413 en la consola del navegador). Ningún Nginx de este stack definía `client_max_body_size` (default 1M), y `/branding` permite fondos de hasta 4MB (`Manage.php`, validación `max:4096`). Petición pasa por dos Nginx (app server + proxy externo `kosmos-proxy-2023`), así que **hay que subir el límite en ambos** — ya agregado `client_max_body_size 10m;` al bloque de la §4 de arriba (proxy externo) y a las plantillas de `deploy-lemp.md`; falta reflejarlo también en `/etc/nginx/sites-available/mdsck` del app server (172.16.11.89) y en `nginx-mdsck.conf` local, y — si aplica el mismo bug — en los Nginx de `portalck`/`operacionesck`.
