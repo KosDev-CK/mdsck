@@ -74,7 +74,9 @@ return [
     | (~1h de vida) en cada request. Ver docs/servicedesk-plus-oauth.md.
     | "api_domain"/"accounts_domain" nunca se hardcodean: SDP tiene ~10
     | dominios regionales distintos (US/EU/IN/AU/JP/CA/UK) y cada instancia
-    | usa el suyo.
+    | usa el suyo. Soporta el mismo forward proxy opcional que Graph/
+    | SharePoint/EBS (AZURE_MAIL_HTTP_PROXY) para cuando el app server no
+    | tiene salida directa a internet.
     |
     */
 
@@ -86,6 +88,11 @@ return [
         'portal' => env('SDP_PORTAL'),
         'api_domain' => env('SDP_API_DOMAIN'),
         'accounts_domain' => env('SDP_ACCOUNTS_DOMAIN'),
+        // Mismo forward proxy que ya usan Graph/SharePoint/EBS (reutiliza
+        // AZURE_MAIL_HTTP_PROXY a propósito, es el mismo servidor proxy de
+        // salida) para cuando el app server no tiene salida directa a
+        // internet — ver docs/mesaservicio-progreso.md.
+        'proxy' => env('AZURE_MAIL_HTTP_PROXY'),
     ],
 
     /*

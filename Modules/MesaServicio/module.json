@@ -1,0 +1,11 @@
+{
+    "name": "MesaServicio",
+    "alias": "mesaservicio",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\MesaServicio\\Providers\\MesaServicioServiceProvider"
+    ],
+    "files": []
+}
