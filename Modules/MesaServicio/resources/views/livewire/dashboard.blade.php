@@ -1,4 +1,4 @@
-<div>
+<div wire:poll.60s>
     @push('page-title')
         Mesa de Servicio
     @endpush
