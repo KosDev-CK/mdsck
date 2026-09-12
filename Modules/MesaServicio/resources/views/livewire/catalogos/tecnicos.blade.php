@@ -3,6 +3,10 @@
         Técnicos
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -57,4 +61,8 @@
 
         <div class="mt-4">{{ $records->links() }}</div>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Técnicos" :pdf-url="route('mesaservicio.ayuda.pdf', 'tecnicos')">
+        @include('mesaservicio::ayuda.contenido', ['contenido' => \Modules\MesaServicio\Support\Ayuda\AyudaCatalog::contenido('tecnicos')])
+    </x-ui.help-modal>
 </div>

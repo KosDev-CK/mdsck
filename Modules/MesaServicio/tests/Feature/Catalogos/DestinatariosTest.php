@@ -160,6 +160,14 @@ class DestinatariosTest extends TestCase
         $this->assertNull(SdpSurveySetting::current()->form_id);
     }
 
+    public function test_it_shows_the_help_button_with_its_pdf_route(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Destinatarios::class)
+            ->assertSee(route('mesaservicio.ayuda.pdf', 'destinatarios'), escape: false);
+    }
+
     public function test_it_only_offers_published_forms_in_the_picker(): void
     {
         Form::create(['name' => 'Encuesta Publicada', 'status' => 'published']);

@@ -3,6 +3,10 @@
         Ficha de técnico
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     <x-ui.card padding="p-5" class="mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -86,4 +90,8 @@
             @endforeach
         </x-ui.table>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Ficha de técnico" :pdf-url="route('mesaservicio.ayuda.pdf', 'ficha-tecnico')">
+        @include('mesaservicio::ayuda.contenido', ['contenido' => \Modules\MesaServicio\Support\Ayuda\AyudaCatalog::contenido('ficha-tecnico')])
+    </x-ui.help-modal>
 </div>

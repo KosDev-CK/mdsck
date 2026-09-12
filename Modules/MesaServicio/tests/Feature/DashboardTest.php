@@ -214,6 +214,14 @@ class DashboardTest extends TestCase
         $this->assertSame('Red', $picos->first()['categoria']);
     }
 
+    public function test_it_shows_the_help_button_with_its_pdf_route(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Dashboard::class)
+            ->assertSee(route('mesaservicio.ayuda.pdf', 'dashboard'), escape: false);
+    }
+
     public function test_sincronizar_button_runs_the_sync_command_and_flashes_a_status_message(): void
     {
         Http::fake([

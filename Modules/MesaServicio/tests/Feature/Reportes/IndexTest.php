@@ -83,6 +83,14 @@ class IndexTest extends TestCase
             ->assertFileDownloaded($report->downloadFilename());
     }
 
+    public function test_it_shows_the_help_button_with_its_pdf_route(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Index::class)
+            ->assertSee(route('mesaservicio.ayuda.pdf', 'reportes'), escape: false);
+    }
+
     public function test_downloading_a_report_whose_file_is_missing_aborts_with_404(): void
     {
         Storage::fake('local');

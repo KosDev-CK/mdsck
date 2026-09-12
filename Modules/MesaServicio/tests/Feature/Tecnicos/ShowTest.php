@@ -88,6 +88,16 @@ class ShowTest extends TestCase
             ->assertDontSee('Ticket de Ana');
     }
 
+    public function test_it_shows_the_help_button_with_its_pdf_route(): void
+    {
+        $technician = SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Juan Pérez', 'activo' => true, 'es_nivel_1' => false]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Show::class, ['tecnico' => $technician])
+            ->assertSee(route('mesaservicio.ayuda.pdf', 'ficha-tecnico'), escape: false);
+    }
+
     public function test_it_separates_pendientes_from_atendidos(): void
     {
         $enCurso = $this->estado(SdpTicketStatus::TIPO_EN_CURSO, 'Abierto');

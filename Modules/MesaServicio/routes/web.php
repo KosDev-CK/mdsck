@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\MesaServicio\Http\Controllers\Ayuda\AyudaPdfController;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
@@ -10,6 +11,15 @@ use Modules\MesaServicio\Livewire\Tecnicos\Show as TecnicoShow;
 // Las rutas de cada pantalla se agregan aquí conforme se construyen
 // (ver docs/agregar-pantallas.md). Cada grupo va protegido por su
 // propio permiso `screens.<slug>.<verbo>`.
+
+// PDF de ayuda de una pantalla (ver Modules\MesaServicio\Support\Ayuda\AyudaCatalog)
+// — solo `auth`, no un permiso de pantalla específico: es contenido
+// instructivo genérico, no datos de negocio.
+Route::middleware(['auth'])->group(function () {
+    Route::get('/mesa-servicio/ayuda/{slug}/pdf', AyudaPdfController::class)
+        ->name('mesaservicio.ayuda.pdf')
+        ->where('slug', '[a-z0-9-]+');
+});
 
 Route::middleware(['auth', 'permission:screens.mesaservicio-tecnicos.manage'])
     ->get('/mesa-servicio/tecnicos', Tecnicos::class)

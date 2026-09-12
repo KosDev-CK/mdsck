@@ -3,6 +3,10 @@
         Destinatarios de reporte
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -85,4 +89,8 @@
             @endforeach
         </x-ui.table>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Destinatarios de reporte" :pdf-url="route('mesaservicio.ayuda.pdf', 'destinatarios')">
+        @include('mesaservicio::ayuda.contenido', ['contenido' => \Modules\MesaServicio\Support\Ayuda\AyudaCatalog::contenido('destinatarios')])
+    </x-ui.help-modal>
 </div>

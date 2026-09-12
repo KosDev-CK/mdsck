@@ -3,6 +3,10 @@
         Mesa de Servicio
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     @if (session('status'))
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
@@ -134,4 +138,8 @@
             </div>
         </div>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Dashboard de Mesa de Servicio" :pdf-url="route('mesaservicio.ayuda.pdf', 'dashboard')">
+        @include('mesaservicio::ayuda.contenido', ['contenido' => \Modules\MesaServicio\Support\Ayuda\AyudaCatalog::contenido('dashboard')])
+    </x-ui.help-modal>
 </div>

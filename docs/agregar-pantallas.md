@@ -73,6 +73,46 @@ Dos formas, ambas sin código:
 
 El rol **Administrador** siempre tiene *todos* los permisos porque `CoreSeeder` corre `$adminRole->syncPermissions(Screen::pluck('permission_name'))` cada vez que se siembra — no necesitas asignarle nada a mano.
 
+## D) Ayuda en pantalla (obligatorio para toda pantalla nueva desde 2026-09-11)
+
+Toda pantalla nueva debe traer su propio contenido de ayuda: un botón "?" en el topbar que abre un modal con la explicación de la pantalla, más una versión descargable en PDF con el mismo texto (una sola fuente de contenido para ambas). Patrón ya construido en `Modules/GestionTI` (`Support\Ayuda\AyudaCatalog`, `Http\Controllers\Ayuda\AyudaPdfController`) — replícalo dentro del namespace del módulo que estés tocando, no lo centralices en el core:
+
+1. **`Modules/<Módulo>/app/Support/Ayuda/AyudaCatalog.php`** — copia tal cual la clase de `GestionTI` (valida el slug contra `^[a-z0-9-]+$` antes de construir la ruta de archivo — sin esto, un slug armado sería una vía de path traversal), cambiando solo el nombre del módulo en `module_path(...)`.
+2. **Un archivo por pantalla** en `Modules/<Módulo>/resources/ayuda/data/{slug}.php`, cada uno devolviendo:
+   ```php
+   return [
+       'titulo' => '...',
+       'concepto' => '¿Qué es esta pantalla?',
+       'resuelve' => '¿Qué problema resuelve / por qué existe?',
+       'proceso' => ['Paso 1...', 'Paso 2...'],   // [] si es de solo lectura
+       'campos' => [['nombre' => '...', 'explicacion' => '...'], ...],
+   ];
+   ```
+3. **`Modules/<Módulo>/resources/views/ayuda/contenido.blade.php`** — copia tal cual la de `GestionTI` (parcial Tailwind, la consume tanto el modal como referencia de estructura).
+4. **`Modules/<Módulo>/resources/views/pdf/ayuda.blade.php`** + **`Modules/<Módulo>/app/Http/Controllers/Ayuda/AyudaPdfController.php`** — copia tal cual los de `GestionTI` (CSS plano, Dompdf no procesa Tailwind). El controlador usa 2 imágenes de encabezado/pie ya armadas (`resources/assets/ayuda/cabecera.png`/`pie.png`, 2550×355px y 2550×95px a 300dpi) — son el mismo membrete de marca en todos los módulos, cópialas de cualquier módulo que ya las tenga en vez de pedir arte nuevo.
+5. **Ruta** en `Modules/<Módulo>/routes/web.php`, gateada solo por `auth` (no por el permiso de la pantalla — es contenido instructivo genérico, mismo criterio que "Mi perfil"):
+   ```php
+   Route::middleware(['auth'])->group(function () {
+       Route::get('/<prefijo-modulo>/ayuda/{slug}/pdf', \Modules\<Módulo>\Http\Controllers\Ayuda\AyudaPdfController::class)
+           ->name('<modulo>.ayuda.pdf')
+           ->where('slug', '[a-z0-9-]+');
+   });
+   ```
+6. **En la vista de cada pantalla**:
+   ```blade
+   @push('page-actions')
+       <x-ui.help-button />
+   @endpush
+   ```
+   y, en cualquier parte del mismo archivo:
+   ```blade
+   <x-ui.help-modal titulo="Nombre de la pantalla" :pdf-url="route('<modulo>.ayuda.pdf', 'slug-de-la-pantalla')">
+       @include('<modulo>::ayuda.contenido', ['contenido' => \Modules\<Módulo>\Support\Ayuda\AyudaCatalog::contenido('slug-de-la-pantalla')])
+   </x-ui.help-modal>
+   ```
+   `<x-ui.help-button>` dispara un evento de navegador (no `wire:click`) porque vive fuera del árbol DOM del componente Livewire (se renderiza en el topbar vía `@push('page-actions')`) — `<x-ui.help-modal>` lo escucha con Alpine puro, sin ida y vuelta al servidor.
+7. **Test** (`Modules/<Módulo>/tests/Feature/Ayuda/AyudaPdfControllerTest.php`, con `RefreshDatabase`): invitado redirigido a login, cada slug conocido descarga PDF `application/pdf` con `assertDownload`, slug desconocido da 404, un slug con path traversal (`..%2F..%2F...`) da 404. Actualiza la lista de slugs de este test cada vez que agregues una pantalla nueva al módulo.
+
 ## Notas
 
 - El menú agrupa y colapsa solo — no hay que tocar el sidebar al agregar pantallas, siempre que uses `group_label`/`order`/`icon` correctamente.

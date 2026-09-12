@@ -3,6 +3,10 @@
         Reportes
     @endpush
 
+    @push('page-actions')
+        <x-ui.help-button />
+    @endpush
+
     <x-ui.card padding="p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div>
@@ -36,4 +40,8 @@
             @endforeach
         </x-ui.table>
     </x-ui.card>
+
+    <x-ui.help-modal titulo="Reportes" :pdf-url="route('mesaservicio.ayuda.pdf', 'reportes')">
+        @include('mesaservicio::ayuda.contenido', ['contenido' => \Modules\MesaServicio\Support\Ayuda\AyudaCatalog::contenido('reportes')])
+    </x-ui.help-modal>
 </div>

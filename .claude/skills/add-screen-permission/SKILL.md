@@ -13,6 +13,7 @@ En este proyecto, **una pantalla = un permiso**, gobernado por el modelo `Screen
 3. Crea el registro `Screen` correspondiente **en el seeder del módulo al que pertenece**, no en `CoreSeeder`, salvo que sea una pantalla del core.
 4. Asigna el permiso a un perfil desde la pantalla "Perfiles" (`/roles`), o vía `$role->givePermissionTo(...)` si es parte de un seeder.
 5. Recuerda: el rol **Administrador** obtiene todos los permisos automáticamente (`CoreSeeder::run()` hace `$adminRole->syncPermissions(Screen::pluck('permission_name'))` cada vez que se siembra) — no hace falta asignárselo a mano, pero sí tiene que existir el `Screen` para que ese sync la recoja.
+6. **Obligatorio desde 2026-09-11**: agrega el contenido de ayuda de la pantalla (botón "?" + modal + PDF descargable, una sola fuente de texto para ambos) — ver sección "D) Ayuda en pantalla" en `docs/agregar-pantallas.md` para el patrón exacto (`Support\Ayuda\AyudaCatalog` del módulo, archivo de contenido en `resources/ayuda/data/{slug}.php`, `<x-ui.help-button>`/`<x-ui.help-modal>` en la vista, ruta del PDF, test). Referencia real ya construida en `Modules/GestionTI` y `Modules/MesaServicio`.
 
 ## Detalle completo
 Para el detalle exacto (nombres de campos, ejemplos de código), lee `docs/agregar-pantallas.md` en el repo — este skill es solo el recordatorio del flujo, no lo reemplaza.

@@ -109,6 +109,14 @@ class TecnicosTest extends TestCase
             ->assertDontSee('Activo Uno');
     }
 
+    public function test_it_shows_the_help_button_with_its_pdf_route(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Tecnicos::class)
+            ->assertSee(route('mesaservicio.ayuda.pdf', 'tecnicos'), escape: false);
+    }
+
     public function test_it_filters_by_nivel_1(): void
     {
         SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Nivel Uno', 'activo' => true, 'es_nivel_1' => true]);
