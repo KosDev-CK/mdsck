@@ -7,6 +7,25 @@
         <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
     @endif
 
+    @if (session('error'))
+        <x-ui.alert variant="error" class="mb-4">{{ session('error') }}</x-ui.alert>
+    @endif
+
+    <x-ui.card padding="p-5">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Encuesta de satisfacción</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Formulario (de "Formularios") que se envía automáticamente al solicitante cuando su ticket pasa a
+            estado completado. Mientras quede en "Ninguno", no se envía ningún correo automático.
+        </p>
+
+        <x-ui.select label="Formulario de encuesta" name="surveyFormId" wire:model.live="surveyFormId" class="max-w-md">
+            <option value="">Ninguno (desactivada)</option>
+            @foreach ($surveyForms as $form)
+                <option value="{{ $form->id }}">{{ $form->name }}</option>
+            @endforeach
+        </x-ui.select>
+    </x-ui.card>
+
     <x-ui.card padding="p-5">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
             Supervisores (rol "Supervisor Mesa de Servicio")

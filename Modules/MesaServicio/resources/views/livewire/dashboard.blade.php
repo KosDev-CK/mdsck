@@ -3,17 +3,38 @@
         Mesa de Servicio
     @endpush
 
+    @if (session('status'))
+        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
+    @endif
+
+    @if (session('error'))
+        <x-ui.alert variant="error" class="mb-4">{{ session('error') }}</x-ui.alert>
+    @endif
+
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Dashboard de Mesa de Servicio</h1>
 
-        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-            <input
-                type="checkbox"
-                wire:model.live="soloNivel1"
-                class="rounded border-gray-300 text-primary shadow-sm focus:ring-primary dark:bg-gray-800 dark:border-gray-700"
+        <div class="flex flex-wrap items-center gap-4">
+            <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <input
+                    type="checkbox"
+                    wire:model.live="soloNivel1"
+                    class="rounded border-gray-300 text-primary shadow-sm focus:ring-primary dark:bg-gray-800 dark:border-gray-700"
+                >
+                Solo técnicos Nivel 1
+            </label>
+
+            <x-ui.button
+                variant="secondary"
+                size="sm"
+                wire:click="sincronizar"
+                wire:loading.attr="disabled"
+                wire:target="sincronizar"
             >
-            Solo técnicos Nivel 1
-        </label>
+                <span wire:loading.remove wire:target="sincronizar">Sincronizar ahora</span>
+                <span wire:loading wire:target="sincronizar">Sincronizando…</span>
+            </x-ui.button>
+        </div>
     </div>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">

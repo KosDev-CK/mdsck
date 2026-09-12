@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Tests\Feature;
 use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Modules\MesaServicio\Livewire\Dashboard;
 use Modules\MesaServicio\Models\SdpTechnician;
@@ -211,5 +212,28 @@ class DashboardTest extends TestCase
         $picos = $component->viewData('picos');
         $this->assertCount(1, $picos);
         $this->assertSame('Red', $picos->first()['categoria']);
+    }
+
+    public function test_sincronizar_button_runs_the_sync_command_and_flashes_a_status_message(): void
+    {
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/requests*' => Http::response([
+                'requests' => [[
+                    'id' => 'tk-boton', 'display_id' => '999', 'subject' => 'Vía botón',
+                    'created_time' => ['value' => '1700000000000'],
+                    'last_updated_time' => ['value' => '1700000000000'],
+                ]],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Dashboard::class)
+            ->call('sincronizar')
+            ->assertSet('sincronizando', false);
+
+        $this->assertSame(1, SdpTicket::count());
     }
 }

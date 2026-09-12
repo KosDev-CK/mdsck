@@ -23,6 +23,27 @@
     </x-ui.card>
 
     <x-ui.card padding="p-5" class="mb-6">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Satisfacción</h2>
+
+        @if ($satisfaccion['promedio'] === null)
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+                Sin encuestas de satisfacción respondidas todavía para este técnico.
+            </p>
+        @else
+            <div class="flex flex-wrap items-center gap-6">
+                <div>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ $satisfaccion['promedio'] }} / 5</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Calificación promedio</p>
+                </div>
+                <div>
+                    <p class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ $satisfaccion['total'] }}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Encuestas respondidas</p>
+                </div>
+            </div>
+        @endif
+    </x-ui.card>
+
+    <x-ui.card padding="p-5" class="mb-6">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Pendientes ({{ $pendientes->count() }})</h2>
 
         <x-ui.table

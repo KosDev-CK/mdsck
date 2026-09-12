@@ -4,6 +4,7 @@ namespace Modules\MesaServicio\Livewire;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Artisan;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Modules\MesaServicio\Models\SdpTicket;
@@ -31,11 +32,37 @@ use Modules\MesaServicio\Services\PatronesDetector;
  * toggle de nivel 1 existe para acotar el desempeño de un subconjunto de
  * técnicos; los patrones de categoría son un fenómeno de la mesa completa
  * ("¿qué está pasando hoy?"), filtrarlos por nivel 1 les quitaría sentido.
+ *
+ * "Sincronizar ahora" (agregado 2026-09-11): `sdp:sync-tickets` dejó de
+ * correr automático cada 5 minutos (ver MesaServicioServiceProvider — un
+ * log sin rotar llenó el disco del servidor de producción con esa
+ * frecuencia) y ahora se dispara solo a mano, desde este botón o por
+ * consola. Corre el comando de forma síncrona dentro del propio request de
+ * Livewire — aceptable mientras el volumen de tickets sea bajo; si algún día
+ * la sincronización tarda lo suficiente para acercarse al timeout de
+ * PHP-FPM, hay que moverla a un job encolado en vez de llamarla directo aquí.
  */
 #[Layout('layouts.app')]
 class Dashboard extends Component
 {
     public bool $soloNivel1 = false;
+
+    public bool $sincronizando = false;
+
+    public function sincronizar(): void
+    {
+        $this->sincronizando = true;
+
+        try {
+            Artisan::call('sdp:sync-tickets');
+
+            session()->flash('status', trim(Artisan::output()) ?: 'Sincronización completada.');
+        } catch (\Throwable $e) {
+            session()->flash('error', 'No se pudo sincronizar: '.$e->getMessage());
+        } finally {
+            $this->sincronizando = false;
+        }
+    }
 
     private function baseQuery(): Builder
     {

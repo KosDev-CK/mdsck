@@ -5,7 +5,9 @@ namespace Modules\MesaServicio\Livewire\Catalogos;
 use App\Models\User;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Modules\FormBuilder\Models\Form;
 use Modules\MesaServicio\Models\SdpReportRecipientEmail;
+use Modules\MesaServicio\Models\SdpSurveySetting;
 
 #[Layout('layouts.app')]
 class Destinatarios extends Component
@@ -15,6 +17,18 @@ class Destinatarios extends Component
     public string $newEmail = '';
 
     public string $newNombre = '';
+
+    /**
+     * Id (como string, para el <select>) del Form de Modules\FormBuilder
+     * configurado como encuesta de satisfacción — cadena vacía = "Ninguno"
+     * (SdpSurveySetting.form_id null, disparo automático desactivado).
+     */
+    public string $surveyFormId = '';
+
+    public function mount(): void
+    {
+        $this->surveyFormId = (string) (SdpSurveySetting::current()->form_id ?? '');
+    }
 
     protected function rules(): array
     {
@@ -42,10 +56,37 @@ class Destinatarios extends Component
         SdpReportRecipientEmail::find($id)?->delete();
     }
 
+    /**
+     * Guarda de inmediato al cambiar el <select> (sin botón "Guardar" aparte,
+     * mismo criterio de UI mínima ya usado por el toggle de nivel 1 en
+     * Catalogos\Tecnicos). form_id se valida contra Form::wherePublished()
+     * antes de guardarlo — un id que ya no exista o dejó de estar publicado
+     * simplemente no aparece en las opciones del <select>, pero se revalida
+     * aquí por si el modelo se manipulara directo (ej. dos pestañas abiertas).
+     */
+    public function updatedSurveyFormId(string $value): void
+    {
+        $formId = $value !== '' ? (int) $value : null;
+
+        if ($formId !== null && ! Form::wherePublished()->whereKey($formId)->exists()) {
+            $this->surveyFormId = (string) (SdpSurveySetting::current()->form_id ?? '');
+            session()->flash('error', 'Selecciona un formulario publicado válido.');
+
+            return;
+        }
+
+        SdpSurveySetting::current()->update(['form_id' => $formId]);
+
+        session()->flash('status', $formId
+            ? 'Encuesta de satisfacción activada con el formulario seleccionado.'
+            : 'Encuesta de satisfacción desactivada — no se enviará ningún correo automático.');
+    }
+
     public function render()
     {
         return view('mesaservicio::livewire.catalogos.destinatarios', [
             'recipients' => SdpReportRecipientEmail::orderBy('email')->get(),
+            'surveyForms' => Form::wherePublished()->orderBy('name')->get(),
             // El otro destinatario es un rol completo de Spatie, resuelto en
             // tiempo real — no se guarda nada de esto en BD (ver
             // docs/mesaservicio-progreso.md, Fase 1). Se usa whereHas en vez

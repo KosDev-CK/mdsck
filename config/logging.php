@@ -60,15 +60,23 @@ return [
 
         'single' => [
             'driver' => 'single',
-            'path' => storage_path('logs/laravel.log'),
+            // LOG_PATH permite mover el archivo a otro disco montado (ej. uno
+            // más grande que el disco raíz del servidor) sin tocar código —
+            // ver docs/deploy-lemp.md, sección de logging.
+            'path' => env('LOG_PATH', storage_path('logs/laravel.log')),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
         ],
 
         'daily' => [
             'driver' => 'daily',
-            'path' => storage_path('logs/laravel.log'),
+            'path' => env('LOG_PATH', storage_path('logs/laravel.log')),
             'level' => env('LOG_LEVEL', 'debug'),
+            // 'single' nunca rota ni se autoborra — un servidor con disco
+            // chico puede llenarse solo con el log de un comando programado
+            // frecuente. LOG_CHANNEL=daily + LOG_DAILY_DAYS acotado (2-14
+            // días) es la recomendación para cualquier sitio de este
+            // template en un disco limitado — ver docs/deploy-lemp.md.
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
         ],

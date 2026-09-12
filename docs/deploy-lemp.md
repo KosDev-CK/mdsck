@@ -87,6 +87,24 @@ php -r "echo bin2hex(random_bytes(16));"
 
 **`VITE_REVERB_*` se hornea en el JS en tiempo de build, no de arranque.** `npm run build` incrusta estos valores dentro de `public/build/assets/*.js` — si el `.env` en el momento de correr `npm run build` no los tiene (por ejemplo, compilaste en tu máquina local con un `.env` distinto al del servidor), el navegador falla con `You must pass your app key when you instantiate Pusher` aunque el `.env` del servidor esté perfecto. Si compilas en un lugar distinto de donde corre la app (ver `git archive` más abajo), asegúrate de que ese `.env` de build tenga los mismos `VITE_REVERB_APP_KEY/HOST/PORT/SCHEME` que usará producción, y vuelve a compilar/subir `public/build/` si cambian.
 
+### 3.1 Logging — evita llenar el disco (incidente real, `mdsck`, 2026-09)
+
+El default de Laravel (`LOG_CHANNEL=stack` → `LOG_STACK=single`) escribe **un solo archivo `storage/logs/laravel.log` que nunca rota ni se autoborra**. En un servidor con disco pequeño, cualquier comando programado que corra seguido (ej. un sync cada 5 min que loguee un error repetido) puede llenar el disco y tirar el sitio completo — esto pasó en `mdsck` con el sync de `Modules/MesaServicio`.
+
+**Recomendado para cualquier sitio de este template en producción, sobre todo con disco limitado:**
+
+```env
+LOG_CHANNEL=daily
+LOG_DAILY_DAYS=2
+LOG_LEVEL=error
+# LOG_PATH=/ruta/a/un/disco/mas/grande/mdsck/laravel.log
+```
+
+- `LOG_CHANNEL=daily` genera un archivo por día (`laravel-2026-09-11.log`) y borra automáticamente los que superen `LOG_DAILY_DAYS` (2-14 según qué tanto histórico de logs necesites para depurar).
+- `LOG_LEVEL=error` en vez de `debug` reduce el volumen escrito por cualquier parte de la app, no solo por comandos programados.
+- `LOG_PATH` (agregado a `config/logging.php`, canales `single`/`daily`) permite mandar el archivo a otro disco montado sin tocar código — útil si el disco raíz del servidor es chico pero hay otro disco más grande disponible.
+- Si el disco YA está lleno por un log viejo de tipo `single`, libéralo de inmediato con `sudo truncate -s 0 /ruta/a/storage/logs/laravel.log` (vacía el archivo sin necesidad de reiniciar nada) antes de aplicar el cambio de canal de arriba.
+
 ## 4. Base de datos
 
 ```bash

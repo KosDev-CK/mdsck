@@ -4,7 +4,15 @@ namespace Modules\MesaServicio\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Modules\FormBuilder\Models\Form;
+use Modules\FormBuilder\Models\TicketFormLink;
+use Modules\FormBuilder\Notifications\TicketFormLinkNotification;
 use Modules\MesaServicio\Console\Commands\Concerns\PaginatesSdpResults;
+use Modules\MesaServicio\Models\SdpSurveyLink;
+use Modules\MesaServicio\Models\SdpSurveySetting;
 use Modules\MesaServicio\Models\SdpSyncState;
 use Modules\MesaServicio\Models\SdpTechnician;
 use Modules\MesaServicio\Models\SdpTicket;
@@ -23,6 +31,19 @@ use Modules\MesaServicio\Services\SdpClient;
  * ['field' => 'last_updated_time', 'condition' => 'after', 'value' => <ms>]
  * es aceptado y filtra correctamente (confirmado con una llamada real vía
  * tinker, reflejado de vuelta en list_info.search_criteria de la respuesta).
+ *
+ * Fase 6 — encuestas de satisfacción: por cada ticket sincronizado que
+ * resuelve a un SdpTicketStatus de tipo "completado" y que todavía no tiene
+ * un SdpSurveyLink (así se detecta "por primera vez", en vez de diffear el
+ * estado anterior contra el nuevo — más simple y a prueba de que el ticket
+ * cambie de estado varias veces en corridas futuras), se genera un
+ * TicketFormLink del formulario configurado en SdpSurveySetting y se envía
+ * por correo reusando Modules\FormBuilder\Notifications\TicketFormLinkNotification
+ * tal cual (sin tocar Modules/FormBuilder). Si no hay formulario configurado
+ * (form_id null, valor por defecto) o el ticket no trae solicitante_correo,
+ * se omite en silencio. Cualquier error al generar/enviar la encuesta de UN
+ * ticket se registra en el log y NO aborta el resto de la sincronización del
+ * batch — ver dispatchSurveyIfNewlyCompleted().
  */
 class SyncTicketsCommand extends Command
 {
@@ -48,6 +69,12 @@ class SyncTicketsCommand extends Command
 
     public function handle(SdpClient $client): int
     {
+        // Resuelto una sola vez por corrida (no cambia entre tickets del
+        // mismo batch): null si no hay encuesta configurada o si el formulario
+        // configurado ya no existe/no está publicado — en ambos casos el
+        // disparo automático queda desactivado sin fallar el sync.
+        $surveyForm = $this->resolveSurveyForm();
+
         $watermark = SdpSyncState::get(SdpSyncState::KEY_TICKETS);
 
         // Pequeño margen de seguridad (1 segundo) restando al leer la marca
@@ -86,8 +113,10 @@ class SyncTicketsCommand extends Command
                     continue;
                 }
 
-                $this->upsertTicket($ticket);
+                $localTicket = $this->upsertTicket($ticket);
                 $total++;
+
+                $this->dispatchSurveyIfNewlyCompleted($localTicket, $surveyForm);
 
                 $lastUpdatedMs = (int) ($ticket['last_updated_time']['value'] ?? 0);
 
@@ -115,7 +144,7 @@ class SyncTicketsCommand extends Command
         return self::SUCCESS;
     }
 
-    private function upsertTicket(array $ticket): void
+    private function upsertTicket(array $ticket): SdpTicket
     {
         $technicianId = $this->resolveTechnicianId($ticket['technician'] ?? null);
 
@@ -124,7 +153,7 @@ class SyncTicketsCommand extends Command
             ? SdpTicketStatus::where('nombre', $statusName)->value('id')
             : null;
 
-        SdpTicket::updateOrCreate(
+        return SdpTicket::updateOrCreate(
             ['sdp_id' => $ticket['id']],
             [
                 'display_id' => $ticket['display_id'] ?? null,
@@ -194,5 +223,84 @@ class SyncTicketsCommand extends Command
         }
 
         return Carbon::createFromTimestampMs((int) $value);
+    }
+
+    /**
+     * Formulario de encuesta configurado (Livewire\Catalogos\Destinatarios),
+     * ya resuelto a una instancia publicada — null si no hay nada configurado
+     * o si el formulario configurado ya no existe/dejó de estar publicado.
+     * Se resuelve una sola vez por corrida (no por ticket).
+     */
+    private function resolveSurveyForm(): ?Form
+    {
+        $formId = SdpSurveySetting::current()->form_id;
+
+        return $formId ? Form::wherePublished()->find($formId) : null;
+    }
+
+    /**
+     * Genera y envía la encuesta de satisfacción de un ticket la primera vez
+     * que se sincroniza en estado "completado". "Primera vez" se detecta por
+     * la ausencia de un SdpSurveyLink para este ticket (no por diffear el
+     * estado anterior contra el nuevo) — más simple/robusto y evita reenviar
+     * si el ticket vuelve a sincronizarse ya completado en corridas futuras.
+     *
+     * Envuelto en su propio try/catch: un fallo generando/enviando la
+     * encuesta de ESTE ticket se registra en el log y no debe abortar el
+     * resto de la sincronización del batch.
+     */
+    private function dispatchSurveyIfNewlyCompleted(SdpTicket $ticket, ?Form $surveyForm): void
+    {
+        if (! $surveyForm) {
+            return;
+        }
+
+        try {
+            if ($ticket->ticketStatus?->tipo !== SdpTicketStatus::TIPO_COMPLETADO) {
+                return;
+            }
+
+            if (empty($ticket->solicitante_correo)) {
+                return;
+            }
+
+            if (SdpSurveyLink::where('sdp_ticket_id', $ticket->id)->exists()) {
+                return;
+            }
+
+            [$rawToken, $hash] = TicketFormLink::generateToken();
+
+            DB::transaction(function () use ($surveyForm, $ticket, $rawToken, $hash) {
+                $link = TicketFormLink::create([
+                    'form_id' => $surveyForm->id,
+                    'ticket_number' => $ticket->display_id ?: (string) $ticket->sdp_id,
+                    'recipient_email' => $ticket->solicitante_correo,
+                    'token_hash' => $hash,
+                    'expires_at' => now()->addHours(config('security.ticket_link_ttl_hours')),
+                    // Lo dispara este comando, no un usuario interno — a
+                    // diferencia de Links\Send::generateLink() (created_by =
+                    // auth()->id()), aquí no hay un usuario autenticado.
+                    // ticket_form_links.created_by ya es nullable (ver su
+                    // migración en Modules/FormBuilder), así que no hizo
+                    // falta ninguna migración adicional para permitir esto.
+                    'created_by' => null,
+                ]);
+
+                SdpSurveyLink::create([
+                    'ticket_form_link_id' => $link->id,
+                    'sdp_ticket_id' => $ticket->id,
+                    'sdp_technician_id' => $ticket->sdp_technician_id,
+                ]);
+
+                Notification::route('mail', $link->recipient_email)
+                    ->notify(new TicketFormLinkNotification($link, $rawToken));
+            });
+        } catch (\Throwable $e) {
+            Log::error('No se pudo generar/enviar la encuesta de satisfacción del ticket.', [
+                'sdp_ticket_id' => $ticket->id,
+                'sdp_id' => $ticket->sdp_id,
+                'exception' => $e,
+            ]);
+        }
     }
 }

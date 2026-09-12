@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SdpTicket extends Model
 {
@@ -61,6 +62,16 @@ class SdpTicket extends Model
     public function ticketStatus(): BelongsTo
     {
         return $this->belongsTo(SdpTicketStatus::class, 'sdp_ticket_status_id');
+    }
+
+    /**
+     * Encuesta de satisfacción (Fase 6) generada para este ticket, si alguna
+     * vez pasó a estado "completado" con el formulario de encuesta
+     * configurado — ver SyncTicketsCommand::dispatchSurveyIfNewlyCompleted().
+     */
+    public function surveyLink(): HasOne
+    {
+        return $this->hasOne(SdpSurveyLink::class, 'sdp_ticket_id');
     }
 
     /**

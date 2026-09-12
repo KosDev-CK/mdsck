@@ -100,7 +100,25 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
      */
     protected function configureSchedules(Schedule $schedule): void
     {
-        $schedule->command('sdp:sync-tickets')->everyFiveMinutes();
+        // `sdp:sync-tickets` YA NO corre automático (quitado 2026-09-11): en
+        // un servidor con disco limitado, un log que crece sin rotar
+        // (canal "single" por defecto) llegado a un volumen de tráfico o de
+        // errores suficiente puede llenar el disco entero corriendo cada 5
+        // minutos — ver docs/deploy-lemp.md §3.1 para el fix de logging en
+        // general. Ahora el usuario lo dispara a mano: botón "Sincronizar
+        // ahora" en el Dashboard (Livewire\Dashboard::sincronizar()) o por
+        // consola (`php artisan sdp:sync-tickets`). Si en el futuro se
+        // quiere volver a automatizarlo (con el logging ya resuelto), agrega
+        // aquí algo como `$schedule->command('sdp:sync-tickets')->hourly();`
+        // — evita `everyFiveMinutes()` salvo que el disco del servidor ya
+        // esté confirmado con margen de sobra.
+        //
+        // Nota: `sdp:daily-close`/`sdp:monthly-close` (abajo) siguen leyendo
+        // sdp_tickets tal cual esté al momento en que corren — sin el sync
+        // automático, esos cierres reflejarán los datos de la última vez que
+        // alguien haya sincronizado a mano, no necesariamente el día
+        // completo. Avisar al usuario de esto explícitamente si pregunta por
+        // qué un cierre salió con menos tickets de los esperados.
 
         // Cierre diario (Fase 4) — procesa "ayer" por defecto (ver
         // DailyCloseCommand). 00:05 le da margen a la última corrida de
