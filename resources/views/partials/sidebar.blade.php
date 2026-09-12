@@ -50,14 +50,48 @@
         </button>
     </div>
 
-    <nav class="flex-1 space-y-6 overflow-y-auto px-2 py-4">
+    <nav class="flex-1 space-y-4 overflow-y-auto px-2 py-4">
         @foreach ($groups as $groupLabel => $groupScreens)
-            <div>
-                <div :class="{ 'lg:hidden': collapsed }" class="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    {{ $groupLabel }}
-                </div>
+            @php
+                // Clave estable por grupo (slug del nombre) para recordar en
+                // localStorage si el usuario lo dejó abierto — igual criterio
+                // que 'mds_sidebar_collapsed' arriba, por navegador, no por
+                // usuario en BD. Por defecto TODOS los grupos arrancan
+                // colapsados (sin nada guardado todavía) — salvo el que
+                // contiene la pantalla activa, que siempre se fuerza abierto
+                // para no esconder de dónde está parado el usuario.
+                $groupKey = 'mds_sidebar_group_'.\Illuminate\Support\Str::slug($groupLabel);
+                $hasActiveScreen = $groupScreens->contains(fn ($screen) => request()->routeIs($screen->route_name));
+            @endphp
+            <div
+                x-data="{
+                    open: {{ $hasActiveScreen ? 'true' : 'false' }},
+                    init() {
+                        const stored = localStorage.getItem('{{ $groupKey }}')
+                        this.open = {{ $hasActiveScreen ? 'true' : 'false' }} || (stored === null ? false : JSON.parse(stored))
+                    },
+                    toggle() {
+                        this.open = !this.open
+                        localStorage.setItem('{{ $groupKey }}', JSON.stringify(this.open))
+                    },
+                }"
+            >
+                <button
+                    type="button"
+                    @click="toggle()"
+                    :class="{ 'lg:justify-center lg:px-2': collapsed }"
+                    class="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-xs font-semibold uppercase tracking-wider text-gray-500 hover:text-gray-300"
+                >
+                    <span :class="{ 'lg:hidden': collapsed }" class="truncate">{{ $groupLabel }}</span>
+                    <x-heroicon-o-chevron-down
+                        x-show="!collapsed"
+                        x-cloak
+                        :class="{ '-rotate-90': !open }"
+                        class="h-3.5 w-3.5 shrink-0 transition-transform"
+                    />
+                </button>
 
-                <div class="space-y-1">
+                <div class="space-y-1" x-show="open || collapsed" x-collapse>
                     @foreach ($groupScreens as $screen)
                         @php $isActive = request()->routeIs($screen->route_name); @endphp
                         <a
