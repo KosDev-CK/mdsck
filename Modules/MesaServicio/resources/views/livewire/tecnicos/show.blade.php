@@ -51,7 +51,7 @@
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Pendientes ({{ $pendientes->count() }})</h2>
 
         <x-ui.table
-            :headers="['Folio', 'Asunto', 'Estado', 'Creado', 'Solicitante']"
+            :headers="['Folio', 'Asunto', 'Estado', 'SLA', 'Creado', 'Solicitante']"
             :empty="$pendientes->isEmpty()"
             empty-title="Sin tickets pendientes"
         >
@@ -61,6 +61,15 @@
                     <td class="py-2 text-gray-600 dark:text-gray-300">{{ \Illuminate\Support\Str::limit($ticket->asunto, 60) }}</td>
                     <td class="py-2">
                         <x-ui.badge color="amber">{{ $ticket->estado_nombre }}</x-ui.badge>
+                    </td>
+                    <td class="py-2">
+                        @if ($ticket->vencido)
+                            <x-ui.badge color="red">Vencido</x-ui.badge>
+                        @elseif ($ticket->primera_respuesta_vencida)
+                            <x-ui.badge color="amber">1ra resp. vencida</x-ui.badge>
+                        @else
+                            <x-ui.badge color="emerald">En tiempo</x-ui.badge>
+                        @endif
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $ticket->created_time->format('d/m/Y H:i') }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $ticket->solicitante_nombre }}</td>
@@ -73,7 +82,7 @@
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Atendidos ({{ $atendidos->count() }})</h2>
 
         <x-ui.table
-            :headers="['Folio', 'Asunto', 'Estado', 'Completado', 'Solicitante']"
+            :headers="['Folio', 'Asunto', 'Estado', 'SLA', 'Completado', 'Solicitante']"
             :empty="$atendidos->isEmpty()"
             empty-title="Sin tickets atendidos"
         >
@@ -83,6 +92,15 @@
                     <td class="py-2 text-gray-600 dark:text-gray-300">{{ \Illuminate\Support\Str::limit($ticket->asunto, 60) }}</td>
                     <td class="py-2">
                         <x-ui.badge color="emerald">{{ $ticket->estado_nombre }}</x-ui.badge>
+                    </td>
+                    <td class="py-2">
+                        @if ($ticket->vencido)
+                            <x-ui.badge color="red">Vencido</x-ui.badge>
+                        @elseif ($ticket->primera_respuesta_vencida)
+                            <x-ui.badge color="amber">1ra resp. vencida</x-ui.badge>
+                        @else
+                            <x-ui.badge color="emerald">En tiempo</x-ui.badge>
+                        @endif
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $ticket->completed_time?->format('d/m/Y H:i') ?? '—' }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $ticket->solicitante_nombre }}</td>

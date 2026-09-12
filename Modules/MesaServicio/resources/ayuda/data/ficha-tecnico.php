@@ -11,5 +11,6 @@ return [
         ['nombre' => 'Pendientes', 'explicacion' => 'Hasta 100 tickets más recientes de este técnico en un estado de tipo "en curso".'],
         ['nombre' => 'Atendidos', 'explicacion' => 'Hasta 100 tickets más recientes de este técnico en un estado de tipo "completado", ordenados por fecha de finalización.'],
         ['nombre' => 'Satisfacción', 'explicacion' => 'Promedio de la calificación 1-5 de la primera pregunta de la encuesta configurada, y cuántas encuestas de este técnico se han respondido. Si no hay formulario de encuesta configurado, o todavía no hay respuestas, se muestra un estado vacío en vez de un promedio.'],
+        ['nombre' => 'SLA', 'explicacion' => 'Estado de vencimiento tal cual lo calcula ServiceDesk Plus con su propia configuración interna de SLA — no usa el catálogo editable de la pantalla "Cumplimiento de SLA".'],
     ],
 ];

@@ -10,6 +10,7 @@ use Modules\MesaServicio\Console\Commands\SyncTicketsCommand;
 use Modules\MesaServicio\Console\Commands\SyncTicketStatusesCommand;
 use Modules\MesaServicio\Console\Commands\TestConnectionCommand;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
+use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
 use Modules\MesaServicio\Livewire\Reportes\Index as ReportesIndex;
@@ -81,6 +82,7 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
         Livewire::component('mesaservicio.dashboard', Dashboard::class);
         Livewire::component('mesaservicio.tecnicos.show', TecnicoShow::class);
         Livewire::component('mesaservicio.reportes.index', ReportesIndex::class);
+        Livewire::component('mesaservicio.catalogos.slas', Slas::class);
     }
 
     /**

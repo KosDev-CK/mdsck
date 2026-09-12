@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Mechanisms\ComponentRegistry;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
+use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
 use Modules\MesaServicio\Livewire\Reportes\Index as ReportesIndex;
@@ -31,6 +32,7 @@ class ComponentRegistrationTest extends TestCase
             ['mesaservicio.dashboard', Dashboard::class],
             ['mesaservicio.tecnicos.show', TecnicoShow::class],
             ['mesaservicio.reportes.index', ReportesIndex::class],
+            ['mesaservicio.catalogos.slas', Slas::class],
         ];
     }
 

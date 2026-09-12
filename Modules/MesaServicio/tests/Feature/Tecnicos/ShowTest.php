@@ -223,6 +223,57 @@ class ShowTest extends TestCase
             ->assertDontSee('Sin encuestas de satisfacción respondidas');
     }
 
+    public function test_it_shows_the_vencido_badge_for_an_overdue_ticket(): void
+    {
+        $enCurso = $this->estado(SdpTicketStatus::TIPO_EN_CURSO, 'Abierto');
+        $technician = SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Juan Pérez', 'activo' => true, 'es_nivel_1' => false]);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Ticket vencido', 'created_time' => now(),
+            'sdp_technician_id' => $technician->id, 'sdp_ticket_status_id' => $enCurso->id, 'estado_nombre' => 'Abierto',
+            'vencido' => true, 'primera_respuesta_vencida' => false,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Show::class, ['tecnico' => $technician])
+            ->assertSee('Vencido');
+    }
+
+    public function test_it_shows_the_first_response_overdue_badge_when_not_fully_overdue(): void
+    {
+        $enCurso = $this->estado(SdpTicketStatus::TIPO_EN_CURSO, 'Abierto');
+        $technician = SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Juan Pérez', 'activo' => true, 'es_nivel_1' => false]);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Ticket con 1ra respuesta vencida', 'created_time' => now(),
+            'sdp_technician_id' => $technician->id, 'sdp_ticket_status_id' => $enCurso->id, 'estado_nombre' => 'Abierto',
+            'vencido' => false, 'primera_respuesta_vencida' => true,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Show::class, ['tecnico' => $technician])
+            ->assertSee('1ra resp. vencida');
+    }
+
+    public function test_it_shows_the_en_tiempo_badge_when_not_overdue_at_all(): void
+    {
+        $enCurso = $this->estado(SdpTicketStatus::TIPO_EN_CURSO, 'Abierto');
+        $technician = SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Juan Pérez', 'activo' => true, 'es_nivel_1' => false]);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Ticket en tiempo', 'created_time' => now(),
+            'sdp_technician_id' => $technician->id, 'sdp_ticket_status_id' => $enCurso->id, 'estado_nombre' => 'Abierto',
+            'vencido' => false, 'primera_respuesta_vencida' => false,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Show::class, ['tecnico' => $technician])
+            ->assertSee('En tiempo');
+    }
+
     public function test_it_ignores_survey_answers_from_other_technicians(): void
     {
         [$form, $field] = $this->encuestaField();
