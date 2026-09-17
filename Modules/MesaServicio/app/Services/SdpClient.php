@@ -2,6 +2,7 @@
 
 namespace Modules\MesaServicio\Services;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -65,12 +66,39 @@ class SdpClient
      * para cuando el app server no tiene salida directa a internet
      * (confirmado el caso en producción de mdsck — ver
      * docs/mesaservicio-progreso.md).
+     *
+     * timeout(60)+retry(3): la instancia real de SDP resultó lenta en
+     * páginas profundas de paginación con historiales largos (ej.
+     * sdp:sync-technicians sobre 12 meses) — un intento real dio cURL 28
+     * ("Operation timed out after 30011 milliseconds") con el timeout por
+     * defecto del cliente HTTP. 3 reintentos con 3s de espera absorben esa
+     * lentitud puntual sin abortar el comando completo.
+     *
+     * El reintento se limita a ConnectionException (timeouts, DNS, etc.)
+     * vía el callback $when — a propósito NO reintenta una respuesta HTTP
+     * fallida (4xx/5xx real, ej. credenciales inválidas): no es un error
+     * transitorio que un reintento vaya a resolver. `throw: false` es
+     * aparte NECESARIO incluso con el filtro de $when: Laravel decide si
+     * lanzar su propia RequestException al agotar intentos según
+     * `tries > 1 && retryThrow` — una condición fija que ignora si el
+     * callback $when realmente autorizó algún reintento — así que sin
+     * throw:false, retry() seguiría reemplazando el RuntimeException
+     * propio de getListInfo()/accessToken() por su RequestException aun
+     * cuando $when nunca reintentó nada (confirmado con los tests que
+     * simulan un 500 vía Http::fake()).
      */
     private function baseHttpClient(): PendingRequest
     {
-        return $this->proxy
+        $client = $this->proxy
             ? Http::withOptions(['proxy' => $this->proxy])
             : Http::withOptions([]);
+
+        return $client->timeout(60)->retry(
+            3,
+            3000,
+            fn (\Throwable $exception) => $exception instanceof ConnectionException,
+            false,
+        );
     }
 
     /**

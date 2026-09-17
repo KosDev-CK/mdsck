@@ -104,4 +104,36 @@ class EbsRequisitionsClientTest extends TestCase
 
         $this->assertSame([], $this->client()->obtenerCreadas(1));
     }
+
+    public function test_the_exception_carries_the_structured_error_code_msg_and_method_on_a_business_error(): void
+    {
+        Http::fake([
+            'https://ebs.example.test/*' => Http::response($this->fakeResponse([], errorCode: 10)),
+        ]);
+
+        try {
+            $this->client()->obtenerCreadas(1);
+            $this->fail('Se esperaba EbsRequisitionSyncException.');
+        } catch (EbsRequisitionSyncException $e) {
+            $this->assertSame(10, $e->errorCode);
+            $this->assertSame('ERROR', $e->errorMsg);
+            $this->assertSame('requisition_header_line', $e->metodo);
+        }
+    }
+
+    public function test_the_exception_carries_only_the_method_on_an_http_level_failure(): void
+    {
+        Http::fake([
+            'https://ebs.example.test/*' => Http::response('server error', 500),
+        ]);
+
+        try {
+            $this->client()->obtenerAprobadas(1);
+            $this->fail('Se esperaba EbsRequisitionSyncException.');
+        } catch (EbsRequisitionSyncException $e) {
+            $this->assertNull($e->errorCode);
+            $this->assertNull($e->errorMsg);
+            $this->assertSame('requisition_header_approved', $e->metodo);
+        }
+    }
 }

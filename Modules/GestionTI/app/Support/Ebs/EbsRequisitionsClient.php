@@ -73,7 +73,10 @@ class EbsRequisitionsClient
 
         if ($response->failed()) {
             throw new EbsRequisitionSyncException(
-                "EBS rechazó la solicitud a \"{$method}\" ({$response->status()}): {$response->body()}"
+                "EBS rechazó la solicitud a \"{$method}\" ({$response->status()}): {$response->body()}",
+                errorCode: null,
+                errorMsg: null,
+                metodo: $method,
             );
         }
 
@@ -84,7 +87,10 @@ class EbsRequisitionsClient
             $errorMsg = $payload['status']['errorMsg'] ?? 'desconocido';
 
             throw new EbsRequisitionSyncException(
-                "EBS respondió con error en \"{$method}\" (errorCode=".json_encode($errorCode)."): {$errorMsg}"
+                "EBS respondió con error en \"{$method}\" (errorCode=".json_encode($errorCode)."): {$errorMsg}",
+                errorCode: is_numeric($errorCode) ? (int) $errorCode : null,
+                errorMsg: $errorMsg,
+                metodo: $method,
             );
         }
 

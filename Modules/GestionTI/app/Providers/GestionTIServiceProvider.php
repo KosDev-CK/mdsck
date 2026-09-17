@@ -4,6 +4,7 @@ namespace Modules\GestionTI\Providers;
 
 use Livewire\Livewire;
 use Modules\GestionTI\Console\Commands\EbsBackfillCommand;
+use Modules\GestionTI\Console\Commands\EbsReintentarFallidosCommand;
 use Modules\GestionTI\Console\Commands\EbsSincronizarAprobadasCommand;
 use Modules\GestionTI\Console\Commands\EbsSincronizarCreadasCommand;
 use Modules\GestionTI\Console\Commands\ImportarHistoricoCommand;
@@ -59,6 +60,7 @@ class GestionTIServiceProvider extends ModuleServiceProvider
         EbsSincronizarCreadasCommand::class,
         EbsSincronizarAprobadasCommand::class,
         EbsBackfillCommand::class,
+        EbsReintentarFallidosCommand::class,
     ];
 
     /**

@@ -6,6 +6,7 @@ use Modules\GestionTI\Http\Controllers\Catalogos\ComprasExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\EmpleadosExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\InventarioExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\NucleoExportController;
+use Modules\GestionTI\Http\Controllers\MesaServicio\EbsRequisicionesExportController;
 use Modules\GestionTI\Http\Controllers\PresupuestoProyectos\ExportController as PresupuestoProyectosExportController;
 use Modules\GestionTI\Livewire\Avisos\Historial as AvisosHistorial;
 use Modules\GestionTI\Livewire\Avisos\TiposAviso;
@@ -85,6 +86,7 @@ Route::middleware(['auth', 'permission:screens.gestionti-solicitudes-sic.manage'
 
 Route::middleware(['auth', 'permission:screens.gestionti-ebs-requisiciones.manage'])->group(function () {
     Route::get('/ebs-requisiciones', EbsRequisiciones::class)->name('gestionti.ebs-requisiciones.index');
+    Route::get('/ebs-requisiciones/exportar', EbsRequisicionesExportController::class)->name('gestionti.ebs-requisiciones.export');
 });
 
 Route::middleware(['auth', 'permission:screens.gestionti-solicitudes-proveedor.manage'])->group(function () {

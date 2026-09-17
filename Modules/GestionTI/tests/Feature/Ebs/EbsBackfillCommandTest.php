@@ -8,12 +8,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Modules\GestionTI\Models\CentroCosto;
+use Modules\GestionTI\Models\EbsRequisition;
+use Modules\GestionTI\Models\EbsSyncFailure;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\Ticket;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Notifications\AvisoNotification;
+use Modules\GestionTI\Support\Ebs\EbsRequisitionsClient;
 use Tests\TestCase;
 
 /**
@@ -128,7 +131,11 @@ class EbsBackfillCommandTest extends TestCase
         // coexisten en la misma línea (ej. la fecha Y "FALL" de la línea que
         // sí falló) hace que la 2ª quede sin ninguna llamada que la
         // satisfaga. Por eso el offset que falla se verifica combinando
-        // fecha + resultado en una sola aserción.
+        // fecha + resultado en una sola aserción. Desde que "creadas" y
+        // "aprobadas" corren en 2 try/catch independientes, el día fallido
+        // (offset=1, ambos métodos truenan con el mismo fake HTTP 500)
+        // produce 2 líneas "FALLÓ" — el substring buscado sigue apareciendo
+        // igual en cualquiera de las 2.
         $this->artisan('gestionti:ebs-backfill', ['--desde' => '2026-09-01'])
             ->expectsOutputToContain('2026-09-01')
             ->expectsOutputToContain('2026-09-02 (daysoffset=1) — FALL')
@@ -141,5 +148,52 @@ class EbsBackfillCommandTest extends TestCase
 
         // ...pero el backfill NUNCA dispara avisos, sin importar nada.
         Notification::assertNotSentTo($solicitanteUser, AvisoNotification::class);
+    }
+
+    /**
+     * Antes de separar "creadas"/"aprobadas" en 2 try/catch independientes,
+     * si "creadas" tronaba, "aprobadas" del mismo día ni se intentaba. Este
+     * test confirma el fix: un día donde SOLO "creadas" falla debe registrar
+     * SOLO ese fallo en `EbsSyncFailure` — y "aprobadas" de ese mismo día se
+     * aplica igual.
+     */
+    public function test_a_day_where_only_creadas_fails_still_applies_aprobadas_and_registers_only_that_failure(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 10, 10, 0, 0));
+
+        Http::fake([
+            '*method=requisition_header_line*' => Http::response('down', 500),
+            '*method=requisition_header_approved*' => Http::response($this->envelope([[
+                'requisitionHeaderId' => 999,
+                'requisition' => ['code' => null, 'description' => null, 'status' => 'APPROVED', 'date' => null],
+                'action' => ['code' => 'APPROVE', 'date' => '2026-09-10T00:00:00.000+00:00'],
+                'approver' => ['user' => 'A', 'name' => 'A A', 'date' => '2026-09-10T00:00:00.000+00:00'],
+                'sequenceNum' => 1,
+                'notes' => [['key' => 'k', 'value' => 'v']],
+            ]])),
+        ]);
+
+        $this->artisan('gestionti:ebs-backfill', ['--desde' => '2026-09-10'])
+            ->assertExitCode(0);
+
+        $this->assertTrue(
+            EbsSyncFailure::whereDate('fecha', '2026-09-10')
+                ->where('metodo', EbsRequisitionsClient::METHOD_CREADAS)
+                ->exists()
+        );
+
+        $this->assertFalse(
+            EbsSyncFailure::whereDate('fecha', '2026-09-10')
+                ->where('metodo', EbsRequisitionsClient::METHOD_APROBADAS)
+                ->exists()
+        );
+
+        // "aprobadas" sí se aplicó ese día, aunque "creadas" haya tronado.
+        $this->assertDatabaseHas('ebs_requisitions', [
+            'requisition_header_id' => 999,
+            'status' => 'APPROVED',
+        ]);
+
+        $this->assertSame(1, EbsRequisition::first()->notes()->count());
     }
 }

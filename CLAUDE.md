@@ -126,12 +126,15 @@ El logo en el header de los correos (`resources/views/vendor/mail/html/message.b
 
 ```bash
 composer run dev              # Reverb + queue:listen + pail (logs) + vite, todo junto
+composer run dev:win          # igual pero SIN pail — ver nota de Windows abajo
 php artisan test              # suite completa
 php artisan mds:clean-test-data [--keep-email=] [--with-connections] [--force]
                                # ver docs/limpiar-datos-de-prueba.md
 php artisan module:make X     # nuevo módulo de contenido
 php artisan module:seed X     # sembrar el seeder de un módulo
 ```
+
+**Windows: usa `composer run dev:win`, no `composer run dev`.** Laravel Pail (los logs en vivo dentro de `composer run dev`) requiere la extensión `pcntl`, que no existe en ningún build de PHP para Windows (solo bajo WSL) — Pail no puede arrancar nunca en Windows nativo. Como el script de `dev` usa `--kill-others`, ese fallo de Pail mata Reverb/queue/Vite también, aunque esos tres sí corren bien en Windows. `dev:win` es idéntico pero sin el proceso de Pail — para ver logs en Windows, usa `storage/logs/laravel.log` directo o `tail`/`Get-Content -Wait`.
 
 ## Flujos documentados aparte (no repetir aquí, leer el doc)
 

@@ -40,6 +40,12 @@ class EbsRequisiciones extends Component
     #[Url(as: 'hasta')]
     public string $fechaHasta = '';
 
+    #[Url(as: 'aprobada_desde')]
+    public string $fechaAprobadaDesde = '';
+
+    #[Url(as: 'aprobada_hasta')]
+    public string $fechaAprobadaHasta = '';
+
     public bool $showVincularModal = false;
 
     public ?int $vinculandoId = null;
@@ -47,6 +53,10 @@ class EbsRequisiciones extends Component
     public string $vincularSearch = '';
 
     public ?int $vincularSolicitudId = null;
+
+    public bool $showDetalleModal = false;
+
+    public ?int $detalleId = null;
 
     public function updatingCodigoFilter(): void
     {
@@ -71,6 +81,28 @@ class EbsRequisiciones extends Component
     public function updatingFechaHasta(): void
     {
         $this->resetPage();
+    }
+
+    public function updatingFechaAprobadaDesde(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingFechaAprobadaHasta(): void
+    {
+        $this->resetPage();
+    }
+
+    public function openDetalle(int $id): void
+    {
+        $this->detalleId = $id;
+        $this->showDetalleModal = true;
+    }
+
+    public function closeDetalle(): void
+    {
+        $this->showDetalleModal = false;
+        $this->detalleId = null;
     }
 
     public function openVincular(int $id): void
@@ -116,14 +148,20 @@ class EbsRequisiciones extends Component
     {
         $records = EbsRequisition::query()
             ->with(['solicitudSicBorrador.ticket'])
-            ->when($this->codigoFilter !== '', fn ($q) => $q->where('code', 'like', "%{$this->codigoFilter}%"))
+            ->when($this->codigoFilter !== '', fn ($q) => $q->matchesSearch($this->codigoFilter))
             ->when($this->estatusFilter !== '', fn ($q) => $q->where('status', $this->estatusFilter))
             ->when($this->vinculacionFilter === 'vinculada', fn ($q) => $q->whereHas('solicitudSicBorrador'))
             ->when($this->vinculacionFilter === 'no_vinculada', fn ($q) => $q->whereDoesntHave('solicitudSicBorrador'))
             ->when($this->fechaDesde !== '', fn ($q) => $q->whereDate('fecha_creacion', '>=', $this->fechaDesde))
             ->when($this->fechaHasta !== '', fn ($q) => $q->whereDate('fecha_creacion', '<=', $this->fechaHasta))
+            ->when($this->fechaAprobadaDesde !== '', fn ($q) => $q->whereDate('approver_date', '>=', $this->fechaAprobadaDesde))
+            ->when($this->fechaAprobadaHasta !== '', fn ($q) => $q->whereDate('approver_date', '<=', $this->fechaAprobadaHasta))
             ->orderByDesc('fecha_creacion')
             ->paginate(15);
+
+        $detalle = $this->showDetalleModal
+            ? EbsRequisition::with(['lines', 'notes', 'solicitudSicBorrador.ticket'])->find($this->detalleId)
+            : null;
 
         $solicitudOptions = collect();
 
@@ -143,6 +181,7 @@ class EbsRequisiciones extends Component
             'records' => $records,
             'estatusOptions' => EbsRequisition::query()->whereNotNull('status')->distinct()->orderBy('status')->pluck('status'),
             'solicitudOptions' => $solicitudOptions,
+            'detalle' => $detalle,
         ]);
     }
 }

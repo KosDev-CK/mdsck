@@ -84,14 +84,22 @@ class SyncTechniciansCommand extends Command
             $startIndex += $rowCount;
         } while ($hasMore);
 
+        // $seenSdpIds trae una entrada por TICKET visto, no por técnico —
+        // con varios miles de tickets en 12 meses, un whereNotIn() sin
+        // deduplicar genera igual de miles de placeholders y MySQL lo
+        // rechaza ("error 1390: Prepared statement contains too many
+        // placeholders"). Deduplicar aquí lo acota al tamaño real del
+        // catálogo de técnicos (decenas, no miles).
+        $uniqueSdpIds = array_values(array_unique($seenSdpIds));
+
         $inactivated = SdpTechnician::where('activo', true)
-            ->whereNotIn('sdp_id', $seenSdpIds)
+            ->whereNotIn('sdp_id', $uniqueSdpIds)
             ->update(['activo' => false]);
 
         $this->info(sprintf(
             'Tickets revisados: %d. Técnicos vistos: %d. Marcados inactivos: %d.',
             $ticketsSeen,
-            count(array_unique($seenSdpIds)),
+            count($uniqueSdpIds),
             $inactivated
         ));
 

@@ -66,4 +66,25 @@ class EbsRequisition extends Model
     {
         return $this->hasOne(SolicitudSicBorrador::class, 'ebs_requisition_id');
     }
+
+    /**
+     * Búsqueda general usada por la pantalla "SIC en EBS" (input "Buscar
+     * por código...") y su export a Excel — deben producir exactamente el
+     * mismo conjunto de resultados, así que ambos llaman este scope en vez
+     * de repetir la condición por su cuenta. Busca por coincidencia parcial
+     * en el código, la descripción, quién creó/autorizó la requisición y el
+     * contenido de sus notas.
+     */
+    public function scopeMatchesSearch($query, string $term)
+    {
+        return $query->where(function ($q) use ($term) {
+            $q->where('code', 'like', "%{$term}%")
+                ->orWhere('description', 'like', "%{$term}%")
+                ->orWhere('created_by_user', 'like', "%{$term}%")
+                ->orWhere('created_by_description', 'like', "%{$term}%")
+                ->orWhere('approver_user', 'like', "%{$term}%")
+                ->orWhere('approver_name', 'like', "%{$term}%")
+                ->orWhereHas('notes', fn ($q2) => $q2->where('valor', 'like', "%{$term}%"));
+        });
+    }
 }

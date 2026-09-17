@@ -144,6 +144,29 @@ class SyncTechniciansCommandTest extends TestCase
         $this->assertDatabaseHas('sdp_technicians', ['sdp_id' => 't-inactive-already', 'activo' => false]);
     }
 
+    /**
+     * Regresión: $seenSdpIds acumula una entrada por TICKET visto (no por
+     * técnico) — con suficientes tickets duplicados, un whereNotIn() sin
+     * deduplicar antes de la consulta genera igual de placeholders y MySQL
+     * lo rechaza con "error 1390: Prepared statement contains too many
+     * placeholders" (reproducido contra la instancia real con ~3000
+     * tickets en 12 meses). El fix deduplica antes del whereNotIn.
+     */
+    public function test_it_does_not_fail_when_thousands_of_duplicate_tickets_are_seen(): void
+    {
+        $tickets = [];
+
+        for ($i = 0; $i < 3000; $i++) {
+            $tickets[] = $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test']);
+        }
+
+        $this->fakeTokenAndRequests($tickets);
+
+        $this->artisan('sdp:sync-technicians')->assertSuccessful();
+
+        $this->assertSame(1, SdpTechnician::count());
+    }
+
     public function test_it_paginates_across_multiple_pages(): void
     {
         Http::fake([

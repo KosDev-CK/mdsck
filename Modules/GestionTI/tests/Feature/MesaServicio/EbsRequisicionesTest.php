@@ -91,6 +91,21 @@ class EbsRequisicionesTest extends TestCase
             ->assertDontSee('9999');
     }
 
+    public function test_codigo_filter_also_searches_description_and_notes(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $porNota = EbsRequisition::create(['requisition_header_id' => 1, 'code' => '1111', 'description' => 'Sin relación']);
+        $porNota->notes()->create(['clave' => 'Comentario', 'valor' => 'Contiene la palabra clave especial']);
+
+        EbsRequisition::create(['requisition_header_id' => 2, 'code' => '2222', 'description' => 'Otra cosa']);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->set('codigoFilter', 'clave especial')
+            ->assertSee('1111')
+            ->assertDontSee('2222');
+    }
+
     public function test_estatus_filter_narrows_the_list(): void
     {
         $this->actingAs($this->actingUser());
@@ -136,6 +151,74 @@ class EbsRequisicionesTest extends TestCase
         // una fuga real: la fila "V1" sigue sin aparecer en la tabla, que es
         // lo que esta prueba en realidad necesita cubrir (ver `assertSee('V2')`
         // de arriba, que confirma que el filtro sí funciona).
+    }
+
+    public function test_fecha_aprobada_filter_narrows_the_list(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        EbsRequisition::create([
+            'requisition_header_id' => 1,
+            'code' => 'AP-DENTRO',
+            'approver_date' => '2026-09-05',
+        ]);
+        EbsRequisition::create([
+            'requisition_header_id' => 2,
+            'code' => 'AP-FUERA',
+            'approver_date' => '2026-09-20',
+        ]);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->set('fechaAprobadaDesde', '2026-09-01')
+            ->set('fechaAprobadaHasta', '2026-09-10')
+            ->assertSee('AP-DENTRO')
+            ->assertDontSee('AP-FUERA');
+    }
+
+    public function test_open_detalle_loads_the_record_with_lines_and_notes(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $ebsRequisicion = EbsRequisition::create([
+            'requisition_header_id' => 1,
+            'code' => 'DET-1',
+            'description' => 'Detalle de prueba',
+        ]);
+
+        $ebsRequisicion->lines()->create([
+            'requisition_line_id' => 1,
+            'line_number' => 1,
+            'item_description' => 'Laptop Dell',
+            'quantity' => 2,
+            'unit_measurement' => 'PZA',
+            'unit_price' => 15000,
+            'currency_code' => 'MXN',
+        ]);
+
+        $ebsRequisicion->notes()->create([
+            'clave' => 'Justificación',
+            'valor' => 'Reemplazo de equipo dañado',
+        ]);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openDetalle', $ebsRequisicion->id)
+            ->assertSet('showDetalleModal', true)
+            ->assertSet('detalleId', $ebsRequisicion->id)
+            ->assertSee('Laptop Dell')
+            ->assertSee('Reemplazo de equipo dañado');
+    }
+
+    public function test_close_detalle_clears_the_state(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $ebsRequisicion = EbsRequisition::create(['requisition_header_id' => 1, 'code' => 'DET-2']);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openDetalle', $ebsRequisicion->id)
+            ->call('closeDetalle')
+            ->assertSet('showDetalleModal', false)
+            ->assertSet('detalleId', null);
     }
 
     public function test_can_link_manually_to_a_solicitud_and_it_syncs_the_local_status(): void
