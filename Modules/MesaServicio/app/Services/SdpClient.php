@@ -55,9 +55,23 @@ class SdpClient
         );
     }
 
+    /**
+     * `Accept: application/vnd.manageengine.sdp.v3+json` explícito —
+     * confirmado en producción (2026-09-18) que sin este header SDP responde
+     * `{"response_status":{"messages":[{"status_code":4013}]}}` ("Unsupported
+     * Content Type header", ver
+     * https://www.manageengine.com/products/service-desk/sdpod-v3-api/getting-started/common-error-code.html)
+     * pese a que el token/scope/proxy están correctos — reproducido con curl
+     * crudo desde el servidor de producción, deja de fallar en cuanto se
+     * manda este header. En local nunca se disparó (el `Accept: * / *` que
+     * manda Guzzle por default ahí sí coló), así que no depender del default
+     * implícito evita que el comportamiento varíe entre entornos.
+     */
     protected function httpClient(): PendingRequest
     {
-        return $this->baseHttpClient()->withToken($this->accessToken(), 'Zoho-oauthtoken');
+        return $this->baseHttpClient()
+            ->withToken($this->accessToken(), 'Zoho-oauthtoken')
+            ->withHeaders(['Accept' => 'application/vnd.manageengine.sdp.v3+json']);
     }
 
     /**
