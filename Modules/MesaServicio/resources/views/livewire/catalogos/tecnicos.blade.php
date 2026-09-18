@@ -32,11 +32,19 @@
                     <option value="si">Nivel 1: sí</option>
                     <option value="no">Nivel 1: no</option>
                 </x-ui.select>
+
+                <x-ui.select name="filterGrupoAnalitico" wire:model.live="filterGrupoAnalitico" class="sm:w-56">
+                    <option value="todos">Grupo analítico: todos</option>
+                    <option value="sin-asignar">Sin asignar</option>
+                    @foreach ($gruposAnaliticos as $grupo)
+                        <option value="{{ $grupo->id }}">{{ $grupo->nombre }}</option>
+                    @endforeach
+                </x-ui.select>
             </div>
         </div>
 
         <x-ui.table
-            :headers="['Nombre', 'Correo', 'Puesto', 'Estatus', 'Nivel 1']"
+            :headers="['Nombre', 'Correo', 'Puesto', 'Estatus', 'Nivel 1', 'Grupo analítico']"
             :empty="$records->isEmpty()"
             empty-title="Sin técnicos"
             empty-description="Corre php artisan sdp:sync-technicians para sincronizar desde ServiceDesk Plus."
@@ -54,6 +62,18 @@
                             wire:click="toggleNivel1({{ $record->id }})"
                             :checked="$record->es_nivel_1"
                         />
+                    </td>
+                    <td class="py-2">
+                        <x-ui.select
+                            name="grupo-analitico-{{ $record->id }}"
+                            wire:change="asignarGrupoAnalitico({{ $record->id }}, $event.target.value ? $event.target.value : null)"
+                            class="sm:w-48"
+                        >
+                            <option value="" @selected(! $record->grupo_analitico_id)>Sin asignar</option>
+                            @foreach ($gruposAnaliticosActivos as $grupo)
+                                <option value="{{ $grupo->id }}" @selected($record->grupo_analitico_id === $grupo->id)>{{ $grupo->nombre }}</option>
+                            @endforeach
+                        </x-ui.select>
                     </td>
                 </tr>
             @endforeach

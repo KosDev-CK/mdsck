@@ -4,6 +4,7 @@ namespace Modules\MesaServicio\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SdpTechnician extends Model
 {
@@ -18,6 +19,7 @@ class SdpTechnician extends Model
         'tiene_acceso_sdp',
         'activo',
         'es_nivel_1',
+        'grupo_analitico_id',
     ];
 
     protected $casts = [
@@ -34,5 +36,14 @@ class SdpTechnician extends Model
     public function scopeNivel1(Builder $query): Builder
     {
         return $query->where('es_nivel_1', true);
+    }
+
+    /**
+     * grupo_analitico_id, igual que es_nivel_1, es un campo editado a mano
+     * desde la pantalla "Técnicos" — sdp:sync-technicians nunca lo toca.
+     */
+    public function grupoAnalitico(): BelongsTo
+    {
+        return $this->belongsTo(GrupoAnalitico::class, 'grupo_analitico_id');
     }
 }

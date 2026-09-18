@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Mechanisms\ComponentRegistry;
 use Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
+use Modules\MesaServicio\Livewire\Catalogos\GruposAnaliticos;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
@@ -35,6 +36,7 @@ class ComponentRegistrationTest extends TestCase
             ['mesaservicio.reportes.index', ReportesIndex::class],
             ['mesaservicio.catalogos.slas', Slas::class],
             ['mesaservicio.catalogos.catalogos-sdp', CatalogosSdp::class],
+            ['mesaservicio.catalogos.grupos-analiticos', GruposAnaliticos::class],
         ];
     }
 

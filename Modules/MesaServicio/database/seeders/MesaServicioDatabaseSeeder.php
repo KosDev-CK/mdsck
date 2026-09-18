@@ -84,6 +84,16 @@ class MesaServicioDatabaseSeeder extends Seeder
                 'icon' => 'book-open',
                 'order' => 5,
             ],
+            [
+                'slug' => 'mesaservicio-grupos-analiticos',
+                'module' => 'MesaServicio',
+                'group_label' => 'Mesa de Servicio',
+                'name' => 'Grupos Analíticos',
+                'route_name' => 'mesaservicio.grupos-analiticos.index',
+                'permission_name' => 'screens.mesaservicio-grupos-analiticos.manage',
+                'icon' => 'tag',
+                'order' => 6,
+            ],
         ];
 
         foreach ($screens as $screen) {

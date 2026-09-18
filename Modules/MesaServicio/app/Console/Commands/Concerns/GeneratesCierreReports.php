@@ -38,26 +38,148 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 trait GeneratesCierreReports
 {
     /**
+     * Etiquetas de los 2 grupos de tipo de estado, en el orden fijo en que
+     * deben aparecer siempre (en_curso primero, completado después) — se
+     * construyen explícitamente en este orden en vez de confiar en que
+     * `orderBy('tipo')` los deje así por casualidad alfabética.
+     *
+     * @var array<string, string>
+     */
+    private const TIPOS_ESTADO_ORDENADOS = [
+        SdpTicketStatus::TIPO_EN_CURSO => 'En curso',
+        SdpTicketStatus::TIPO_COMPLETADO => 'Completado',
+    ];
+
+    /**
+     * Nombre de estado con tratamiento especial: se saca del conteo
+     * "en_curso" del técnico y se reporta en su propia columna, en vez de
+     * quedar mezclado con el resto de los estados en_curso (decisión de
+     * negocio confirmada explícitamente — ver docs/mesaservicio-progreso.md).
+     */
+    private const ESTADO_ESCALADO_A_PROVEEDOR = 'Escalado a Proveedor';
+
+    /**
      * @param  Collection<int, SdpTicket>  $tickets
-     * @return array{total: int, por_estado: array<string, int>, por_tecnico: array<string, int>}
+     * @return array{
+     *     total: int,
+     *     por_estado: array{
+     *         grupos: array<int, array{tipo: string, etiqueta: string, estados: array<int, array{nombre: string, cantidad: int}>, subtotal: int}>,
+     *         sin_catalogar: int,
+     *     },
+     *     por_tecnico: array<int, array{tecnico: string, completados: int, en_curso: int, escalado_a_proveedor: int, total: int}>,
+     * }
      */
     protected function construirResumenBase(Collection $tickets): array
     {
-        $porEstado = $tickets
-            ->groupBy(fn (SdpTicket $ticket) => $ticket->estado_nombre ?: 'Sin estado')
-            ->map(fn (Collection $grupo) => $grupo->count())
-            ->sortDesc();
-
-        $porTecnico = $tickets
-            ->groupBy(fn (SdpTicket $ticket) => $ticket->technician?->nombre ?? 'Sin asignar')
-            ->map(fn (Collection $grupo) => $grupo->count())
-            ->sortDesc();
-
         return [
             'total' => $tickets->count(),
-            'por_estado' => $porEstado->all(),
-            'por_tecnico' => $porTecnico->all(),
+            'por_estado' => $this->construirPorEstado($tickets),
+            'por_tecnico' => $this->construirPorTecnico($tickets),
         ];
+    }
+
+    /**
+     * Árbol de estados agrupados por tipo (en_curso/completado), con TODOS
+     * los estados activos del catálogo — incluso los que no tuvieron ningún
+     * ticket este periodo, que aparecen con cantidad 0, a propósito, para
+     * que la hoja "Resumen" siempre muestre el catálogo completo — más un
+     * subtotal por grupo y un conteo aparte de tickets cuyo `estado_nombre`
+     * no matcheó ningún estado activo del catálogo (`sin_catalogar`, cubre
+     * un estado nuevo en SDP que todavía no se sembró localmente vía
+     * `sdp:sync-ticket-statuses`). Match por `nombre` (no por FK) porque
+     * `estado_nombre` siempre está poblado, a diferencia de la relación
+     * `ticketStatus`, que puede quedar `null` si la sincronización de
+     * catálogo no alcanzó a resolver ese estado todavía.
+     *
+     * @param  Collection<int, SdpTicket>  $tickets
+     * @return array{grupos: array<int, array{tipo: string, etiqueta: string, estados: array<int, array{nombre: string, cantidad: int}>, subtotal: int}>, sin_catalogar: int}
+     */
+    private function construirPorEstado(Collection $tickets): array
+    {
+        $conteoPorNombre = $tickets
+            ->groupBy(fn (SdpTicket $ticket) => $ticket->estado_nombre ?? '')
+            ->map(fn (Collection $grupo) => $grupo->count());
+
+        $catalogoActivo = SdpTicketStatus::activos()->orderBy('id')->get();
+        $nombresCatalogados = [];
+        $grupos = [];
+
+        foreach (self::TIPOS_ESTADO_ORDENADOS as $tipo => $etiqueta) {
+            $estados = [];
+            $subtotal = 0;
+
+            foreach ($catalogoActivo->where('tipo', $tipo) as $estadoCatalogo) {
+                $cantidad = (int) ($conteoPorNombre->get($estadoCatalogo->nombre) ?? 0);
+                $estados[] = ['nombre' => $estadoCatalogo->nombre, 'cantidad' => $cantidad];
+                $subtotal += $cantidad;
+                $nombresCatalogados[] = $estadoCatalogo->nombre;
+            }
+
+            $grupos[] = [
+                'tipo' => $tipo,
+                'etiqueta' => $etiqueta,
+                'estados' => $estados,
+                'subtotal' => $subtotal,
+            ];
+        }
+
+        $sinCatalogar = $tickets
+            ->reject(fn (SdpTicket $ticket) => in_array($ticket->estado_nombre, $nombresCatalogados, true))
+            ->count();
+
+        return [
+            'grupos' => $grupos,
+            'sin_catalogar' => $sinCatalogar,
+        ];
+    }
+
+    /**
+     * Matriz de 3 columnas por técnico: Completados / En Curso / Escalado a
+     * Proveedor — "Escalado a Proveedor" se saca deliberadamente del conteo
+     * "En Curso" (aunque su tipo de catálogo sea TIPO_EN_CURSO) para no
+     * contarlo dos veces. Igual que `construirPorEstado()`, el match es por
+     * `estado_nombre` (no por FK), robusto a que `ticketStatus` no haya
+     * resuelto todavía. A diferencia del árbol de `por_estado`, aquí NO se
+     * listan técnicos sin actividad este periodo — el árbol de estados
+     * refleja el catálogo completo a propósito, esta lista se queda acotada
+     * a quién tuvo actividad real.
+     *
+     * @param  Collection<int, SdpTicket>  $tickets
+     * @return array<int, array{tecnico: string, completados: int, en_curso: int, escalado_a_proveedor: int, total: int}>
+     */
+    private function construirPorTecnico(Collection $tickets): array
+    {
+        $nombresEnCurso = SdpTicketStatus::activos()->where('tipo', SdpTicketStatus::TIPO_EN_CURSO)->pluck('nombre')->all();
+        $nombresCompletado = SdpTicketStatus::activos()->where('tipo', SdpTicketStatus::TIPO_COMPLETADO)->pluck('nombre')->all();
+
+        return $tickets
+            ->groupBy(fn (SdpTicket $ticket) => $ticket->technician?->nombre ?? 'Sin asignar')
+            ->map(function (Collection $grupo, string $tecnico) use ($nombresEnCurso, $nombresCompletado) {
+                $completados = 0;
+                $enCurso = 0;
+                $escaladoAProveedor = 0;
+
+                foreach ($grupo as $ticket) {
+                    if ($ticket->estado_nombre === self::ESTADO_ESCALADO_A_PROVEEDOR) {
+                        $escaladoAProveedor++;
+                    } elseif (in_array($ticket->estado_nombre, $nombresEnCurso, true)) {
+                        $enCurso++;
+                    } elseif (in_array($ticket->estado_nombre, $nombresCompletado, true)) {
+                        $completados++;
+                    }
+                }
+
+                return [
+                    'tecnico' => $tecnico,
+                    'completados' => $completados,
+                    'en_curso' => $enCurso,
+                    'escalado_a_proveedor' => $escaladoAProveedor,
+                    'total' => $grupo->count(),
+                ];
+            })
+            ->sortByDesc('total')
+            ->values()
+            ->all();
     }
 
     /**
@@ -102,23 +224,76 @@ trait GeneratesCierreReports
         string $totalLabel,
         array $filasExtra = []
     ): void {
-        $rows = [
-            ['Métrica', 'Valor'],
-            ['Periodo', $periodoLabel],
-            [$totalLabel, $resumen['total']],
-            ['', ''],
-            ['Por estado', ''],
-        ];
+        $rows = [];
+        // Filas [número de fila (1-based), cantidad de columnas a negritear]
+        // acumuladas conforme se arma $rows, en vez de hardcodear números de
+        // fila fijos — el bloque "Por estado" ahora tiene largo variable
+        // (depende de cuántos estados activos haya en el catálogo).
+        $filasNegritas = [];
 
-        foreach ($resumen['por_estado'] as $estado => $conteo) {
-            $rows[] = [$estado, $conteo];
+        $rows[] = ['Métrica', 'Valor'];
+        $filasNegritas[] = [count($rows), 2];
+
+        $rows[] = ['Periodo', $periodoLabel];
+        $rows[] = [$totalLabel, $resumen['total']];
+        $rows[] = ['', ''];
+
+        $rows[] = ['Por estado', ''];
+        $filasNegritas[] = [count($rows), 2];
+
+        foreach ($resumen['por_estado']['grupos'] as $grupo) {
+            $rows[] = ["Tipo: {$grupo['etiqueta']}", ''];
+            $filasNegritas[] = [count($rows), 2];
+
+            foreach ($grupo['estados'] as $estado) {
+                $rows[] = ['  '.$estado['nombre'], $this->omitirSiCero($estado['cantidad'])];
+            }
+
+            $rows[] = ['Subtotal', $grupo['subtotal']];
+            $filasNegritas[] = [count($rows), 2];
+        }
+
+        if (($resumen['por_estado']['sin_catalogar'] ?? 0) > 0) {
+            $rows[] = ['Sin catalogar', $resumen['por_estado']['sin_catalogar']];
         }
 
         $rows[] = ['', ''];
-        $rows[] = ['Por técnico', ''];
 
-        foreach ($resumen['por_tecnico'] as $tecnico => $conteo) {
-            $rows[] = [$tecnico, $conteo];
+        $rows[] = ['Por técnico', ''];
+        $filasNegritas[] = [count($rows), 2];
+
+        $rows[] = ['Técnico', 'Completados', 'En Curso', 'Escalado a Proveedor', 'Total'];
+        $filasNegritas[] = [count($rows), 5];
+
+        foreach ($resumen['por_tecnico'] as $fila) {
+            $rows[] = [
+                $fila['tecnico'],
+                $this->omitirSiCero($fila['completados']),
+                $this->omitirSiCero($fila['en_curso']),
+                $this->omitirSiCero($fila['escalado_a_proveedor']),
+                // Total no se omite aunque fuera 0: un técnico solo aparece
+                // en esta lista si tuvo actividad ese periodo (ver
+                // construirPorTecnico()), así que su total nunca es 0 en la
+                // práctica — pero se deja el número real por claridad, es la
+                // columna ancla de la fila, no "ruido" como las demás.
+                $fila['total'],
+            ];
+        }
+
+        // Fila de suma general de la tabla "Por técnico" — el usuario notó
+        // que faltaba (la traía a mano seleccionando el rango en Excel). La
+        // columna "Total" de esta fila debe coincidir con
+        // $resumen['total'] — es la misma suma vista desde otro ángulo, un
+        // buen check cruzado visual si algún día no cuadran.
+        if ($resumen['por_tecnico'] !== []) {
+            $rows[] = [
+                'Total',
+                array_sum(array_column($resumen['por_tecnico'], 'completados')),
+                array_sum(array_column($resumen['por_tecnico'], 'en_curso')),
+                array_sum(array_column($resumen['por_tecnico'], 'escalado_a_proveedor')),
+                array_sum(array_column($resumen['por_tecnico'], 'total')),
+            ];
+            $filasNegritas[] = [count($rows), 5];
         }
 
         if ($filasExtra !== []) {
@@ -135,8 +310,14 @@ trait GeneratesCierreReports
 
         $sheet->getColumnDimension('A')->setWidth(40);
         $sheet->getColumnDimension('B')->setWidth(15);
-        $sheet->getStyle('A1:B1')->getFont()->setBold(true);
-        $sheet->getStyle('A5')->getFont()->setBold(true);
+        $sheet->getColumnDimension('C')->setWidth(15);
+        $sheet->getColumnDimension('D')->setWidth(22);
+        $sheet->getColumnDimension('E')->setWidth(12);
+
+        foreach ($filasNegritas as [$rowNumber, $columnCount]) {
+            $lastColumn = Coordinate::stringFromColumnIndex($columnCount);
+            $sheet->getStyle("A{$rowNumber}:{$lastColumn}{$rowNumber}")->getFont()->setBold(true);
+        }
     }
 
     /**
@@ -208,6 +389,19 @@ trait GeneratesCierreReports
             'backlog_historico_por_tecnico' => $porTecnico->all(),
             'backlog_historico_por_categoria' => $porCategoria->all(),
         ];
+    }
+
+    /**
+     * A petición del usuario: en las filas de detalle del árbol "Por estado"
+     * y de la matriz "Por técnico", un conteo en 0 se deja en blanco en vez
+     * de escribir el número "0" — reduce el ruido visual de un Excel con
+     * muchas celdas en cero. Deliberadamente NO se aplica a los renglones de
+     * "Subtotal"/"Total" (esos siguen mostrando el número real aunque sea 0,
+     * son líneas de resumen, no "ruido").
+     */
+    private function omitirSiCero(int $cantidad): int|string
+    {
+        return $cantidad > 0 ? $cantidad : '';
     }
 
     /**

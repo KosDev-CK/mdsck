@@ -94,16 +94,76 @@ class MonthlyCloseCommandTest extends TestCase
         $this->assertSame(SdpReport::TIPO_MENSUAL, $report->tipo);
         $this->assertSame($mesPasado->toDateString(), $report->periodo->toDateString());
         $this->assertSame(3, $report->resumen_metricas['total']);
-        $this->assertSame(2, $report->resumen_metricas['por_tecnico']['Juan Pérez']);
-        $this->assertSame(1, $report->resumen_metricas['por_tecnico']['Ana López']);
-        $this->assertSame(2, $report->resumen_metricas['por_estado']['Abierto']);
-        $this->assertSame(1, $report->resumen_metricas['por_estado']['Cerrado']);
+
+        $porTecnico = collect($report->resumen_metricas['por_tecnico'])->keyBy('tecnico');
+        $this->assertSame(2, $porTecnico['Juan Pérez']['total']);
+        $this->assertSame(1, $porTecnico['Ana López']['total']);
+
+        $grupos = collect($report->resumen_metricas['por_estado']['grupos'])->keyBy('tipo');
+        $estadosEnCurso = collect($grupos[SdpTicketStatus::TIPO_EN_CURSO]['estados'])->keyBy('nombre');
+        $estadosCompletado = collect($grupos[SdpTicketStatus::TIPO_COMPLETADO]['estados'])->keyBy('nombre');
+        $this->assertSame(2, $estadosEnCurso['Abierto']['cantidad']);
+        $this->assertSame(1, $estadosCompletado['Cerrado']['cantidad']);
 
         Storage::disk('local')->assertExists($report->ruta_archivo);
 
         $spreadsheet = IOFactory::load(Storage::disk('local')->path($report->ruta_archivo));
         $this->assertSame(['Resumen', 'Detalle'], array_map(fn ($sheet) => $sheet->getTitle(), $spreadsheet->getAllSheets()));
         $this->assertSame(3, $spreadsheet->getSheetByName('Detalle')->getHighestRow() - 1);
+    }
+
+    public function test_escalado_a_proveedor_and_combinado_compose_correctly_with_the_monthly_specific_metrics(): void
+    {
+        $mesPasado = today()->subMonthNoOverflow()->startOfMonth();
+        $juan = $this->tecnico('Juan Pérez');
+        $escalado = $this->estado('Escalado a Proveedor', SdpTicketStatus::TIPO_EN_CURSO);
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+        // Presente en el catálogo activo pero sin ningún ticket este mes —
+        // debe seguir apareciendo con cantidad 0 en el árbol.
+        $this->estado('Asignado', SdpTicketStatus::TIPO_EN_CURSO);
+        $combinado = $this->estado('Combinado', SdpTicketStatus::TIPO_COMPLETADO);
+
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->addDay(),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $escalado->id,
+            'estado_nombre' => 'Escalado a Proveedor', 'display_id' => '100',
+        ]);
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->addDays(2),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $abierto->id,
+            'estado_nombre' => 'Abierto', 'display_id' => '101',
+        ]);
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->addDays(3),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $combinado->id,
+            'estado_nombre' => 'Combinado', 'combinado_con_display_id' => '999', 'display_id' => '102',
+        ]);
+
+        $this->artisan('sdp:monthly-close')->assertExitCode(0);
+
+        $metricas = SdpReport::first()->resumen_metricas;
+
+        // Los 3 tickets caen bajo Juan: 1 escalado, 1 en curso, 1 completado
+        // (Combinado) — ninguno duplicado entre columnas.
+        $juanRow = collect($metricas['por_tecnico'])->firstWhere('tecnico', 'Juan Pérez');
+        $this->assertSame(1, $juanRow['en_curso']);
+        $this->assertSame(1, $juanRow['escalado_a_proveedor']);
+        $this->assertSame(1, $juanRow['completados']);
+        $this->assertSame(3, $juanRow['total']);
+
+        $grupos = collect($metricas['por_estado']['grupos'])->keyBy('tipo');
+        $estadosEnCurso = collect($grupos[SdpTicketStatus::TIPO_EN_CURSO]['estados'])->keyBy('nombre');
+        $this->assertSame(0, $estadosEnCurso['Asignado']['cantidad']);
+        $this->assertSame(1, $estadosEnCurso['Abierto']['cantidad']);
+        $this->assertSame(1, $estadosEnCurso['Escalado a Proveedor']['cantidad']);
+        $this->assertSame(0, $metricas['por_estado']['sin_catalogar']);
+
+        // Las métricas propias del mensual (folios combinados) conviven sin
+        // problema con la nueva forma de por_estado/por_tecnico dentro del
+        // mismo array $resumen.
+        $this->assertSame(100, $metricas['folio_min']);
+        $this->assertSame(102, $metricas['folio_max']);
+        $this->assertSame(3, $metricas['conteo_real']);
     }
 
     public function test_it_calculates_the_combined_folios_metric_correctly(): void

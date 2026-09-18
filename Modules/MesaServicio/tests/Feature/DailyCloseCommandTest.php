@@ -82,10 +82,19 @@ class DailyCloseCommandTest extends TestCase
         $this->assertSame(SdpReport::TIPO_DIARIO, $report->tipo);
         $this->assertSame($ayer->toDateString(), $report->periodo->toDateString());
         $this->assertSame(3, $report->resumen_metricas['total']);
-        $this->assertSame(2, $report->resumen_metricas['por_tecnico']['Juan Pérez']);
-        $this->assertSame(1, $report->resumen_metricas['por_tecnico']['Ana López']);
-        $this->assertSame(2, $report->resumen_metricas['por_estado']['Abierto']);
-        $this->assertSame(1, $report->resumen_metricas['por_estado']['Cerrado']);
+
+        $porTecnico = collect($report->resumen_metricas['por_tecnico'])->keyBy('tecnico');
+        $this->assertSame(2, $porTecnico['Juan Pérez']['total']);
+        $this->assertSame(1, $porTecnico['Ana López']['total']);
+
+        $grupos = collect($report->resumen_metricas['por_estado']['grupos'])->keyBy('tipo');
+        $estadosEnCurso = collect($grupos[SdpTicketStatus::TIPO_EN_CURSO]['estados'])->keyBy('nombre');
+        $estadosCompletado = collect($grupos[SdpTicketStatus::TIPO_COMPLETADO]['estados'])->keyBy('nombre');
+        $this->assertSame(2, $estadosEnCurso['Abierto']['cantidad']);
+        $this->assertSame(1, $estadosCompletado['Cerrado']['cantidad']);
+        $this->assertSame(2, $grupos[SdpTicketStatus::TIPO_EN_CURSO]['subtotal']);
+        $this->assertSame(1, $grupos[SdpTicketStatus::TIPO_COMPLETADO]['subtotal']);
+        $this->assertSame(0, $report->resumen_metricas['por_estado']['sin_catalogar']);
 
         Storage::disk('local')->assertExists($report->ruta_archivo);
 
@@ -103,7 +112,8 @@ class DailyCloseCommandTest extends TestCase
         $this->artisan('sdp:daily-close')->assertExitCode(0);
 
         $report = SdpReport::first();
-        $this->assertSame(1, $report->resumen_metricas['por_tecnico']['Sin asignar']);
+        $porTecnico = collect($report->resumen_metricas['por_tecnico'])->keyBy('tecnico');
+        $this->assertSame(1, $porTecnico['Sin asignar']['total']);
     }
 
     public function test_a_day_without_tickets_still_generates_a_report_with_zeros(): void
@@ -114,7 +124,12 @@ class DailyCloseCommandTest extends TestCase
         $this->assertNotNull($report);
         $this->assertSame(0, $report->resumen_metricas['total']);
         $this->assertSame([], $report->resumen_metricas['por_tecnico']);
-        $this->assertSame([], $report->resumen_metricas['por_estado']);
+        // Sin catálogo de estados sembrado en este test, ambos grupos
+        // existen pero sin estados dentro (subtotal 0) — el árbol de tipos
+        // siempre tiene la misma forma fija, solo cambia lo que contiene.
+        $this->assertSame([], $report->resumen_metricas['por_estado']['grupos'][0]['estados']);
+        $this->assertSame(0, $report->resumen_metricas['por_estado']['grupos'][0]['subtotal']);
+        $this->assertSame(0, $report->resumen_metricas['por_estado']['sin_catalogar']);
 
         Storage::disk('local')->assertExists($report->ruta_archivo);
     }
@@ -145,6 +160,119 @@ class DailyCloseCommandTest extends TestCase
         $report = SdpReport::first();
         $this->assertSame($fecha->toDateString(), $report->periodo->toDateString());
         $this->assertSame(1, $report->resumen_metricas['total']);
+    }
+
+    public function test_escalado_a_proveedor_is_counted_separately_from_en_curso_per_technician(): void
+    {
+        $ayer = today()->subDay();
+        $juan = $this->tecnico('Juan Pérez');
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+        $escalado = $this->estado('Escalado a Proveedor', SdpTicketStatus::TIPO_EN_CURSO);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'En curso', 'created_time' => $ayer->copy()->addHours(9),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $abierto->id, 'estado_nombre' => 'Abierto',
+        ]);
+        SdpTicket::create([
+            'sdp_id' => 'tk-2', 'asunto' => 'Escalado', 'created_time' => $ayer->copy()->addHours(10),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $escalado->id, 'estado_nombre' => 'Escalado a Proveedor',
+        ]);
+
+        $this->artisan('sdp:daily-close')->assertExitCode(0);
+
+        $juanRow = collect(SdpReport::first()->resumen_metricas['por_tecnico'])->firstWhere('tecnico', 'Juan Pérez');
+        $this->assertSame(1, $juanRow['en_curso']);
+        $this->assertSame(1, $juanRow['escalado_a_proveedor']);
+        $this->assertSame(0, $juanRow['completados']);
+        $this->assertSame(2, $juanRow['total']);
+    }
+
+    public function test_a_status_with_zero_tickets_still_appears_in_the_por_estado_tree(): void
+    {
+        $ayer = today()->subDay();
+        $juan = $this->tecnico('Juan Pérez');
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+        // "Asignado" existe en el catálogo activo pero no tiene ningún
+        // ticket este periodo — debe aparecer igual, con cantidad 0.
+        $this->estado('Asignado', SdpTicketStatus::TIPO_EN_CURSO);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Abierto', 'created_time' => $ayer->copy()->addHours(9),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $abierto->id, 'estado_nombre' => 'Abierto',
+        ]);
+
+        $this->artisan('sdp:daily-close')->assertExitCode(0);
+
+        $grupos = collect(SdpReport::first()->resumen_metricas['por_estado']['grupos'])->keyBy('tipo');
+        $estados = collect($grupos[SdpTicketStatus::TIPO_EN_CURSO]['estados'])->keyBy('nombre');
+        $this->assertSame(0, $estados['Asignado']['cantidad']);
+        $this->assertSame(1, $estados['Abierto']['cantidad']);
+    }
+
+    public function test_por_estado_subtotals_and_sin_catalogar_sum_to_the_total(): void
+    {
+        $ayer = today()->subDay();
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+        $cerrado = $this->estado('Cerrado', SdpTicketStatus::TIPO_COMPLETADO);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Catalogado en curso', 'created_time' => $ayer->copy()->addHours(9),
+            'sdp_ticket_status_id' => $abierto->id, 'estado_nombre' => 'Abierto',
+        ]);
+        SdpTicket::create([
+            'sdp_id' => 'tk-2', 'asunto' => 'Catalogado completado', 'created_time' => $ayer->copy()->addHours(10),
+            'sdp_ticket_status_id' => $cerrado->id, 'estado_nombre' => 'Cerrado',
+        ]);
+        // Estado que no existe en el catálogo local sembrado en este test —
+        // debe caer en sin_catalogar sin desaparecer del total.
+        SdpTicket::create([
+            'sdp_id' => 'tk-3', 'asunto' => 'Estado nuevo de SDP', 'created_time' => $ayer->copy()->addHours(11),
+            'estado_nombre' => 'Estado Nuevo No Sembrado',
+        ]);
+
+        $this->artisan('sdp:daily-close')->assertExitCode(0);
+
+        $metricas = SdpReport::first()->resumen_metricas;
+        $grupos = collect($metricas['por_estado']['grupos'])->keyBy('tipo');
+        $subtotalEnCurso = $grupos[SdpTicketStatus::TIPO_EN_CURSO]['subtotal'];
+        $subtotalCompletado = $grupos[SdpTicketStatus::TIPO_COMPLETADO]['subtotal'];
+        $sinCatalogar = $metricas['por_estado']['sin_catalogar'];
+
+        $this->assertSame(3, $metricas['total']);
+        $this->assertSame(1, $subtotalEnCurso);
+        $this->assertSame(1, $subtotalCompletado);
+        $this->assertSame(1, $sinCatalogar);
+        $this->assertSame($metricas['total'], $subtotalEnCurso + $subtotalCompletado + $sinCatalogar);
+    }
+
+    public function test_a_combinado_ticket_is_grouped_under_completado_and_counts_as_technician_work(): void
+    {
+        $ayer = today()->subDay();
+        $juan = $this->tecnico('Juan Pérez');
+        // "Combinado" es tipo completado en el catálogo (ver
+        // MesaServicioDatabaseSeeder) — sigue contando como trabajo del
+        // técnico en este resumen, política ya documentada previamente.
+        $combinado = $this->estado('Combinado', SdpTicketStatus::TIPO_COMPLETADO);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-1', 'asunto' => 'Combinado', 'created_time' => $ayer->copy()->addHours(9),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $combinado->id, 'estado_nombre' => 'Combinado',
+            'combinado_con_display_id' => '999',
+        ]);
+
+        $this->artisan('sdp:daily-close')->assertExitCode(0);
+
+        $metricas = SdpReport::first()->resumen_metricas;
+
+        $grupos = collect($metricas['por_estado']['grupos'])->keyBy('tipo');
+        $estadosCompletado = collect($grupos[SdpTicketStatus::TIPO_COMPLETADO]['estados'])->keyBy('nombre');
+        $this->assertSame(1, $estadosCompletado['Combinado']['cantidad']);
+        $this->assertSame(1, $grupos[SdpTicketStatus::TIPO_COMPLETADO]['subtotal']);
+
+        $juanRow = collect($metricas['por_tecnico'])->firstWhere('tecnico', 'Juan Pérez');
+        $this->assertSame(1, $juanRow['completados']);
+        $this->assertSame(0, $juanRow['en_curso']);
+        $this->assertSame(0, $juanRow['escalado_a_proveedor']);
     }
 
     public function test_it_notifies_the_supervisor_role_and_each_recipient_email(): void

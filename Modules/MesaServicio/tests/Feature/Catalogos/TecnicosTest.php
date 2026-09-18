@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
+use Modules\MesaServicio\Models\GrupoAnalitico;
 use Modules\MesaServicio\Models\SdpTechnician;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -128,5 +129,80 @@ class TecnicosTest extends TestCase
             ->set('filterNivel1', 'si')
             ->assertSee('Nivel Uno')
             ->assertDontSee('No Nivel Uno');
+    }
+
+    public function test_it_can_assign_a_grupo_analitico(): void
+    {
+        $grupo = GrupoAnalitico::create(['nombre' => 'Infraestructura', 'activo' => true]);
+
+        $technician = SdpTechnician::create([
+            'sdp_id' => 't1',
+            'nombre' => 'Juan Pérez',
+            'correo' => 'juan@example.test',
+            'puesto' => 'Analista',
+            'activo' => true,
+            'es_nivel_1' => true,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Tecnicos::class)
+            ->call('asignarGrupoAnalitico', $technician->id, $grupo->id)
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('sdp_technicians', [
+            'id' => $technician->id,
+            'grupo_analitico_id' => $grupo->id,
+            // No debe tocar ningún otro campo del técnico.
+            'nombre' => 'Juan Pérez',
+            'correo' => 'juan@example.test',
+            'puesto' => 'Analista',
+            'activo' => true,
+            'es_nivel_1' => true,
+        ]);
+    }
+
+    public function test_it_can_unset_the_grupo_analitico_back_to_null(): void
+    {
+        $grupo = GrupoAnalitico::create(['nombre' => 'Infraestructura', 'activo' => true]);
+
+        $technician = SdpTechnician::create([
+            'sdp_id' => 't1',
+            'nombre' => 'Juan Pérez',
+            'activo' => true,
+            'es_nivel_1' => false,
+            'grupo_analitico_id' => $grupo->id,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Tecnicos::class)
+            ->call('asignarGrupoAnalitico', $technician->id, null)
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('sdp_technicians', [
+            'id' => $technician->id,
+            'grupo_analitico_id' => null,
+        ]);
+    }
+
+    public function test_it_filters_by_grupo_analitico(): void
+    {
+        $grupo = GrupoAnalitico::create(['nombre' => 'Infraestructura', 'activo' => true]);
+
+        SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Con Grupo', 'activo' => true, 'es_nivel_1' => false, 'grupo_analitico_id' => $grupo->id]);
+        SdpTechnician::create(['sdp_id' => 't2', 'nombre' => 'Sin Grupo', 'activo' => true, 'es_nivel_1' => false]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Tecnicos::class)
+            ->set('filterGrupoAnalitico', (string) $grupo->id)
+            ->assertSee('Con Grupo')
+            ->assertDontSee('Sin Grupo');
+
+        Livewire::test(Tecnicos::class)
+            ->set('filterGrupoAnalitico', 'sin-asignar')
+            ->assertSee('Sin Grupo')
+            ->assertDontSee('Con Grupo');
     }
 }
