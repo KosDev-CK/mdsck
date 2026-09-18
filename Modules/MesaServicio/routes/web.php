@@ -8,6 +8,9 @@ use Modules\MesaServicio\Livewire\Catalogos\GruposAnaliticos;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
+use Modules\MesaServicio\Livewire\Dashboards\Analitico;
+use Modules\MesaServicio\Livewire\Dashboards\Ejecutivo;
+use Modules\MesaServicio\Livewire\Dashboards\Operacion;
 use Modules\MesaServicio\Livewire\Reportes\Index as ReportesIndex;
 use Modules\MesaServicio\Livewire\Tecnicos\Show as TecnicoShow;
 
@@ -57,3 +60,21 @@ Route::middleware(['auth', 'permission:screens.mesaservicio-dashboard.manage'])-
     Route::get('/mesa-servicio', Dashboard::class)->name('mesaservicio.dashboard.index');
     Route::get('/mesa-servicio/tecnicos/{tecnico}', TecnicoShow::class)->name('mesaservicio.tecnicos.show');
 });
+
+// Los 3 dashboards de abajo son pantallas nuevas e independientes del
+// dashboard operativo de arriba (que se queda tal cual) — viven en su
+// propio submenú "Dashboards" del sidebar (ver group_label en
+// MesaServicioDatabaseSeeder). Por ahora son solo scaffolding con vista
+// placeholder; el contenido real de cada uno se construye en iteraciones
+// futuras, pantalla por pantalla.
+Route::middleware(['auth', 'permission:screens.mesaservicio-dashboard-ejecutivo.manage'])
+    ->get('/mesa-servicio/dashboards/ejecutivo', Ejecutivo::class)
+    ->name('mesaservicio.dashboards.ejecutivo');
+
+Route::middleware(['auth', 'permission:screens.mesaservicio-dashboard-analitico.manage'])
+    ->get('/mesa-servicio/dashboards/analitico', Analitico::class)
+    ->name('mesaservicio.dashboards.analitico');
+
+Route::middleware(['auth', 'permission:screens.mesaservicio-dashboard-operacion.manage'])
+    ->get('/mesa-servicio/dashboards/operacion', Operacion::class)
+    ->name('mesaservicio.dashboards.operacion');

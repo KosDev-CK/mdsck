@@ -17,6 +17,9 @@ use Modules\MesaServicio\Livewire\Catalogos\GruposAnaliticos;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
+use Modules\MesaServicio\Livewire\Dashboards\Analitico;
+use Modules\MesaServicio\Livewire\Dashboards\Ejecutivo;
+use Modules\MesaServicio\Livewire\Dashboards\Operacion;
 use Modules\MesaServicio\Livewire\Reportes\Index as ReportesIndex;
 use Modules\MesaServicio\Livewire\Tecnicos\Show as TecnicoShow;
 use Modules\MesaServicio\Services\SdpClient;
@@ -91,6 +94,9 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
         Livewire::component('mesaservicio.catalogos.slas', Slas::class);
         Livewire::component('mesaservicio.catalogos.catalogos-sdp', CatalogosSdp::class);
         Livewire::component('mesaservicio.catalogos.grupos-analiticos', GruposAnaliticos::class);
+        Livewire::component('mesaservicio.dashboards.ejecutivo', Ejecutivo::class);
+        Livewire::component('mesaservicio.dashboards.analitico', Analitico::class);
+        Livewire::component('mesaservicio.dashboards.operacion', Operacion::class);
     }
 
     /**

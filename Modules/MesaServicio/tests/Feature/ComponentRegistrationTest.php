@@ -10,6 +10,9 @@ use Modules\MesaServicio\Livewire\Catalogos\GruposAnaliticos;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
 use Modules\MesaServicio\Livewire\Dashboard;
+use Modules\MesaServicio\Livewire\Dashboards\Analitico;
+use Modules\MesaServicio\Livewire\Dashboards\Ejecutivo;
+use Modules\MesaServicio\Livewire\Dashboards\Operacion;
 use Modules\MesaServicio\Livewire\Reportes\Index as ReportesIndex;
 use Modules\MesaServicio\Livewire\Tecnicos\Show as TecnicoShow;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -37,6 +40,9 @@ class ComponentRegistrationTest extends TestCase
             ['mesaservicio.catalogos.slas', Slas::class],
             ['mesaservicio.catalogos.catalogos-sdp', CatalogosSdp::class],
             ['mesaservicio.catalogos.grupos-analiticos', GruposAnaliticos::class],
+            ['mesaservicio.dashboards.ejecutivo', Ejecutivo::class],
+            ['mesaservicio.dashboards.analitico', Analitico::class],
+            ['mesaservicio.dashboards.operacion', Operacion::class],
         ];
     }
 

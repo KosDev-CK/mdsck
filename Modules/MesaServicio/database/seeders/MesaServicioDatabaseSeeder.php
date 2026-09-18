@@ -94,6 +94,36 @@ class MesaServicioDatabaseSeeder extends Seeder
                 'icon' => 'tag',
                 'order' => 6,
             ],
+            [
+                'slug' => 'mesaservicio-dashboard-ejecutivo',
+                'module' => 'MesaServicio',
+                'group_label' => 'Dashboards',
+                'name' => 'Dashboard Ejecutivo',
+                'route_name' => 'mesaservicio.dashboards.ejecutivo',
+                'permission_name' => 'screens.mesaservicio-dashboard-ejecutivo.manage',
+                'icon' => 'presentation-chart-line',
+                'order' => 7,
+            ],
+            [
+                'slug' => 'mesaservicio-dashboard-analitico',
+                'module' => 'MesaServicio',
+                'group_label' => 'Dashboards',
+                'name' => 'Dashboard Analítico',
+                'route_name' => 'mesaservicio.dashboards.analitico',
+                'permission_name' => 'screens.mesaservicio-dashboard-analitico.manage',
+                'icon' => 'chart-pie',
+                'order' => 8,
+            ],
+            [
+                'slug' => 'mesaservicio-dashboard-operacion',
+                'module' => 'MesaServicio',
+                'group_label' => 'Dashboards',
+                'name' => 'Dashboard de Operación',
+                'route_name' => 'mesaservicio.dashboards.operacion',
+                'permission_name' => 'screens.mesaservicio-dashboard-operacion.manage',
+                'icon' => 'wrench-screwdriver',
+                'order' => 9,
+            ],
         ];
 
         foreach ($screens as $screen) {
