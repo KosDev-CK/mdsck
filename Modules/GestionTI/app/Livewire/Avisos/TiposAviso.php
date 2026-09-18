@@ -162,6 +162,32 @@ class TiposAviso extends Component
         $record->update(['activo' => ! $record->activo]);
     }
 
+    /**
+     * Borrado físico (a diferencia de toggleActivo) — pedido explícito de UI
+     * para "mantenimiento de catálogo". Red de seguridad try/catch por si
+     * alguna FK futura hacia tipos_aviso se declara como restrict — hoy
+     * tipo_aviso_destinatarios se borra en cascada al eliminar el tipo de
+     * aviso (relación hasMany propia, ver `destinatarios()`).
+     */
+    public function delete(int $id): void
+    {
+        $record = TipoAviso::findOrFail($id);
+
+        try {
+            $record->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Eliminado correctamente.');
+    }
+
     public function cancel(): void
     {
         $this->showModal = false;

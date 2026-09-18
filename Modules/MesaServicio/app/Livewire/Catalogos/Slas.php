@@ -127,6 +127,30 @@ class Slas extends Component
     }
 
     /**
+     * Borrado físico (a diferencia de toggleActivo) — pedido explícito de UI
+     * para "mantenimiento de catálogo". Red de seguridad try/catch por si
+     * alguna FK futura hacia sdp_sla_definitions se declara como restrict.
+     */
+    public function delete(int $id): void
+    {
+        $definicion = SdpSlaDefinition::findOrFail($id);
+
+        try {
+            $definicion->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Eliminado correctamente.');
+    }
+
+    /**
      * Consulta base de tickets creados dentro del rango desde/hasta
      * (inclusive, día completo en ambos extremos) — reusada por ambas
      * tablas de cumplimiento.

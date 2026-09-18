@@ -2,11 +2,13 @@
     <h1 class="text-lg font-semibold text-gray-900 mb-1 dark:text-gray-100">Ingresa tu código</h1>
     <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Revisa tu correo, te enviamos un código de 6 dígitos.</p>
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <form wire:submit="verifyCode" class="space-y-4">
         <div>

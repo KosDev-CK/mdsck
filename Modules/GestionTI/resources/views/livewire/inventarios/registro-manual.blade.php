@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusColors = [

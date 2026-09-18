@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-6">
         <h2 class="text-sm font-semibold text-gray-900 mb-1 dark:text-gray-100">Documentos digitalizados en SharePoint</h2>

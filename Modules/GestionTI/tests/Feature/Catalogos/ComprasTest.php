@@ -235,6 +235,40 @@ class ComprasTest extends TestCase
         $this->assertFalse($articulo->fresh()->activo);
     }
 
+    public function test_can_delete_a_proveedor_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $proveedor = Proveedor::create(['nombre_comercial' => 'Temporal', 'razon_social' => 'Temporal S.A. de C.V.']);
+
+        Livewire::test(Compras::class)->call('delete', $proveedor->id);
+
+        $this->assertDatabaseMissing('proveedores', ['id' => $proveedor->id]);
+    }
+
+    public function test_cannot_delete_a_proveedor_referenced_by_an_asset(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $proveedor = Proveedor::create(['nombre_comercial' => 'Con Activo', 'razon_social' => 'Con Activo S.A. de C.V.']);
+        $tipoEquipo = TipoEquipo::create(['nombre' => 'Laptop']);
+        $estatus = \Modules\GestionTI\Models\EstatusActivo::create(['codigo' => 'en_stock', 'nombre' => 'En stock']);
+
+        \Modules\GestionTI\Models\Asset::create([
+            'codigo' => 'KOS-TEST-000002',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'origen_tipo' => 'ajuste_manual',
+            'estatus_id' => $estatus->id,
+            'vendor_id' => $proveedor->id,
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('delete', $proveedor->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('proveedores', ['id' => $proveedor->id]);
+    }
+
     public function test_screen_is_seeded_and_visible_to_administrador(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);

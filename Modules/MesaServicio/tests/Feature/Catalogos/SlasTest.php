@@ -152,6 +152,19 @@ class SlasTest extends TestCase
         $this->assertDatabaseHas('sdp_sla_definitions', ['id' => $definicion->id, 'activo' => true]);
     }
 
+    public function test_it_can_delete_a_definition(): void
+    {
+        $definicion = SdpSlaDefinition::create([
+            'nombre' => 'Temporal', 'prioridad' => 'Baja', 'tiempo_resolucion_minutos' => 480, 'activo' => true,
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Slas::class)->call('delete', $definicion->id);
+
+        $this->assertDatabaseMissing('sdp_sla_definitions', ['id' => $definicion->id]);
+    }
+
     public function test_it_shows_the_help_button_with_its_pdf_route(): void
     {
         $this->actingAs($this->actingUser());

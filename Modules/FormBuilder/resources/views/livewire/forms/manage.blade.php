@@ -6,13 +6,15 @@
         Crea plantillas de formulario y publícalas para poder enviarlas desde "Mis Formularios".
     </p>
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-6">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
 
-    @if (session('error'))
-        <x-ui.alert variant="error" class="mb-6">{{ session('error') }}</x-ui.alert>
-    @endif
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <x-ui.card padding="p-5">
@@ -44,7 +46,7 @@
                     </thead>
                     <tbody>
                         @forelse ($forms as $form)
-                            <tr wire:key="form-row-{{ $form->id }}" class="border-b border-gray-50 dark:border-gray-800 {{ $selectedFormId === $form->id ? 'bg-gray-50 dark:bg-gray-800/50' : '' }}">
+                            <tr wire:key="form-row-{{ $form->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors {{ $selectedFormId === $form->id ? 'bg-gray-50 dark:bg-gray-800/50' : '' }}">
                                 <td class="py-2">
                                     <button wire:click="selectForm({{ $form->id }})" class="font-medium text-gray-900 hover:text-primary dark:text-gray-100 text-left">
                                         {{ $form->name }}
@@ -57,9 +59,7 @@
                                     </x-ui.badge>
                                 </td>
                                 <td class="py-2 text-right whitespace-nowrap">
-                                    <button wire:click="delete({{ $form->id }})" wire:confirm="¿Eliminar este formulario?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">
-                                        Eliminar
-                                    </button>
+                                    <x-ui.icon-button wire:click="delete({{ $form->id }})" wire:confirm="¿Eliminar este formulario?" icon="heroicon-o-trash" title="Eliminar" variant="danger" />
                                 </td>
                             </tr>
                         @empty

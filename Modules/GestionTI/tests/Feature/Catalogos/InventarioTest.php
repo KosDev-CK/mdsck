@@ -296,6 +296,40 @@ class InventarioTest extends TestCase
         $this->assertFalse($marca->fresh()->activo);
     }
 
+    public function test_can_delete_a_marca_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $marca = Marca::create(['nombre' => 'Temporal']);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'marcas')
+            ->call('delete', $marca->id);
+
+        $this->assertDatabaseMissing('marcas', ['id' => $marca->id]);
+    }
+
+    public function test_cannot_delete_a_tipo_equipo_referenced_by_an_asset(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $tipoEquipo = TipoEquipo::create(['nombre' => 'Con Activo']);
+        $estatus = EstatusActivo::create(['codigo' => 'en_stock', 'nombre' => 'En stock']);
+
+        \Modules\GestionTI\Models\Asset::create([
+            'codigo' => 'KOS-TEST-000003',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'origen_tipo' => 'ajuste_manual',
+            'estatus_id' => $estatus->id,
+        ]);
+
+        Livewire::test(Inventario::class)
+            ->call('delete', $tipoEquipo->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('tipos_equipo', ['id' => $tipoEquipo->id]);
+    }
+
     public function test_screen_is_seeded_and_visible_to_administrador(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);

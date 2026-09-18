@@ -3,11 +3,13 @@
         Perfiles
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <x-ui.card padding="p-5">
@@ -15,20 +17,21 @@
 
             <ul class="space-y-1 mb-4">
                 @foreach ($roles as $role)
-                    <li class="flex items-center justify-between rounded-md {{ $selectedRoleId === $role->id ? 'bg-indigo-50 dark:bg-indigo-500/10' : '' }}">
+                    <li class="flex items-center justify-between rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors {{ $selectedRoleId === $role->id ? 'bg-indigo-50 dark:bg-indigo-500/10' : '' }}">
                         <button wire:click="selectRole({{ $role->id }})" class="flex-1 text-left px-3 py-2 text-sm {{ $selectedRoleId === $role->id ? 'text-indigo-700 font-medium dark:text-indigo-400' : 'text-gray-700 dark:text-gray-300' }}">
                             {{ $role->name }}
                             <span class="text-xs text-gray-400 dark:text-gray-500">({{ $role->users_count }})</span>
                         </button>
 
                         @if ($role->name !== 'Administrador')
-                            <button
+                            <x-ui.icon-button
                                 wire:click="deleteRole({{ $role->id }})"
                                 wire:confirm="¿Eliminar el perfil {{ $role->name }}?"
-                                class="px-2 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
-                            >
-                                &times;
-                            </button>
+                                icon="heroicon-o-trash"
+                                title="Eliminar"
+                                variant="danger"
+                                class="mr-1"
+                            />
                         @endif
                     </li>
                 @endforeach

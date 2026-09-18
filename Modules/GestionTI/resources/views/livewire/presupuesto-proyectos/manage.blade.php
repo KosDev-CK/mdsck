@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusLabels = [
@@ -51,7 +53,7 @@
 
         <x-ui.table :headers="['Proyecto', 'Empresa', 'Centro de costo', 'PM responsable', 'Fecha límite de captura', 'Estatus', '']" :empty="$records->isEmpty()" empty-description="Agrega el primero con el botón Nuevo.">
             @foreach ($records as $record)
-                <tr wire:key="proyecto-presupuesto-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="proyecto-presupuesto-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre_proyecto }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->empresa?->nombre_comercial }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->centroCosto?->nombre }}</td>
@@ -61,7 +63,7 @@
                         <x-ui.badge :color="$estatusColors[$record->estatus] ?? 'gray'">{{ $estatusLabels[$record->estatus] ?? $record->estatus }}</x-ui.badge>
                     </td>
                     <td class="py-2 text-right whitespace-nowrap">
-                        <a href="{{ route('gestionti.presupuestos-proyecto.show', $record) }}" class="text-sm text-primary hover:brightness-90">Ver detalle</a>
+                        <x-ui.icon-button tag="a" :href="route('gestionti.presupuestos-proyecto.show', $record)" icon="heroicon-o-eye" title="Ver detalle" />
                     </td>
                 </tr>
             @endforeach

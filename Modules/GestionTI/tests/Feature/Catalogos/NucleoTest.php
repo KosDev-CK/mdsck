@@ -112,6 +112,42 @@ class NucleoTest extends TestCase
         $this->assertFalse($empresa->fresh()->activo);
     }
 
+    public function test_can_delete_an_empresa_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $empresa = Empresa::create([
+            'razon_social' => 'Temporal S.A. de C.V.',
+            'nombre_comercial' => 'Temporal',
+        ]);
+
+        Livewire::test(Nucleo::class)->call('delete', $empresa->id);
+
+        $this->assertDatabaseMissing('empresas', ['id' => $empresa->id]);
+    }
+
+    public function test_cannot_delete_an_empresa_referenced_by_an_empleado(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $empresa = Empresa::create([
+            'razon_social' => 'Con Empleado S.A. de C.V.',
+            'nombre_comercial' => 'Con Empleado',
+        ]);
+
+        \Modules\GestionTI\Models\Empleado::create([
+            'numero_empleado' => 'E-900',
+            'nombre' => 'Empleado Referenciado',
+            'empresa_id' => $empresa->id,
+        ]);
+
+        Livewire::test(Nucleo::class)
+            ->call('delete', $empresa->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('empresas', ['id' => $empresa->id]);
+    }
+
     public function test_screen_is_seeded_and_visible_to_administrador(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);

@@ -7,9 +7,10 @@ return [
     'proceso' => [
         'En "Definiciones de SLA", agrega o edita una definición: nombre, la prioridad a la que aplica (debe coincidir exactamente con el nombre de prioridad que usa SDP, por ejemplo "Alta"), y el tiempo máximo de primera respuesta y de resolución en minutos.',
         'Una definición sin prioridad asignada aplica como "por defecto" a cualquier ticket cuya prioridad no tenga una definición específica activa.',
-        'Desactiva (sin borrar) una definición que ya no aplique, con su interruptor de "Activo" — una definición inactiva no se usa para calcular cumplimiento.',
+        'Desactiva (sin borrar) una definición que ya no aplique, con su interruptor de "Activo" — una definición inactiva no se usa para calcular cumplimiento. Usa el ícono de bote de basura si además quieres borrarla por completo del catálogo (pide confirmación, no se puede deshacer).',
         'Ajusta el rango de fechas para ver el cumplimiento de un periodo distinto — por defecto se muestra desde el primer día del mes en curso hasta hoy.',
         'Las tablas de "Cumplimiento por técnico" y "Cumplimiento por categoría" muestran, solo para los tickets del rango que ya tienen el dato necesario (respondidos o resueltos), el porcentaje que cumplió cada tiempo objetivo.',
+        'Los tickets marcados como "Combinado" (fusionados a otro ticket por ServiceDesk Plus) no se cuentan aquí — si contarán su tiempo de respuesta/resolución sería injusto con el técnico o inflaría artificialmente el incumplimiento, ya que ese ticket ya no siguió su curso normal. Sí se siguen contando en el resto de las métricas del módulo (dashboard, ficha de técnico, cierres).',
     ],
     'campos' => [
         ['nombre' => 'Nombre', 'explicacion' => 'Nombre libre de la definición, único, ej. "SLA Alta".'],

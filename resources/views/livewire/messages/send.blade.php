@@ -3,11 +3,13 @@
         Mensajes
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-6">
         <h2 class="text-sm font-semibold text-gray-900 mb-4 dark:text-gray-100">Enviar aviso</h2>

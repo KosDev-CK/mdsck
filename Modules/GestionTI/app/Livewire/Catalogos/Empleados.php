@@ -134,6 +134,33 @@ class Empleados extends Component
         $record->update(['activo' => ! $record->activo]);
     }
 
+    /**
+     * Borrado físico (a diferencia de toggleActivo) — pedido explícito de UI
+     * para "mantenimiento de catálogo". A diferencia de otros catálogos de
+     * este módulo, `empleados` SÍ tiene varias FK declaradas como
+     * restrictOnDelete (asset_assignments, tickets,
+     * solicitudes_sic_borrador, proyecto_presupuestos y más) — el try/catch
+     * es la red de seguridad real aquí, no solo defensiva.
+     */
+    public function delete(int $id): void
+    {
+        $record = Empleado::findOrFail($id);
+
+        try {
+            $record->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Eliminado correctamente.');
+    }
+
     public function cancel(): void
     {
         $this->showModal = false;

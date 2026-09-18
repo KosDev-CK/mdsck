@@ -7,13 +7,15 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
 
-    @if (session('error'))
-        <x-ui.alert variant="error" class="mb-4">{{ session('error') }}</x-ui.alert>
-    @endif
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Encuesta de satisfacción</h2>
@@ -73,17 +75,17 @@
             empty-description="Agrega el primero con el formulario de arriba."
         >
             @foreach ($recipients as $recipient)
-                <tr wire:key="recipient-{{ $recipient->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="recipient-{{ $recipient->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $recipient->email }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $recipient->nombre }}</td>
                     <td class="py-2 text-right">
-                        <button
+                        <x-ui.icon-button
                             wire:click="removeEmail({{ $recipient->id }})"
                             wire:confirm="¿Quitar este correo de la lista de destinatarios?"
-                            class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
-                        >
-                            Quitar
-                        </button>
+                            icon="heroicon-o-trash"
+                            title="Quitar"
+                            variant="danger"
+                        />
                     </td>
                 </tr>
             @endforeach

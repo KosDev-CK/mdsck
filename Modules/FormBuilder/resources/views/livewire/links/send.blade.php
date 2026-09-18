@@ -6,13 +6,15 @@
         Genera un enlace único para que alguien externo llene un formulario sin necesidad de iniciar sesión, ligado a un ticket de mesa de servicio.
     </p>
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-6">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
 
-    @if (session('error'))
-        <x-ui.alert variant="error" class="mb-6">{{ session('error') }}</x-ui.alert>
-    @endif
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5" class="mb-6">
         <h2 class="text-sm font-semibold text-gray-900 mb-4 dark:text-gray-100">Generar enlace</h2>

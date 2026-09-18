@@ -125,6 +125,17 @@ class GruposAnaliticosTest extends TestCase
         $this->assertDatabaseHas('grupos_analiticos', ['id' => $grupo->id, 'activo' => true]);
     }
 
+    public function test_it_can_delete_a_group(): void
+    {
+        $grupo = GrupoAnalitico::create(['nombre' => 'Temporal', 'activo' => true]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(GruposAnaliticos::class)->call('delete', $grupo->id);
+
+        $this->assertDatabaseMissing('grupos_analiticos', ['id' => $grupo->id]);
+    }
+
     public function test_it_shows_the_help_button_with_its_pdf_route(): void
     {
         $this->actingAs($this->actingUser());

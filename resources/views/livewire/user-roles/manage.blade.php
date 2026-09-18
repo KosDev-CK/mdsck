@@ -3,11 +3,13 @@
         Perfiles por usuario
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <x-ui.card padding="p-5" class="lg:col-span-2">
@@ -29,7 +31,7 @@
                     </thead>
                     <tbody>
                         @foreach ($users as $user)
-                            <tr class="border-b border-gray-50 dark:border-gray-800 {{ $selectedUserId === $user->id ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : '' }}">
+                            <tr class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors {{ $selectedUserId === $user->id ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : '' }}">
                                 <td class="py-2 whitespace-nowrap">
                                     <div class="font-medium text-gray-900 dark:text-gray-100">{{ $user->name }}</div>
                                     <div class="text-gray-400 text-xs dark:text-gray-500">{{ $user->email }}</div>
@@ -42,9 +44,7 @@
                                     </div>
                                 </td>
                                 <td class="py-2 text-right whitespace-nowrap">
-                                    <button wire:click="selectUser({{ $user->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
-                                        Editar
-                                    </button>
+                                    <x-ui.icon-button wire:click="selectUser({{ $user->id }})" icon="heroicon-o-pencil-square" title="Editar" />
                                 </td>
                             </tr>
                         @endforeach

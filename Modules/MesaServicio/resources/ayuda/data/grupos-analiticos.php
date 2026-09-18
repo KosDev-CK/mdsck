@@ -8,11 +8,13 @@ return [
         'Da de alta un grupo con un nombre (único) y, opcionalmente, una descripción.',
         'Para editar un grupo existente, da clic en "Editar", ajusta los datos y guarda.',
         'Desactiva (sin borrar) un grupo que ya no se use con su interruptor de "Activo" — un grupo inactivo deja de aparecer como opción para asignar a nuevos técnicos, pero los técnicos que ya lo tenían asignado lo conservan.',
+        'Da clic en el ícono de bote de basura para eliminar un grupo por completo — a diferencia de desactivar, esto lo borra del catálogo. Los técnicos que lo tenían asignado simplemente quedan sin grupo (no se borran ni se les afecta de otra forma). Pide confirmación antes de borrar porque no se puede deshacer.',
         'La asignación de cada técnico a un grupo analítico se hace desde la pantalla "Técnicos", no aquí — esta pantalla solo administra el catálogo de grupos disponibles.',
     ],
     'campos' => [
         ['nombre' => 'Nombre', 'explicacion' => 'Nombre libre del grupo, único, ej. "Infraestructura" o "Mesa de Ayuda Nivel 2".'],
         ['nombre' => 'Descripción', 'explicacion' => 'Texto libre opcional para aclarar el criterio o alcance del grupo.'],
         ['nombre' => 'Activo', 'explicacion' => 'Solo los grupos activos aparecen como opción al asignar un técnico. Desactivar no borra el grupo ni desasigna a los técnicos que ya lo tenían.'],
+        ['nombre' => 'Eliminar', 'explicacion' => 'Borra el grupo por completo del catálogo. A diferencia de desactivar, esto no se puede deshacer — los técnicos que lo tenían asignado quedan sin grupo.'],
     ],
 ];

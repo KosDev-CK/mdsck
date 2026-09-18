@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusColors = [
@@ -86,7 +88,7 @@
 
         <x-ui.table :headers="['Código', 'Tipo', 'Marca/Modelo', 'N° de serie', 'Ubicación', 'Estatus', 'SIC reservada', '']" :empty="$records->isEmpty()" empty-description="Ningún activo coincide con los filtros seleccionados.">
             @foreach ($records as $asset)
-                <tr wire:key="asset-{{ $asset->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="asset-{{ $asset->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">
                         {{ $asset->codigo }}
                         <a href="{{ route('gestionti.ficha-activo.show', $asset->id) }}" class="ml-2 text-xs font-normal text-primary hover:brightness-90">Ver ficha</a>
@@ -105,18 +107,16 @@
                             —
                         @endif
                     </td>
-                    <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                        @if ($asset->estatus?->codigo === 'reservado')
-                            <button wire:click="openReassign({{ $asset->id }})" class="text-primary hover:brightness-90 text-sm">
-                                Reasignar SIC
-                            </button>
-                        @endif
+                    <td class="py-2 text-right whitespace-nowrap">
+                        <x-ui.row-actions>
+                            @if ($asset->estatus?->codigo === 'reservado')
+                                <x-ui.icon-button wire:click="openReassign({{ $asset->id }})" icon="heroicon-o-arrows-right-left" title="Reasignar SIC" />
+                            @endif
 
-                        @if (in_array($asset->estatus?->codigo, ['en_stock', 'reservado'], true))
-                            <button wire:click="openTraslado({{ $asset->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
-                                Trasladar
-                            </button>
-                        @endif
+                            @if (in_array($asset->estatus?->codigo, ['en_stock', 'reservado'], true))
+                                <x-ui.icon-button wire:click="openTraslado({{ $asset->id }})" icon="heroicon-o-truck" title="Trasladar" />
+                            @endif
+                        </x-ui.row-actions>
                     </td>
                 </tr>
             @endforeach

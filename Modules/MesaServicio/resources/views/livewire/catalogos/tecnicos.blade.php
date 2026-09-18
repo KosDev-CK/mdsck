@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -50,7 +52,7 @@
             empty-description="Corre php artisan sdp:sync-technicians para sincronizar desde ServiceDesk Plus."
         >
             @foreach ($records as $record)
-                <tr wire:key="tecnico-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="tecnico-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->correo }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->puesto }}</td>

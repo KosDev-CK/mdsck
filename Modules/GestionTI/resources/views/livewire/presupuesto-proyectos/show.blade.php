@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusLabels = [
@@ -116,7 +118,7 @@
 
         <x-ui.table :headers="['Categoría', 'Categoría contable', 'Descripción', 'Cantidad', 'Responsable de costo', 'Costo / proveedor', 'Estatus de captura', '']" :empty="$proyectoPresupuesto->articulos->isEmpty()" empty-description="Agrega el primero con el botón Agregar artículo.">
             @foreach ($proyectoPresupuesto->articulos as $articulo)
-                <tr wire:key="articulo-{{ $articulo->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="articulo-{{ $articulo->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaLabels[$articulo->categoria] ?? $articulo->categoria }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaContableLabels[$articulo->categoria_contable] ?? $articulo->categoria_contable ?? '—' }}</td>
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $articulo->descripcion }}</td>
@@ -153,16 +155,18 @@
                     <td class="py-2">
                         <x-ui.badge :color="$capturaColors[$articulo->estatus_captura] ?? 'gray'">{{ $capturaLabels[$articulo->estatus_captura] ?? $articulo->estatus_captura }}</x-ui.badge>
                     </td>
-                    <td class="py-2 text-right space-x-2 whitespace-nowrap">
+                    <td class="py-2 text-right whitespace-nowrap">
                         @if ($proyectoPresupuesto->estatus === 'armado')
-                            <button wire:click="editArticulo({{ $articulo->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
-                            <button
-                                wire:click="deleteArticulo({{ $articulo->id }})"
-                                wire:confirm="¿Eliminar este artículo?"
-                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
-                            >
-                                Eliminar
-                            </button>
+                            <x-ui.row-actions>
+                                <x-ui.icon-button wire:click="editArticulo({{ $articulo->id }})" icon="heroicon-o-pencil-square" title="Editar" />
+                                <x-ui.icon-button
+                                    wire:click="deleteArticulo({{ $articulo->id }})"
+                                    wire:confirm="¿Eliminar este artículo?"
+                                    icon="heroicon-o-trash"
+                                    title="Eliminar"
+                                    variant="danger"
+                                />
+                            </x-ui.row-actions>
                         @endif
                     </td>
                 </tr>
@@ -176,7 +180,7 @@
 
             <x-ui.table :headers="['Nivel', 'Aprobador', 'Estatus', 'Fecha de resolución', 'Comentario', '']" :empty="$proyectoPresupuesto->autorizaciones->isEmpty()">
                 @foreach ($proyectoPresupuesto->autorizaciones->sortBy('nivel') as $autorizacion)
-                    <tr wire:key="autorizacion-{{ $autorizacion->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                    <tr wire:key="autorizacion-{{ $autorizacion->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $autorizacion->nivel }}</td>
                         <td class="py-2">{{ $autorizacion->aprobador?->nombre }}</td>
                         <td class="py-2">
@@ -184,14 +188,12 @@
                         </td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $autorizacion->fecha_resolucion?->format('d/m/Y') ?? '—' }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $autorizacion->comentario ?? '—' }}</td>
-                        <td class="py-2 text-right space-x-2 whitespace-nowrap">
+                        <td class="py-2 text-right whitespace-nowrap">
                             @if ($autorizacion->id === $nivelAccionableId)
-                                <button wire:click="openResolucion({{ $autorizacion->id }}, 'aprobar')" class="text-sm text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300">
-                                    Aprobar
-                                </button>
-                                <button wire:click="openResolucion({{ $autorizacion->id }}, 'rechazar')" class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
-                                    Rechazar
-                                </button>
+                                <x-ui.row-actions>
+                                    <x-ui.icon-button wire:click="openResolucion({{ $autorizacion->id }}, 'aprobar')" icon="heroicon-o-check-circle" title="Aprobar" />
+                                    <x-ui.icon-button wire:click="openResolucion({{ $autorizacion->id }}, 'rechazar')" icon="heroicon-o-x-circle" title="Rechazar" variant="danger" />
+                                </x-ui.row-actions>
                             @endif
                         </td>
                     </tr>

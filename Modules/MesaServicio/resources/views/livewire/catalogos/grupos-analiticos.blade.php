@@ -7,9 +7,15 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Grupos Analíticos</h2>
@@ -20,7 +26,7 @@
 
         <form wire:submit="addGrupo" class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end mb-6">
             <x-ui.input label="Nombre" name="newNombre" wire:model="newNombre" />
-            <x-ui.input label="Descripción" name="newDescripcion" wire:model="newDescripcion" hint="Opcional" />
+            <x-ui.input label="Descripción (opcional)" name="newDescripcion" wire:model="newDescripcion" />
             <x-ui.button type="submit">Agregar</x-ui.button>
         </form>
 
@@ -30,7 +36,7 @@
             empty-title="Sin grupos analíticos"
         >
             @foreach ($grupos as $grupo)
-                <tr wire:key="grupo-analitico-{{ $grupo->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="grupo-analitico-{{ $grupo->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     @if ($editingId === $grupo->id)
                         <td class="py-2">
                             <x-ui.input name="editNombre" wire:model="editNombre" />
@@ -52,12 +58,16 @@
                             <x-ui.toggle wire:click="toggleActivo({{ $grupo->id }})" :checked="$grupo->activo" />
                         </td>
                         <td class="py-2 text-right">
-                            <button
-                                wire:click="edit({{ $grupo->id }})"
-                                class="text-sm text-primary hover:underline"
-                            >
-                                Editar
-                            </button>
+                            <x-ui.row-actions>
+                                <x-ui.icon-button wire:click="edit({{ $grupo->id }})" icon="heroicon-o-pencil-square" title="Editar" />
+                                <x-ui.icon-button
+                                    wire:click="delete({{ $grupo->id }})"
+                                    wire:confirm="¿Eliminar este grupo analítico? Esta acción no se puede deshacer."
+                                    icon="heroicon-o-trash"
+                                    title="Eliminar"
+                                    variant="danger"
+                                />
+                            </x-ui.row-actions>
                         </td>
                     @endif
                 </tr>

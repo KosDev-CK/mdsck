@@ -111,6 +111,17 @@ class DestinatariosTest extends TestCase
         $this->assertDatabaseMissing('sdp_report_recipient_emails', ['id' => $recipient->id]);
     }
 
+    public function test_removing_a_recipient_email_flashes_a_success_message(): void
+    {
+        $recipient = SdpReportRecipientEmail::create(['email' => 'quitar2@example.test']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Destinatarios::class)
+            ->call('removeEmail', $recipient->id)
+            ->assertSee('Correo quitado de la lista de destinatarios.');
+    }
+
     public function test_it_loads_the_currently_configured_survey_form(): void
     {
         $form = Form::create(['name' => 'Encuesta', 'status' => 'published']);

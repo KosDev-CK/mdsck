@@ -187,6 +187,50 @@ class Nucleo extends Component
         $record->update(['activo' => ! $record->activo]);
     }
 
+    /**
+     * Borrado físico (a diferencia de toggleActivo) — pedido explícito de UI
+     * para "mantenimiento de catálogo". Reutiliza el mismo `mergeReferences`
+     * ya declarado en `catalogos()` para "Fusionar duplicados": si algo lo
+     * referencia, se rechaza el borrado (a diferencia de la fusión, aquí no
+     * hay a dónde repuntar la referencia) en vez de dejar huérfanos. Los 2
+     * tabs sin `mergeReferences` (periodicidad_mantenimiento/stock_minimo)
+     * caen directo al try/catch de integridad referencial como red de
+     * seguridad.
+     */
+    public function delete(int $id): void
+    {
+        $config = $this->catalogos()[$this->tab];
+        $record = $config['model']::findOrFail($id);
+
+        if (array_key_exists('mergeReferences', $config)) {
+            $total = 0;
+
+            foreach ($config['mergeReferences'] as $reference) {
+                $total += $reference['model']::where($reference['column'], $id)->count();
+            }
+
+            if ($total > 0) {
+                session()->flash('error', "No se puede eliminar: {$total} registro(s) lo están usando. Usa \"Fusionar duplicados\" para reasignarlos primero.");
+
+                return;
+            }
+        }
+
+        try {
+            $record->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Eliminado correctamente.');
+    }
+
     public function cancel(): void
     {
         $this->showModal = false;

@@ -3,11 +3,13 @@
         Configuración de acceso
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <x-ui.card padding="p-5">
@@ -68,7 +70,7 @@
                                     default => ['Pendiente', 'indigo'],
                                 };
                             @endphp
-                            <tr class="border-b border-gray-50 dark:border-gray-800">
+                            <tr class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                                 <td class="py-2 whitespace-nowrap">
                                     <div class="font-medium text-gray-900 dark:text-gray-100">{{ $invitation->name }}</div>
                                     <div class="text-gray-400 text-xs dark:text-gray-500">{{ $invitation->email }}</div>
@@ -83,29 +85,29 @@
                                 <td class="py-2 whitespace-nowrap">
                                     <x-ui.badge :color="$state[1]">{{ $state[0] }}</x-ui.badge>
                                 </td>
-                                <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                                    @if ($invitation->isPending())
-                                        <button wire:click="resend({{ $invitation->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Reenviar</button>
-                                        <button wire:click="revoke({{ $invitation->id }})" wire:confirm="¿Revocar esta invitación?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">Revocar</button>
-                                    @elseif ($invitation->isAccepted() && $invitation->user)
-                                        <x-ui.badge :color="$invitation->user->is_active ? 'emerald' : 'gray'">
-                                            {{ $invitation->user->is_active ? 'Activo' : 'Inactivo' }}
-                                        </x-ui.badge>
+                                <td class="py-2 text-right whitespace-nowrap">
+                                    <x-ui.row-actions>
+                                        @if ($invitation->isPending())
+                                            <x-ui.icon-button wire:click="resend({{ $invitation->id }})" icon="heroicon-o-paper-airplane" title="Reenviar" />
+                                            <x-ui.icon-button wire:click="revoke({{ $invitation->id }})" wire:confirm="¿Revocar esta invitación?" icon="heroicon-o-x-circle" title="Revocar" variant="danger" />
+                                        @elseif ($invitation->isAccepted() && $invitation->user)
+                                            <x-ui.badge :color="$invitation->user->is_active ? 'emerald' : 'gray'">
+                                                {{ $invitation->user->is_active ? 'Activo' : 'Inactivo' }}
+                                            </x-ui.badge>
 
-                                        <button
-                                            wire:click="toggleActive({{ $invitation->user->id }})"
-                                            wire:confirm="¿{{ $invitation->user->is_active ? 'Desactivar' : 'Reactivar' }} a {{ $invitation->user->name }}?"
-                                            class="text-sm {{ $invitation->user->is_active ? 'text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300' : 'text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300' }}"
-                                        >
-                                            {{ $invitation->user->is_active ? 'Desactivar' : 'Reactivar' }}
-                                        </button>
+                                            <x-ui.icon-button
+                                                wire:click="toggleActive({{ $invitation->user->id }})"
+                                                wire:confirm="¿{{ $invitation->user->is_active ? 'Desactivar' : 'Reactivar' }} a {{ $invitation->user->name }}?"
+                                                :icon="$invitation->user->is_active ? 'heroicon-o-no-symbol' : 'heroicon-o-arrow-uturn-left'"
+                                                :title="$invitation->user->is_active ? 'Desactivar' : 'Reactivar'"
+                                                :variant="$invitation->user->is_active ? 'danger' : 'default'"
+                                            />
 
-                                        @if ($invitation->user->hasTwoFactorEnabled())
-                                            <button wire:click="startRevokingTwoFactor({{ $invitation->user->id }})" class="text-amber-600 hover:text-amber-500 text-sm dark:text-amber-400 dark:hover:text-amber-300">
-                                                Revocar 2FA
-                                            </button>
+                                            @if ($invitation->user->hasTwoFactorEnabled())
+                                                <x-ui.icon-button wire:click="startRevokingTwoFactor({{ $invitation->user->id }})" icon="heroicon-o-shield-exclamation" title="Revocar 2FA" variant="danger" />
+                                            @endif
                                         @endif
-                                    @endif
+                                    </x-ui.row-actions>
                                 </td>
                             </tr>
 

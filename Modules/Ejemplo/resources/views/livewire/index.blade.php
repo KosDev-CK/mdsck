@@ -42,13 +42,11 @@
                     </thead>
                     <tbody>
                         @forelse ($items as $item)
-                            <tr class="border-b border-gray-50 dark:border-gray-800">
+                            <tr class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                                 <td class="py-2 font-medium text-gray-900 whitespace-nowrap dark:text-gray-100">{{ $item->title }}</td>
                                 <td class="py-2 text-gray-500 dark:text-gray-400">{{ $item->description }}</td>
                                 <td class="py-2 text-right whitespace-nowrap">
-                                    <button wire:click="delete({{ $item->id }})" wire:confirm="¿Eliminar este registro?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">
-                                        Eliminar
-                                    </button>
+                                    <x-ui.icon-button wire:click="delete({{ $item->id }})" wire:confirm="¿Eliminar este registro?" icon="heroicon-o-trash" title="Eliminar" variant="danger" />
                                 </td>
                             </tr>
                         @empty

@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -24,7 +26,7 @@
 
         <x-ui.table :headers="['Folio SDP', 'Fecha', 'Solicitante', 'Solicitudes SIC', 'Observaciones', '']" :empty="$records->isEmpty()" empty-description="Agrega el primero con el botón Nuevo.">
             @foreach ($records as $record)
-                <tr wire:key="ticket-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="ticket-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">
                         {{ $record->sdp_display_id ?? $record->sdp_id ?? '—' }}
                     </td>
@@ -34,8 +36,8 @@
                         <x-ui.badge color="indigo">{{ $record->solicitudes_sic_count }}</x-ui.badge>
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400 max-w-xs truncate">{{ $record->observaciones }}</td>
-                    <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                        <button wire:click="edit({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
+                    <td class="py-2 text-right whitespace-nowrap">
+                        <x-ui.icon-button wire:click="edit({{ $record->id }})" icon="heroicon-o-pencil-square" title="Editar" />
                     </td>
                 </tr>
             @endforeach

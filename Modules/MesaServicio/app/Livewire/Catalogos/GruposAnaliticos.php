@@ -10,11 +10,9 @@ use Modules\MesaServicio\Models\GrupoAnalitico;
 /**
  * Catálogo local, 100% manual (sin sync con SDP), de "grupos analíticos" —
  * ver Modules\MesaServicio\Models\GrupoAnalitico para el porqué. CRUD
- * simple con alta + edición inline, sin borrado físico (toggleActivo, mismo
- * patrón que SdpSlaDefinition/Slas) porque otros registros (hoy
- * sdp_technicians, potencialmente más adelante) pueden referenciar un
- * grupo por FK — desactivar en vez de borrar evita dejar esa referencia
- * huérfana o tener que resolver un ON DELETE CASCADE destructivo.
+ * simple con alta + edición inline. Tiene dos formas de retirar un grupo:
+ * toggleActivo (lo oculta como opción nueva sin tocar a los técnicos que ya
+ * lo tenían asignado) y delete() (borrado físico real, ver su docblock).
  */
 #[Layout('layouts.app')]
 class GruposAnaliticos extends Component
@@ -91,6 +89,35 @@ class GruposAnaliticos extends Component
     {
         $grupo = GrupoAnalitico::findOrFail($id);
         $grupo->update(['activo' => ! $grupo->activo]);
+    }
+
+    /**
+     * Borrado físico del catálogo (a diferencia de toggleActivo, que solo
+     * desactiva) — pedido explícito de UI para "mantenimiento de catálogo".
+     * Sin `mergeReferences` declarado aquí (no es config-driven como
+     * Nucleo/Compras/Inventario), así que la red de seguridad es el
+     * try/catch sobre la restricción de integridad referencial: hoy
+     * sdp_technicians.grupo_analitico_id es nullOnDelete (no debería
+     * fallar), pero el catch cubre cualquier FK futura que se agregue como
+     * restrict sin actualizar este método.
+     */
+    public function delete(int $id): void
+    {
+        $grupo = GrupoAnalitico::findOrFail($id);
+
+        try {
+            $grupo->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Eliminado correctamente.');
     }
 
     public function render()

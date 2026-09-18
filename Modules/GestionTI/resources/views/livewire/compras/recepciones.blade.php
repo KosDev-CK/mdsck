@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusLabels = [
@@ -44,7 +46,7 @@
 
         <x-ui.table :headers="['Folio remisión', 'Solicitud a proveedor', 'Fecha', 'Recibido por', 'Estatus (solicitud)', 'Acciones']" :empty="$records->isEmpty()" empty-description="Registra la primera recepción con el botón Nuevo.">
             @foreach ($records as $record)
-                <tr wire:key="recepcion-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="recepcion-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->folio_remision }}</td>
                     <td class="py-2">{{ $record->solicitudProveedor?->folio }} — {{ $record->solicitudProveedor?->vendor?->nombre_comercial }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->fecha_recepcion?->format('d/m/Y') }}</td>
@@ -53,24 +55,24 @@
                         @php($estatusSolicitud = $record->solicitudProveedor?->estatus)
                         <x-ui.badge :color="$estatusColors[$estatusSolicitud] ?? 'gray'">{{ $estatusLabels[$estatusSolicitud] ?? $estatusSolicitud }}</x-ui.badge>
                     </td>
-                    <td class="py-2 space-x-2 whitespace-nowrap">
-                        <button type="button" wire:click="exportActaPdf({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Generar PDF</button>
+                    <td class="py-2 whitespace-nowrap">
+                        <x-ui.row-actions>
+                            <x-ui.icon-button type="button" wire:click="exportActaPdf({{ $record->id }})" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
 
-                        @if ($record->documentoRemision)
-                            <a href="{{ $record->documentoRemision->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver remisión</a>
-                            <button
-                                type="button"
-                                wire:click="quitarRemision({{ $record->id }})"
-                                wire:confirm="¿Quitar la remisión vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta recepción."
-                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
-                            >
-                                Quitar
-                            </button>
-                        @else
-                            <button type="button" wire:click="openAttach({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">
-                                Adjuntar remisión
-                            </button>
-                        @endif
+                            @if ($record->documentoRemision)
+                                <x-ui.icon-button tag="a" :href="$record->documentoRemision->url()" target="_blank" icon="heroicon-o-eye" title="Ver remisión" />
+                                <x-ui.icon-button
+                                    type="button"
+                                    wire:click="quitarRemision({{ $record->id }})"
+                                    wire:confirm="¿Quitar la remisión vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta recepción."
+                                    icon="heroicon-o-link-slash"
+                                    title="Quitar"
+                                    variant="danger"
+                                />
+                            @else
+                                <x-ui.icon-button type="button" wire:click="openAttach({{ $record->id }})" icon="heroicon-o-paper-clip" title="Adjuntar remisión" />
+                            @endif
+                        </x-ui.row-actions>
                     </td>
                 </tr>
             @endforeach

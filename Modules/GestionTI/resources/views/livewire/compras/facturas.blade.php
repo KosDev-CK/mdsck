@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusLabels = [
@@ -51,7 +53,7 @@
 
         <x-ui.table :headers="['Folio', 'Proveedor', 'Fecha', 'Monto', 'Estatus', 'Diferencia', '']" :empty="$records->isEmpty()" empty-description="Agrega la primera con el botón Nuevo.">
             @foreach ($records as $record)
-                <tr wire:key="invoice-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="invoice-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->folio_factura }}</td>
                     <td class="py-2">{{ $record->vendor?->nombre_comercial }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->fecha_recepcion?->format('d/m/Y') }}</td>
@@ -64,66 +66,65 @@
                             <x-ui.badge color="red">Diferencia a revisar</x-ui.badge>
                         @endif
                     </td>
-                    <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                        <button wire:click="edit({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
+                    <td class="py-2 text-right whitespace-nowrap">
+                        <x-ui.row-actions>
+                            <x-ui.icon-button wire:click="edit({{ $record->id }})" icon="heroicon-o-pencil-square" title="Editar" />
 
-                        @php($adjuntoPdf = $record->documentoAdjunto('factura'))
-                        @if ($adjuntoPdf)
-                            <a href="{{ $adjuntoPdf->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver PDF</a>
-                            <button
-                                wire:click="quitarAdjunto({{ $record->id }}, 'factura')"
-                                wire:confirm="¿Quitar el PDF de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
-                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
-                            >
-                                Quitar PDF
-                            </button>
-                        @endif
-
-                        @php($adjuntoXmlFila = $record->documentoAdjunto('factura_xml'))
-                        @if ($adjuntoXmlFila)
-                            @if ($adjuntoXmlFila->proveedor_almacenamiento === 'local')
-                                <button wire:click="verXml({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Ver XML</button>
-                            @else
-                                <a href="{{ $adjuntoXmlFila->url() }}" target="_blank" class="text-sm text-primary hover:brightness-90">Ver XML</a>
+                            @php($adjuntoPdf = $record->documentoAdjunto('factura'))
+                            @if ($adjuntoPdf)
+                                <x-ui.icon-button tag="a" :href="$adjuntoPdf->url()" target="_blank" icon="heroicon-o-eye" title="Ver PDF" />
+                                <x-ui.icon-button
+                                    wire:click="quitarAdjunto({{ $record->id }}, 'factura')"
+                                    wire:confirm="¿Quitar el PDF de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
+                                    icon="heroicon-o-link-slash"
+                                    title="Quitar PDF"
+                                    variant="danger"
+                                />
                             @endif
-                            <button
-                                wire:click="quitarAdjunto({{ $record->id }}, 'factura_xml')"
-                                wire:confirm="¿Quitar el XML de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
-                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400"
-                            >
-                                Quitar XML
-                            </button>
-                        @endif
 
-                        @if ($record->estatus === 'recibida')
-                            <button
-                                wire:click="marcarRegistrada({{ $record->id }})"
-                                wire:confirm="¿Marcar esta factura como registrada?"
-                                class="text-sm text-primary hover:underline"
-                            >
-                                Registrar
-                            </button>
-                        @endif
+                            @php($adjuntoXmlFila = $record->documentoAdjunto('factura_xml'))
+                            @if ($adjuntoXmlFila)
+                                @if ($adjuntoXmlFila->proveedor_almacenamiento === 'local')
+                                    <x-ui.icon-button wire:click="verXml({{ $record->id }})" icon="heroicon-o-eye" title="Ver XML" />
+                                @else
+                                    <x-ui.icon-button tag="a" :href="$adjuntoXmlFila->url()" target="_blank" icon="heroicon-o-eye" title="Ver XML" />
+                                @endif
+                                <x-ui.icon-button
+                                    wire:click="quitarAdjunto({{ $record->id }}, 'factura_xml')"
+                                    wire:confirm="¿Quitar el XML de esta factura? El archivo no se borra de SharePoint/disco, solo se desvincula."
+                                    icon="heroicon-o-link-slash"
+                                    title="Quitar XML"
+                                    variant="danger"
+                                />
+                            @endif
 
-                        @if ($record->estatus === 'registrada')
-                            <button
-                                wire:click="marcarAutorizada({{ $record->id }})"
-                                wire:confirm="¿Marcar esta factura como autorizada?"
-                                class="text-sm text-primary hover:underline"
-                            >
-                                Autorizar
-                            </button>
-                        @endif
+                            @if ($record->estatus === 'recibida')
+                                <x-ui.icon-button
+                                    wire:click="marcarRegistrada({{ $record->id }})"
+                                    wire:confirm="¿Marcar esta factura como registrada?"
+                                    icon="heroicon-o-clipboard-document-check"
+                                    title="Registrar"
+                                />
+                            @endif
 
-                        @if ($record->estatus === 'autorizada')
-                            <button
-                                wire:click="marcarPagada({{ $record->id }})"
-                                wire:confirm="¿Marcar esta factura como pagada?"
-                                class="text-sm text-primary hover:underline"
-                            >
-                                Marcar pagada
-                            </button>
-                        @endif
+                            @if ($record->estatus === 'registrada')
+                                <x-ui.icon-button
+                                    wire:click="marcarAutorizada({{ $record->id }})"
+                                    wire:confirm="¿Marcar esta factura como autorizada?"
+                                    icon="heroicon-o-check-badge"
+                                    title="Autorizar"
+                                />
+                            @endif
+
+                            @if ($record->estatus === 'autorizada')
+                                <x-ui.icon-button
+                                    wire:click="marcarPagada({{ $record->id }})"
+                                    wire:confirm="¿Marcar esta factura como pagada?"
+                                    icon="heroicon-o-banknotes"
+                                    title="Marcar pagada"
+                                />
+                            @endif
+                        </x-ui.row-actions>
                     </td>
                 </tr>
             @endforeach

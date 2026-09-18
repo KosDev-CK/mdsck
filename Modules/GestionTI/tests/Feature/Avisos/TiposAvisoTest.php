@@ -205,6 +205,24 @@ class TiposAvisoTest extends TestCase
         $this->assertFalse($tipoAviso->fresh()->activo);
     }
 
+    public function test_can_delete_a_tipo_aviso(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $tipoAviso = TipoAviso::create([
+            'codigo' => 'EVENTO_DELETE',
+            'descripcion' => 'Descripción',
+            'entidad_relacionada' => 'Marca',
+            'evento_disparador' => 'EVENTO_DELETE',
+            'plantilla_mensaje' => 'Mensaje',
+            'activo' => true,
+        ]);
+
+        Livewire::test(TiposAviso::class)->call('delete', $tipoAviso->id);
+
+        $this->assertDatabaseMissing('tipos_aviso', ['id' => $tipoAviso->id]);
+    }
+
     public function test_seeding_creates_the_8_expected_tipos_aviso(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);

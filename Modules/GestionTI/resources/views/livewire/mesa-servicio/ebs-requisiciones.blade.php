@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusColors = [
@@ -98,7 +100,7 @@
                     </td>
                     <td class="py-2 text-right whitespace-nowrap">
                         @if (! $record->solicitudSicBorrador)
-                            <button wire:click="openVincular({{ $record->id }})" class="text-sm text-primary hover:brightness-90">Vincular</button>
+                            <x-ui.icon-button wire:click="openVincular({{ $record->id }})" icon="heroicon-o-link" title="Vincular" />
                         @endif
                     </td>
                 </tr>

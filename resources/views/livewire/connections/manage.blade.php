@@ -3,11 +3,13 @@
         Conexiones a BD
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @if ($showForm)
         <x-ui.card padding="p-6" class="mb-6">
@@ -156,7 +158,7 @@
                 </thead>
                 <tbody>
                     @foreach ($connections as $connection)
-                        <tr class="border-b border-gray-50 dark:border-gray-800">
+                        <tr class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                             <td class="py-2 font-medium text-gray-900 whitespace-nowrap dark:text-gray-100">{{ $connection->name }}</td>
                             <td class="py-2 text-gray-500 font-mono text-xs whitespace-nowrap dark:text-gray-400">{{ $connection->key }}</td>
                             <td class="py-2 uppercase text-xs text-gray-500 whitespace-nowrap dark:text-gray-400">{{ $connection->driver }}</td>
@@ -166,9 +168,11 @@
                                     {{ $connection->is_active ? 'Activa' : 'Inactiva' }}
                                 </x-ui.badge>
                             </td>
-                            <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                                <button wire:click="edit({{ $connection->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
-                                <button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" class="text-red-600 hover:text-red-500 text-sm dark:text-red-400 dark:hover:text-red-300">Eliminar</button>
+                            <td class="py-2 text-right whitespace-nowrap">
+                                <x-ui.row-actions>
+                                    <x-ui.icon-button wire:click="edit({{ $connection->id }})" icon="heroicon-o-pencil-square" title="Editar" />
+                                    <x-ui.icon-button wire:click="delete({{ $connection->id }})" wire:confirm="¿Eliminar esta conexión?" icon="heroicon-o-trash" title="Eliminar" variant="danger" />
+                                </x-ui.row-actions>
                             </td>
                         </tr>
                     @endforeach

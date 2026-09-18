@@ -7,9 +7,11 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @php
         $estatusLabels = [
@@ -53,7 +55,7 @@
 
         <x-ui.table :headers="['Folio', 'Proveedor', 'Fecha', 'Tipo', 'Estatus', 'Líneas', '']" :empty="$records->isEmpty()" empty-description="Agrega la primera con el botón Nuevo.">
             @foreach ($records as $record)
-                <tr wire:key="solicitud-proveedor-{{ $record->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="solicitud-proveedor-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->folio }}</td>
                     <td class="py-2">{{ $record->vendor?->nombre_comercial }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->fecha_solicitud?->format('d/m/Y') }}</td>
@@ -62,18 +64,20 @@
                         <x-ui.badge :color="$estatusColors[$record->estatus] ?? 'gray'">{{ $estatusLabels[$record->estatus] ?? $record->estatus }}</x-ui.badge>
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->lineas_count }}</td>
-                    <td class="py-2 text-right space-x-2 whitespace-nowrap">
-                        <button wire:click="edit({{ $record->id }})" class="text-indigo-600 hover:text-indigo-500 text-sm dark:text-indigo-400 dark:hover:text-indigo-300">Editar</button>
+                    <td class="py-2 text-right whitespace-nowrap">
+                        <x-ui.row-actions>
+                            <x-ui.icon-button wire:click="edit({{ $record->id }})" icon="heroicon-o-pencil-square" title="Editar" />
 
-                        @if ($record->estatus === 'solicitada')
-                            <button
-                                wire:click="cancelarSolicitud({{ $record->id }})"
-                                wire:confirm="¿Cancelar esta solicitud a proveedor?"
-                                class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
-                            >
-                                Cancelar
-                            </button>
-                        @endif
+                            @if ($record->estatus === 'solicitada')
+                                <x-ui.icon-button
+                                    wire:click="cancelarSolicitud({{ $record->id }})"
+                                    wire:confirm="¿Cancelar esta solicitud a proveedor?"
+                                    icon="heroicon-o-x-circle"
+                                    title="Cancelar"
+                                    variant="danger"
+                                />
+                            @endif
+                        </x-ui.row-actions>
                     </td>
                 </tr>
             @endforeach

@@ -1,7 +1,9 @@
 <div>
-    @if (session('error'))
-        <x-ui.alert variant="error" class="mb-4">{{ session('error') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     @if ($status === 'invalid')
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Enlace inválido</h1>

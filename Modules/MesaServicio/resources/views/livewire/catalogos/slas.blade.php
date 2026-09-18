@@ -7,9 +7,15 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
+
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <x-ui.card padding="p-5">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Definiciones de SLA</h2>
@@ -33,7 +39,7 @@
             empty-title="Sin definiciones de SLA"
         >
             @foreach ($definiciones as $definicion)
-                <tr wire:key="sla-{{ $definicion->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                <tr wire:key="sla-{{ $definicion->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     @if ($editingId === $definicion->id)
                         <td class="py-2">
                             <x-ui.input name="editNombre" wire:model="editNombre" />
@@ -63,12 +69,16 @@
                             <x-ui.toggle wire:click="toggleActivo({{ $definicion->id }})" :checked="$definicion->activo" />
                         </td>
                         <td class="py-2 text-right">
-                            <button
-                                wire:click="edit({{ $definicion->id }})"
-                                class="text-sm text-primary hover:underline"
-                            >
-                                Editar
-                            </button>
+                            <x-ui.row-actions>
+                                <x-ui.icon-button wire:click="edit({{ $definicion->id }})" icon="heroicon-o-pencil-square" title="Editar" />
+                                <x-ui.icon-button
+                                    wire:click="delete({{ $definicion->id }})"
+                                    wire:confirm="¿Eliminar esta definición de SLA? Esta acción no se puede deshacer."
+                                    icon="heroicon-o-trash"
+                                    title="Eliminar"
+                                    variant="danger"
+                                />
+                            </x-ui.row-actions>
                         </td>
                     @endif
                 </tr>

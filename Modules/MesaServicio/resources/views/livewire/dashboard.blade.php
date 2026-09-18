@@ -7,13 +7,15 @@
         <x-ui.help-button />
     @endpush
 
-    @if (session('status'))
-        <x-ui.alert variant="success" class="mb-4">{{ session('status') }}</x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="success">{{ session('status') }}</x-ui.toast>
+        @endif
 
-    @if (session('error'))
-        <x-ui.alert variant="error" class="mb-4">{{ session('error') }}</x-ui.alert>
-    @endif
+        @if (session('error'))
+            <x-ui.toast variant="error">{{ session('error') }}</x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Dashboard de Mesa de Servicio</h1>

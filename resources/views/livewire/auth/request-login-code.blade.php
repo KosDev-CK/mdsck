@@ -2,11 +2,13 @@
     <h1 class="text-lg font-semibold text-gray-900 mb-1 dark:text-gray-100">Iniciar sesión</h1>
     <p class="text-sm text-gray-500 mb-6 dark:text-gray-400">Ingresa tu correo y te enviaremos un código de acceso.</p>
 
-    @if (session('status'))
-        <x-ui.alert variant="warning" class="mb-4">
-            {{ session('status') }}
-        </x-ui.alert>
-    @endif
+    <x-ui.toast-group>
+        @if (session('status'))
+            <x-ui.toast variant="warning">
+                {{ session('status') }}
+            </x-ui.toast>
+        @endif
+    </x-ui.toast-group>
 
     <form wire:submit="sendCode" class="space-y-4">
         <div>

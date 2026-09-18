@@ -51,9 +51,36 @@ class Destinatarios extends Component
         session()->flash('status', 'Correo agregado a la lista de destinatarios.');
     }
 
+    /**
+     * Esta es la única acción "eliminar" real de esta pantalla (correos
+     * sueltos, catálogo simple sin FK entrantes) — a diferencia de otros
+     * catálogos del módulo no hay toggleActivo aquí porque un correo
+     * suelto inactivo no tiene sentido, solo existe/no existe. Se envuelve
+     * en try/catch por consistencia con el resto de catálogos con "Eliminar"
+     * (misma red de seguridad ante una FK restrict futura), aunque hoy
+     * sdp_report_recipient_emails no tiene ninguna referencia entrante.
+     */
     public function removeEmail(int $id): void
     {
-        SdpReportRecipientEmail::find($id)?->delete();
+        $recipient = SdpReportRecipientEmail::find($id);
+
+        if (! $recipient) {
+            return;
+        }
+
+        try {
+            $recipient->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+
+            session()->flash('error', 'No se puede eliminar: este registro está en uso en otro lugar del sistema.');
+
+            return;
+        }
+
+        session()->flash('status', 'Correo quitado de la lista de destinatarios.');
     }
 
     /**

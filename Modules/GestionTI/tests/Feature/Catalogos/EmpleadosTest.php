@@ -345,6 +345,49 @@ class EmpleadosTest extends TestCase
         $this->assertFalse($empleado->fresh()->activo);
     }
 
+    public function test_can_delete_an_empleado_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $empleado = Empleado::create(['numero_empleado' => 'EMP-500', 'nombre' => 'Sin Dependientes']);
+
+        Livewire::test(Empleados::class)->call('delete', $empleado->id);
+
+        $this->assertDatabaseMissing('empleados', ['id' => $empleado->id]);
+    }
+
+    /**
+     * asset_assignments.empleado_id es restrictOnDelete (ver migración
+     * 2026_08_31_000003_create_asset_assignments_table) — este es el caso
+     * real, no solo defensivo, que justifica el try/catch en delete().
+     */
+    public function test_cannot_delete_an_empleado_referenced_by_an_asset_assignment(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $empleado = Empleado::create(['numero_empleado' => 'EMP-501', 'nombre' => 'Con Asignación']);
+
+        $tipoEquipo = \Modules\GestionTI\Models\TipoEquipo::create(['nombre' => 'Laptop']);
+        $estatus = \Modules\GestionTI\Models\EstatusActivo::create(['codigo' => 'asignado', 'nombre' => 'Asignado']);
+        $asset = \Modules\GestionTI\Models\Asset::create([
+            'codigo' => 'KOS-TEST-000001',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'origen_tipo' => 'ajuste_manual',
+            'estatus_id' => $estatus->id,
+        ]);
+
+        \Modules\GestionTI\Models\AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => $empleado->id,
+        ]);
+
+        Livewire::test(Empleados::class)
+            ->call('delete', $empleado->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('empleados', ['id' => $empleado->id]);
+    }
+
     public function test_screen_is_seeded_and_visible_to_administrador(): void
     {
         $this->artisan('module:seed', ['module' => 'GestionTI']);
