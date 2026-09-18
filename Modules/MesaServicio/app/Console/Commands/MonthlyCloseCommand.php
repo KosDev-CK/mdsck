@@ -34,6 +34,12 @@ use Modules\MesaServicio\Notifications\CierreMensualGeneradoNotification;
  * negativo, se guarda tal cual (sin forzar a 0) — es información de
  * diagnóstico sobre datos reales, no queremos ocultar una anomalía.
  *
+ * Fase 8 (Parte 5): agrega además el "backlog histórico" — tickets AÚN
+ * pendientes al momento del cierre ($periodoFin), sin importar en qué mes o
+ * año se crearon (a diferencia de todo lo anterior, que solo mira lo creado
+ * DENTRO del mes cerrado) — ver
+ * Concerns\GeneratesCierreReports::construirBacklogHistorico().
+ *
  * La generación del Excel, la agrupación técnico/estado y el envío de la
  * notificación viven en Concerns\GeneratesCierreReports, compartido con
  * DailyCloseCommand (ver ese trait para el porqué de la extracción).
@@ -75,7 +81,8 @@ class MonthlyCloseCommand extends Command
 
         $resumen = array_merge(
             $this->construirResumenBase($tickets),
-            $this->calcularFoliosCombinados($tickets)
+            $this->calcularFoliosCombinados($tickets),
+            $this->construirBacklogHistorico($periodoFin)
         );
 
         $rutaArchivo = "mesa-servicio/reportes/mensual/{$periodoInicio->toDateString()}.xlsx";
@@ -86,7 +93,7 @@ class MonthlyCloseCommand extends Command
             $tickets,
             $resumen,
             'Total de tickets del mes',
-            $this->filasExtraFolios($resumen)
+            array_merge($this->filasExtraFolios($resumen), $this->filasExtraBacklog($resumen))
         );
 
         $report = $this->guardarReporte(SdpReport::TIPO_MENSUAL, $periodoInicio->toDateString(), $rutaArchivo, $resumen);
@@ -147,5 +154,36 @@ class MonthlyCloseCommand extends Command
             ['Conteo real de tickets', $resumen['conteo_real']],
             ['Tickets combinados estimados', $resumen['estimado_combinados'] ?? 'N/D'],
         ];
+    }
+
+    /**
+     * Fase 8 (Parte 5) — bloque adicional de la hoja "Resumen" con el
+     * backlog histórico (tickets aún pendientes al cierre del mes, sin
+     * importar en qué mes/año se crearon). Mismo mecanismo de $filasExtra
+     * ya usado por filasExtraFolios(), simplemente concatenado.
+     *
+     * @return array<int, array{0: string, 1: mixed}>
+     */
+    private function filasExtraBacklog(array $resumen): array
+    {
+        $filas = [
+            ['Backlog histórico (pendientes al cierre)', ''],
+            ['Total pendiente', $resumen['backlog_historico_total']],
+            ['', ''],
+            ['Backlog por técnico', ''],
+        ];
+
+        foreach ($resumen['backlog_historico_por_tecnico'] as $tecnico => $conteo) {
+            $filas[] = [$tecnico, $conteo];
+        }
+
+        $filas[] = ['', ''];
+        $filas[] = ['Backlog por categoría', ''];
+
+        foreach ($resumen['backlog_historico_por_categoria'] as $categoria => $conteo) {
+            $filas[] = [$categoria, $conteo];
+        }
+
+        return $filas;
     }
 }

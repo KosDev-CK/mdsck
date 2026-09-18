@@ -18,26 +18,52 @@ class SdpTicket extends Model
         'sdp_technician_id',
         'sdp_ticket_status_id',
         'estado_nombre',
+        // Fase 8 — folios combinados (ver SyncTicketsCommand::detectMergesFromHistory()).
+        'combinado_con_display_id',
+        'combinado_detectado_en',
         'categoria',
         'subcategoria',
+        // Fase 8 — campos confirmados nuevos.
+        'articulo',
+        'categoria_servicio',
         'solicitante_nombre',
         'solicitante_correo',
         'departamento',
         'sitio',
+        'sdp_site_id',
         'prioridad',
         'urgencia',
         'impacto',
         'tipo_solicitud',
         'modo',
         'grupo',
+        'nivel',
+        // Fase 8 (Parte 3) — campos personalizados (UDF) confirmados por el
+        // administrador real de la instancia SDP.
+        'area_operativa',
+        'grupo_resolutor',
+        'super_categoria',
+        'n3_area_escalamiento',
+        'n3_fecha_escalamiento',
+        'n3_fecha_solucion',
+        'n3_no_seguimiento_proveedor',
+        'n3_recurso_escalamiento',
+        'n4_area_escalamiento',
+        'n4_fecha_escalamiento',
+        'n4_fecha_solucion',
+        'n4_no_seguimiento_proveedor',
+        'n4_recurso_escalamiento',
         'created_time',
         'responded_time',
         'resolved_time',
         'completed_time',
         'due_time',
+        'assigned_time',
+        'tiempo_transcurrido_segundos',
         'primera_respuesta_vencida',
         'vencido',
         'resolucion',
+        'resuelto_por',
         'raw_payload',
         'last_synced_at',
     ];
@@ -48,8 +74,15 @@ class SdpTicket extends Model
         'resolved_time' => 'datetime',
         'completed_time' => 'datetime',
         'due_time' => 'datetime',
+        'assigned_time' => 'datetime',
+        'n3_fecha_escalamiento' => 'datetime',
+        'n3_fecha_solucion' => 'datetime',
+        'n4_fecha_escalamiento' => 'datetime',
+        'n4_fecha_solucion' => 'datetime',
+        'tiempo_transcurrido_segundos' => 'integer',
         'primera_respuesta_vencida' => 'boolean',
         'vencido' => 'boolean',
+        'combinado_detectado_en' => 'datetime',
         'raw_payload' => 'array',
         'last_synced_at' => 'datetime',
     ];
@@ -62,6 +95,11 @@ class SdpTicket extends Model
     public function ticketStatus(): BelongsTo
     {
         return $this->belongsTo(SdpTicketStatus::class, 'sdp_ticket_status_id');
+    }
+
+    public function site(): BelongsTo
+    {
+        return $this->belongsTo(SdpSite::class, 'sdp_site_id');
     }
 
     /**

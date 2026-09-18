@@ -256,4 +256,54 @@ class SlasTest extends TestCase
                 && $fila['resolucion']['cumplidas'] === 1;
         });
     }
+
+    /**
+     * Fase 8 (Parte 4): un ticket "Combinado" (fusionado a otro por SDP,
+     * combinado_con_display_id != null) NUNCA debe contarse en el
+     * cumplimiento de SLA/tiempo de resolución de esta pantalla, aunque
+     * cumpliría los tiempos si se contara — pero SÍ sigue existiendo como
+     * fila normal en sdp_tickets (visible en cualquier conteo plano de
+     * tickets por técnico, ej. dashboard/ficha de técnico, fuera de esta
+     * pantalla de SLA).
+     */
+    public function test_a_combinado_ticket_is_excluded_from_the_sla_metric_but_still_counted_as_a_plain_ticket(): void
+    {
+        SdpSlaDefinition::create([
+            'nombre' => 'SLA Alta', 'prioridad' => 'Alta',
+            'tiempo_primera_respuesta_minutos' => 60, 'tiempo_resolucion_minutos' => 480, 'activo' => true,
+        ]);
+
+        $tecnico = SdpTechnician::create(['sdp_id' => 't1', 'nombre' => 'Juan Pérez', 'activo' => true, 'es_nivel_1' => false]);
+
+        $desde = Carbon::now()->subDays(10);
+        $hasta = Carbon::now();
+        $creadoDentro = Carbon::now()->subDays(2);
+
+        SdpTicket::create([
+            'sdp_id' => 'tk-combinado', 'asunto' => 'Combinado', 'categoria' => 'Hardware',
+            'prioridad' => 'Alta', 'sdp_technician_id' => $tecnico->id,
+            'created_time' => $creadoDentro,
+            // Cumpliría ambos tiempos de sobra si se contara.
+            'responded_time' => $creadoDentro->copy()->addMinutes(5),
+            'resolved_time' => $creadoDentro->copy()->addMinutes(10),
+            'estado_nombre' => 'Combinado',
+            'combinado_con_display_id' => '999',
+            'combinado_detectado_en' => now(),
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        $component = Livewire::test(Slas::class)
+            ->set('desde', $desde->toDateString())
+            ->set('hasta', $hasta->toDateString());
+
+        // No genera ninguna fila de cumplimiento (fue el único ticket del
+        // técnico/categoría en el rango, y quedó excluido por completo).
+        $component->assertViewHas('porTecnico', fn ($porTecnico) => $porTecnico->firstWhere('etiqueta', 'Juan Pérez') === null);
+        $component->assertViewHas('porCategoria', fn ($porCategoria) => $porCategoria->firstWhere('etiqueta', 'Hardware') === null);
+
+        // Pero sigue existiendo como ticket normal — cualquier conteo plano
+        // (ej. dashboard/ficha de técnico) lo sigue viendo.
+        $this->assertSame(1, SdpTicket::where('sdp_technician_id', $tecnico->id)->count());
+    }
 }

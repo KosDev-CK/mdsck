@@ -123,6 +123,59 @@ class SdpClient
     }
 
     /**
+     * Historial de eventos de UN ticket específico (Fase 8) — usado por
+     * sdp:sync-tickets para detectar operaciones "merge_with" (folios
+     * combinados). Confirmado contra la instancia real: mismo patrón de
+     * paginación GET/input_data que los demás listados, pero el recurso es
+     * por-ticket ("requests/{id}/history") y la clave de nivel superior de
+     * la respuesta es "history", no "requests" — sin search_criteria ni
+     * fields_required, solo row_count/start_index.
+     */
+    public function getRequestHistory(string $requestId, int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo("requests/{$requestId}/history", [], [], $startIndex, $rowCount);
+    }
+
+    /**
+     * Catálogo de sitios geográficos configurados en la instancia de SDP
+     * (id, name, country, state, region, city, street, door_no,
+     * postal_code, location, landmark, timezone) — confirmado contra la
+     * instancia real. Recurso "sites", sin search_criteria/fields_required:
+     * el endpoint ya regresa el objeto completo por sitio.
+     */
+    public function listSites(int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo('sites', [], [], $startIndex, $rowCount);
+    }
+
+    /**
+     * Catálogo de usuarios de la instancia (recurso "users", API v3 real,
+     * scope SDPOnDemand.users.ALL) — confirmado contra la instancia real con
+     * `search_criteria` sobre `is_technician` (condición "is", valor
+     * booleano). A diferencia de `listRequests()`, cada usuario trae `zuid`
+     * (id de cuenta de login de Zoho/SDP — "-1" si el usuario no tiene un
+     * login real, un valor numérico si sí lo tiene), usado por
+     * sdp:sync-technicians para derivar `tiene_acceso_sdp`.
+     */
+    public function listUsers(array $searchCriteria = [], array $fieldsRequired = [], int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo('users', $searchCriteria, $fieldsRequired, $startIndex, $rowCount);
+    }
+
+    /**
+     * Catálogos de configuración ("setup") de SDP — genérico sobre los 12
+     * recursos confirmados (categories, levels, modes, impacts, urgencies,
+     * priorities, priority_matrices, request_types, task_types,
+     * worklog_types, closure_codes, downtime_types): mismo patrón GET +
+     * input_data que el resto, sin search_criteria/fields_required (cada uno
+     * ya regresa el objeto completo). Usado por sdp:sync-catalogos.
+     */
+    public function listCatalog(string $resource, int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo($resource, [], [], $startIndex, $rowCount);
+    }
+
+    /**
      * Los listados de la API v3 de SDP van por GET, con "input_data" como
      * parámetro de query string (JSON serializado) — no por POST con cuerpo
      * JSON: la API interpreta un POST como intento de creación y responde

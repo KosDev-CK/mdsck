@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Database\Seeders;
 use App\Models\Screen;
 use Illuminate\Database\Seeder;
 use Modules\MesaServicio\Models\SdpSlaDefinition;
+use Modules\MesaServicio\Models\SdpTicketStatus;
 use Spatie\Permission\Models\Role;
 
 class MesaServicioDatabaseSeeder extends Seeder
@@ -73,6 +74,16 @@ class MesaServicioDatabaseSeeder extends Seeder
                 'icon' => 'clock',
                 'order' => 4,
             ],
+            [
+                'slug' => 'mesaservicio-catalogos-sdp',
+                'module' => 'MesaServicio',
+                'group_label' => 'Mesa de Servicio',
+                'name' => 'Catálogos SDP',
+                'route_name' => 'mesaservicio.catalogos-sdp.index',
+                'permission_name' => 'screens.mesaservicio-catalogos-sdp.manage',
+                'icon' => 'book-open',
+                'order' => 5,
+            ],
         ];
 
         foreach ($screens as $screen) {
@@ -89,6 +100,37 @@ class MesaServicioDatabaseSeeder extends Seeder
         Role::findOrCreate(self::ROL_SUPERVISOR, 'web');
 
         $this->seedSlaDefinitions();
+        $this->seedCombinadoStatus();
+    }
+
+    /**
+     * Fase 8: "Combinado" es un estado 100% local (no viene de
+     * sdp:sync-ticket-statuses, que solo trae el catálogo real de SDP) — lo
+     * asigna `SyncTicketsCommand::marcarTicketComoCombinado()` cuando detecta,
+     * vía el historial por-ticket, que un ticket local fue absorbido por otro
+     * ("merge_with"). `tipo = TIPO_COMPLETADO` a propósito, para que cuente
+     * como resuelto en el dashboard/ficha de técnico y quede automáticamente
+     * excluido del backlog histórico del cierre mensual (Fase 8, Parte 5),
+     * sin necesitar un tercer valor de `tipo`.
+     *
+     * `sdp_id` no puede ser null (columna única, no nullable) pero tampoco
+     * corresponde a ningún id real de SDP — no hay un precedente ya sembrado
+     * en este archivo para un valor "inventado localmente" (los estados
+     * sembrados hasta ahora vienen todos de sync-ticket-statuses, ninguno es
+     * local), así que se usa un string legible y claramente no-numérico
+     * (`local-combinado`) que no puede colisionar con un sdp_id real de SDP
+     * (siempre numérico en esta instancia).
+     */
+    private function seedCombinadoStatus(): void
+    {
+        SdpTicketStatus::firstOrCreate(
+            ['nombre' => 'Combinado'],
+            [
+                'sdp_id' => 'local-combinado',
+                'tipo' => SdpTicketStatus::TIPO_COMPLETADO,
+                'activo' => true,
+            ]
+        );
     }
 
     /**

@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Modules\MesaServicio\Models\SdpSite;
 use Modules\MesaServicio\Models\SdpSyncState;
 use Modules\MesaServicio\Models\SdpTechnician;
 use Modules\MesaServicio\Models\SdpTicket;
@@ -61,8 +62,27 @@ class SyncTicketsCommandTest extends TestCase
             'is_first_response_overdue' => false,
             'is_overdue' => false,
             'resolution' => null,
+            // Fase 8 (Parte 6) — campos nuevos confirmados, con defaults
+            // inofensivos para no romper ningún assert existente.
+            'item' => ['name' => 'Laptop'],
+            'service_category' => ['name' => 'Hardware'],
+            'level' => ['id' => 'l1', 'name' => '1. Mesa de Ayuda'],
+            'assigned_time' => ['value' => '1700000000000', 'display_value' => 'x'],
+            'time_elapsed' => '256000',
         ], $overrides);
     }
+
+    /**
+     * Fase 8: cada ticket sincronizado dispara una llamada al historial
+     * (SdpClient::getRequestHistory()), cuya URL también matchea el patrón
+     * genérico '*\/api/v3/requests*' usado por fakeTokenAndRequests() — el
+     * payload de listado no trae la clave "history", así que se lee como
+     * vacío sin error para los tests que no le interesa el historial (todos
+     * los existentes antes de esta fase). Los tests de esta fase que sí
+     * necesitan simular el historial usan una closure sobre la URL en vez de
+     * un segundo patrón (para no depender del orden de registro de
+     * Http::fake() con patrones superpuestos).
+     */
 
     public function test_it_upserts_a_ticket_resolving_technician_and_status(): void
     {
@@ -239,7 +259,7 @@ class SyncTicketsCommandTest extends TestCase
 
             return $criteria
                 && $criteria['field'] === 'last_updated_time'
-                && $criteria['condition'] === 'after'
+                && $criteria['condition'] === 'greater than'
                 // Margen de 1s restado al leer la marca de agua (ver comando).
                 && (int) $criteria['value'] === $watermark->clone()->subSecond()->getTimestampMs();
         });
@@ -268,5 +288,321 @@ class SyncTicketsCommandTest extends TestCase
 
         $this->assertSame(0, SdpTicket::count());
         $this->assertNull(SdpSyncState::get(SdpSyncState::KEY_TICKETS));
+    }
+
+    public function test_desde_option_sends_created_time_after_criteria_for_that_days_start(): void
+    {
+        $this->fakeTokenAndRequests([$this->ticket(['id' => 'tk-1'])]);
+
+        $this->artisan('sdp:sync-tickets', ['--desde' => '2026-09-01'])->assertSuccessful();
+
+        $expectedMs = Carbon::parse('2026-09-01')->startOfDay()->getTimestampMs();
+
+        Http::assertSent(function ($request) use ($expectedMs) {
+            if (! str_contains($request->url(), '/api/v3/requests')) {
+                return false;
+            }
+
+            $query = [];
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $inputData = json_decode($query['input_data'], true);
+            $criteria = $inputData['list_info']['search_criteria'][0] ?? null;
+
+            return $criteria
+                && $criteria['field'] === 'created_time'
+                && $criteria['condition'] === 'greater than'
+                && (int) $criteria['value'] === $expectedMs;
+        });
+    }
+
+    public function test_desde_option_does_not_touch_the_watermark(): void
+    {
+        $this->fakeTokenAndRequests([$this->ticket(['id' => 'tk-1'])]);
+
+        $this->assertNull(SdpSyncState::get(SdpSyncState::KEY_TICKETS));
+
+        $this->artisan('sdp:sync-tickets', ['--desde' => '2026-09-01'])->assertSuccessful();
+
+        $this->assertNull(SdpSyncState::get(SdpSyncState::KEY_TICKETS));
+    }
+
+    public function test_desde_option_does_not_touch_an_existing_watermark(): void
+    {
+        $watermark = Carbon::createFromTimestampMs(1700000000000);
+        SdpSyncState::set(SdpSyncState::KEY_TICKETS, $watermark);
+
+        $this->fakeTokenAndRequests([$this->ticket(['id' => 'tk-1'])]);
+
+        $this->artisan('sdp:sync-tickets', ['--desde' => '2026-09-01'])->assertSuccessful();
+
+        $this->assertSame($watermark->getTimestampMs(), SdpSyncState::get(SdpSyncState::KEY_TICKETS)->getTimestampMs());
+    }
+
+    public function test_invalid_desde_option_fails_gracefully(): void
+    {
+        $this->artisan('sdp:sync-tickets', ['--desde' => 'not-a-date'])->assertFailed();
+    }
+
+    // --- Fase 8 (Parte 2) — detección de folios combinados vía historial ---
+
+    public function test_it_marks_a_locally_existing_absorbed_ticket_as_combinado_when_history_reports_a_merge(): void
+    {
+        $combinadoStatus = SdpTicketStatus::create([
+            'sdp_id' => 'local-combinado', 'nombre' => 'Combinado',
+            'tipo' => SdpTicketStatus::TIPO_COMPLETADO, 'activo' => true,
+        ]);
+
+        // El ticket absorbido ya se había sincronizado antes de fusionarse.
+        $absorbido = SdpTicket::create([
+            'sdp_id' => 'tk-absorbido', 'asunto' => 'Ticket viejo', 'display_id' => '500',
+            'created_time' => now()->subDays(2),
+        ]);
+
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/requests*' => function ($request) {
+                if (str_contains($request->url(), '/history')) {
+                    return Http::response([
+                        'history' => [
+                            ['operation' => 'request_note_add', 'description' => 'irrelevante'],
+                            ['operation' => 'merge_with', 'description' => '500', 'time' => ['value' => '1700000005000']],
+                        ],
+                        'list_info' => ['has_more_rows' => false],
+                    ], 200);
+                }
+
+                return Http::response([
+                    'requests' => [$this->ticket(['id' => 'tk-1', 'display_id' => '600'])],
+                    'list_info' => ['has_more_rows' => false],
+                ], 200);
+            },
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $absorbido->refresh();
+        $this->assertSame('Combinado', $absorbido->estado_nombre);
+        $this->assertSame($combinadoStatus->id, $absorbido->sdp_ticket_status_id);
+        $this->assertSame('600', $absorbido->combinado_con_display_id);
+        $this->assertNotNull($absorbido->combinado_detectado_en);
+        $this->assertEquals(1700000005000, $absorbido->completed_time->getTimestampMs());
+
+        // El ticket absorbente se sincronizó normal, sin marcarse a sí mismo.
+        $this->assertDatabaseHas('sdp_tickets', ['sdp_id' => 'tk-1', 'combinado_con_display_id' => null]);
+    }
+
+    public function test_it_does_not_re_mark_an_already_combinado_ticket_on_a_later_run(): void
+    {
+        $absorbido = SdpTicket::create([
+            'sdp_id' => 'tk-absorbido', 'asunto' => 'Ticket viejo', 'display_id' => '500',
+            'created_time' => now()->subDays(2), 'estado_nombre' => 'Combinado',
+            'combinado_con_display_id' => '600', 'combinado_detectado_en' => now()->subHour(),
+        ]);
+        $detectadoOriginal = $absorbido->combinado_detectado_en;
+
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/requests*' => function ($request) {
+                if (str_contains($request->url(), '/history')) {
+                    return Http::response([
+                        'history' => [
+                            ['operation' => 'merge_with', 'description' => '500', 'time' => ['value' => '1700000005000']],
+                        ],
+                        'list_info' => ['has_more_rows' => false],
+                    ], 200);
+                }
+
+                return Http::response([
+                    'requests' => [$this->ticket(['id' => 'tk-1', 'display_id' => '600'])],
+                    'list_info' => ['has_more_rows' => false],
+                ], 200);
+            },
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $absorbido->refresh();
+        $this->assertTrue($detectadoOriginal->equalTo($absorbido->combinado_detectado_en));
+    }
+
+    public function test_a_merge_pointing_to_a_display_id_never_captured_locally_does_not_create_a_placeholder(): void
+    {
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/requests*' => function ($request) {
+                if (str_contains($request->url(), '/history')) {
+                    return Http::response([
+                        'history' => [
+                            ['operation' => 'merge_with', 'description' => '999999', 'time' => ['value' => '1700000005000']],
+                        ],
+                        'list_info' => ['has_more_rows' => false],
+                    ], 200);
+                }
+
+                return Http::response([
+                    'requests' => [$this->ticket(['id' => 'tk-1', 'display_id' => '600'])],
+                    'list_info' => ['has_more_rows' => false],
+                ], 200);
+            },
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $this->assertSame(1, SdpTicket::count());
+        $this->assertDatabaseMissing('sdp_tickets', ['display_id' => '999999']);
+    }
+
+    public function test_a_failure_fetching_one_tickets_history_does_not_fail_the_whole_sync(): void
+    {
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/requests*' => function ($request) {
+                if (str_contains($request->url(), '/history')) {
+                    return Http::response('server error', 500);
+                }
+
+                return Http::response([
+                    'requests' => [$this->ticket(['id' => 'tk-1', 'display_id' => '600'])],
+                    'list_info' => ['has_more_rows' => false],
+                ], 200);
+            },
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $this->assertSame(1, SdpTicket::count());
+        $this->assertDatabaseHas('sdp_tickets', ['sdp_id' => 'tk-1']);
+    }
+
+    // --- Fase 8 (Parte 6) — campos nuevos confirmados ---
+
+    public function test_it_populates_the_new_confirmed_ticket_fields(): void
+    {
+        $this->fakeTokenAndRequests([
+            $this->ticket([
+                'id' => 'tk-1',
+                'item' => ['name' => 'Laptop Dell'],
+                'service_category' => ['name' => 'Hardware'],
+                'level' => ['id' => 'l1', 'name' => '1. Mesa de Ayuda'],
+                'assigned_time' => ['value' => '1700000001000', 'display_value' => 'x'],
+                'time_elapsed' => '256000',
+                'resolution' => ['content' => '<p>Resuelto</p>', 'submitted_by' => ['name' => 'Ana Resolutora']],
+            ]),
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $ticket = SdpTicket::where('sdp_id', 'tk-1')->first();
+
+        $this->assertSame('Laptop Dell', $ticket->articulo);
+        $this->assertSame('Hardware', $ticket->categoria_servicio);
+        $this->assertSame('1. Mesa de Ayuda', $ticket->nivel);
+        $this->assertSame(1700000001000, $ticket->assigned_time->getTimestampMs());
+        $this->assertSame(256000, $ticket->tiempo_transcurrido_segundos);
+        $this->assertSame('Ana Resolutora', $ticket->resuelto_por);
+    }
+
+    // --- Fase 8 (Parte 7) — resolución del sitio embebido ---
+
+    public function test_it_creates_the_site_on_the_fly_from_the_embedded_site_object(): void
+    {
+        $this->fakeTokenAndRequests([
+            $this->ticket(['id' => 'tk-1', 'site' => ['id' => 'site-1', 'name' => 'Oficina CDMX']]),
+        ]);
+
+        $this->assertSame(0, SdpSite::count());
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $ticket = SdpTicket::where('sdp_id', 'tk-1')->first();
+        $site = SdpSite::where('sdp_id', 'site-1')->first();
+
+        $this->assertNotNull($site);
+        $this->assertSame('Oficina CDMX', $site->nombre);
+        $this->assertSame($site->id, $ticket->sdp_site_id);
+        // La columna string "sitio" ya existente sigue poblándose igual.
+        $this->assertSame('Oficina CDMX', $ticket->sitio);
+    }
+
+    public function test_it_reuses_an_existing_site_instead_of_duplicating_it(): void
+    {
+        $existing = SdpSite::create(['sdp_id' => 'site-1', 'nombre' => 'Oficina CDMX']);
+
+        $this->fakeTokenAndRequests([
+            $this->ticket(['id' => 'tk-1', 'site' => ['id' => 'site-1', 'name' => 'Oficina CDMX']]),
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $this->assertSame(1, SdpSite::count());
+        $this->assertSame($existing->id, SdpTicket::where('sdp_id', 'tk-1')->first()->sdp_site_id);
+    }
+
+    public function test_ticket_without_a_site_id_leaves_the_fk_null(): void
+    {
+        $this->fakeTokenAndRequests([
+            $this->ticket(['id' => 'tk-1', 'site' => ['name' => 'Base Site']]),
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $this->assertSame(0, SdpSite::count());
+        $this->assertNull(SdpTicket::where('sdp_id', 'tk-1')->first()->sdp_site_id);
+    }
+
+    // --- Fase 8 (Parte 3) — campos personalizados (UDF) confirmados ---
+
+    public function test_it_populates_udf_fields_from_the_embedded_udf_fields_object(): void
+    {
+        $this->fakeTokenAndRequests([
+            $this->ticket([
+                'id' => 'tk-1',
+                'udf_fields' => [
+                    'udf_char24' => 'Logística',
+                    'udf_char10' => 'N3 Oracle',
+                    'udf_char3' => 'Aplicativos',
+                    'udf_char11' => 'DEV-Oracle',
+                    'udf_date1' => ['value' => '1700000001000', 'display_value' => 'x'],
+                    'udf_date3' => ['value' => '1700000002000', 'display_value' => 'x'],
+                    'udf_char13' => 'CASE-123',
+                    'udf_char12' => 'DEV-Julio Coyotl Cortes',
+                    'udf_char14' => 'N4 SAP',
+                    'udf_date2' => ['value' => '1700000003000', 'display_value' => 'x'],
+                    'udf_date4' => ['value' => '1700000004000', 'display_value' => 'x'],
+                    'udf_char16' => 'CASE-456',
+                    'udf_char15' => 'Soporte Externo',
+                ],
+            ]),
+        ]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $ticket = SdpTicket::where('sdp_id', 'tk-1')->first();
+
+        $this->assertSame('Logística', $ticket->area_operativa);
+        $this->assertSame('N3 Oracle', $ticket->grupo_resolutor);
+        $this->assertSame('Aplicativos', $ticket->super_categoria);
+        $this->assertSame('DEV-Oracle', $ticket->n3_area_escalamiento);
+        $this->assertSame(1700000001000, $ticket->n3_fecha_escalamiento->getTimestampMs());
+        $this->assertSame(1700000002000, $ticket->n3_fecha_solucion->getTimestampMs());
+        $this->assertSame('CASE-123', $ticket->n3_no_seguimiento_proveedor);
+        $this->assertSame('DEV-Julio Coyotl Cortes', $ticket->n3_recurso_escalamiento);
+        $this->assertSame('N4 SAP', $ticket->n4_area_escalamiento);
+        $this->assertSame(1700000003000, $ticket->n4_fecha_escalamiento->getTimestampMs());
+        $this->assertSame(1700000004000, $ticket->n4_fecha_solucion->getTimestampMs());
+        $this->assertSame('CASE-456', $ticket->n4_no_seguimiento_proveedor);
+        $this->assertSame('Soporte Externo', $ticket->n4_recurso_escalamiento);
+    }
+
+    public function test_udf_fields_default_to_null_when_absent(): void
+    {
+        $this->fakeTokenAndRequests([$this->ticket(['id' => 'tk-1'])]);
+
+        $this->artisan('sdp:sync-tickets')->assertSuccessful();
+
+        $ticket = SdpTicket::where('sdp_id', 'tk-1')->first();
+
+        $this->assertNull($ticket->area_operativa);
+        $this->assertNull($ticket->n3_fecha_escalamiento);
     }
 }

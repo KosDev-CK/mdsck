@@ -259,4 +259,97 @@ class MonthlyCloseCommandTest extends TestCase
 
         Notification::assertNothingSent();
     }
+
+    // --- Fase 8 (Parte 5) — backlog histórico ---
+
+    public function test_the_historical_backlog_counts_a_still_open_ticket_from_a_prior_year(): void
+    {
+        $mesPasado = today()->subMonthNoOverflow()->startOfMonth();
+        $juan = $this->tecnico('Juan Pérez');
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+
+        // Creado hace más de un año, sigue abierto — debe contar en el
+        // backlog histórico del cierre de este mes aunque no se haya creado
+        // este mes.
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->subYear(),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $abierto->id,
+            'estado_nombre' => 'Abierto', 'categoria' => 'Oracle', 'display_id' => '1',
+        ]);
+
+        $this->artisan('sdp:monthly-close')->assertExitCode(0);
+
+        $metricas = SdpReport::first()->resumen_metricas;
+        $this->assertSame(1, $metricas['backlog_historico_total']);
+        $this->assertSame(1, $metricas['backlog_historico_por_tecnico']['Juan Pérez']);
+        $this->assertSame(1, $metricas['backlog_historico_por_categoria']['Oracle']);
+    }
+
+    public function test_the_historical_backlog_excludes_a_prior_month_ticket_already_resolved(): void
+    {
+        $mesPasado = today()->subMonthNoOverflow()->startOfMonth();
+        $juan = $this->tecnico('Juan Pérez');
+        $cerrado = $this->estado('Cerrado', SdpTicketStatus::TIPO_COMPLETADO);
+
+        // Creado el mes pasado pero ya resuelto — no debe contar en el
+        // backlog histórico (sí cuenta en el resumen normal del mes, eso no
+        // cambia).
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->subMonths(2),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $cerrado->id,
+            'estado_nombre' => 'Cerrado', 'display_id' => '2',
+        ]);
+
+        $this->artisan('sdp:monthly-close')->assertExitCode(0);
+
+        $metricas = SdpReport::first()->resumen_metricas;
+        $this->assertSame(0, $metricas['backlog_historico_total']);
+        $this->assertSame([], $metricas['backlog_historico_por_tecnico']);
+        $this->assertSame([], $metricas['backlog_historico_por_categoria']);
+    }
+
+    public function test_the_historical_backlog_treats_combinado_as_resolved_and_excludes_it(): void
+    {
+        $mesPasado = today()->subMonthNoOverflow()->startOfMonth();
+        $combinado = $this->estado('Combinado', SdpTicketStatus::TIPO_COMPLETADO);
+
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->subYear(),
+            'sdp_ticket_status_id' => $combinado->id, 'estado_nombre' => 'Combinado',
+            'combinado_con_display_id' => '999', 'display_id' => '3',
+        ]);
+
+        $this->artisan('sdp:monthly-close')->assertExitCode(0);
+
+        $this->assertSame(0, SdpReport::first()->resumen_metricas['backlog_historico_total']);
+    }
+
+    public function test_the_backlog_block_is_written_to_the_summary_sheet(): void
+    {
+        $mesPasado = today()->subMonthNoOverflow()->startOfMonth();
+        $juan = $this->tecnico('Juan Pérez');
+        $abierto = $this->estado('Abierto', SdpTicketStatus::TIPO_EN_CURSO);
+
+        $this->ticket([
+            'created_time' => $mesPasado->copy()->subYear(),
+            'sdp_technician_id' => $juan->id, 'sdp_ticket_status_id' => $abierto->id,
+            'estado_nombre' => 'Abierto', 'categoria' => 'Oracle', 'display_id' => '1',
+        ]);
+
+        $this->artisan('sdp:monthly-close')->assertExitCode(0);
+
+        $report = SdpReport::first();
+        $spreadsheet = IOFactory::load(Storage::disk('local')->path($report->ruta_archivo));
+        $resumen = $spreadsheet->getSheetByName('Resumen');
+
+        $valores = [];
+        for ($row = 1; $row <= $resumen->getHighestRow(); $row++) {
+            $valores[] = $resumen->getCell("A{$row}")->getValue();
+        }
+
+        $this->assertContains('Backlog histórico (pendientes al cierre)', $valores);
+        $this->assertContains('Total pendiente', $valores);
+        $this->assertContains('Backlog por técnico', $valores);
+        $this->assertContains('Backlog por categoría', $valores);
+    }
 }

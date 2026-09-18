@@ -4,6 +4,7 @@ namespace Modules\MesaServicio\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Mechanisms\ComponentRegistry;
+use Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
@@ -33,6 +34,7 @@ class ComponentRegistrationTest extends TestCase
             ['mesaservicio.tecnicos.show', TecnicoShow::class],
             ['mesaservicio.reportes.index', ReportesIndex::class],
             ['mesaservicio.catalogos.slas', Slas::class],
+            ['mesaservicio.catalogos.catalogos-sdp', CatalogosSdp::class],
         ];
     }
 

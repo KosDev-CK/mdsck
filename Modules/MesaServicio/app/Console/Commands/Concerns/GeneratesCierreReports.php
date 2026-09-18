@@ -3,12 +3,14 @@
 namespace Modules\MesaServicio\Console\Commands\Concerns;
 
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Modules\MesaServicio\Models\SdpReport;
 use Modules\MesaServicio\Models\SdpReportRecipientEmail;
 use Modules\MesaServicio\Models\SdpTicket;
+use Modules\MesaServicio\Models\SdpTicketStatus;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -170,6 +172,42 @@ trait GeneratesCierreReports
         foreach (range('A', Coordinate::stringFromColumnIndex(count($headers))) as $column) {
             $sheet->getColumnDimension($column)->setWidth(22);
         }
+    }
+
+    /**
+     * Fase 8 (Parte 5) — backlog histórico: total de tickets que TODAVÍA
+     * siguen pendientes (ticketStatus.tipo = TIPO_EN_CURSO — "Combinado"
+     * cuenta como completado, así que queda excluido aquí automáticamente,
+     * sin necesitar una exclusión explícita) con `created_time` menor o
+     * igual al cierre del periodo ($hasta), SIN límite inferior de fecha —
+     * a diferencia de construirResumenBase(), que solo mira lo CREADO
+     * dentro del periodo del cierre, esto es una foto del backlog completo
+     * de cualquier año anterior que siga abierto al momento del corte.
+     *
+     * @return array{backlog_historico_total: int, backlog_historico_por_tecnico: array<string,int>, backlog_historico_por_categoria: array<string,int>}
+     */
+    protected function construirBacklogHistorico(Carbon $hasta): array
+    {
+        $tickets = SdpTicket::with(['technician', 'ticketStatus'])
+            ->whereHas('ticketStatus', fn ($query) => $query->where('tipo', SdpTicketStatus::TIPO_EN_CURSO))
+            ->where('created_time', '<=', $hasta)
+            ->get();
+
+        $porTecnico = $tickets
+            ->groupBy(fn (SdpTicket $ticket) => $ticket->technician?->nombre ?? 'Sin asignar')
+            ->map(fn (Collection $grupo) => $grupo->count())
+            ->sortDesc();
+
+        $porCategoria = $tickets
+            ->groupBy(fn (SdpTicket $ticket) => $ticket->categoria ?: 'Sin categoría')
+            ->map(fn (Collection $grupo) => $grupo->count())
+            ->sortDesc();
+
+        return [
+            'backlog_historico_total' => $tickets->count(),
+            'backlog_historico_por_tecnico' => $porTecnico->all(),
+            'backlog_historico_por_categoria' => $porCategoria->all(),
+        ];
     }
 
     /**

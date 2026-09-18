@@ -5,10 +5,13 @@ namespace Modules\MesaServicio\Providers;
 use Livewire\Livewire;
 use Modules\MesaServicio\Console\Commands\DailyCloseCommand;
 use Modules\MesaServicio\Console\Commands\MonthlyCloseCommand;
+use Modules\MesaServicio\Console\Commands\SyncCatalogosCommand;
+use Modules\MesaServicio\Console\Commands\SyncSitesCommand;
 use Modules\MesaServicio\Console\Commands\SyncTechniciansCommand;
 use Modules\MesaServicio\Console\Commands\SyncTicketsCommand;
 use Modules\MesaServicio\Console\Commands\SyncTicketStatusesCommand;
 use Modules\MesaServicio\Console\Commands\TestConnectionCommand;
+use Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
@@ -41,6 +44,8 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
         SyncTicketStatusesCommand::class,
         SyncTechniciansCommand::class,
         SyncTicketsCommand::class,
+        SyncSitesCommand::class,
+        SyncCatalogosCommand::class,
         DailyCloseCommand::class,
         MonthlyCloseCommand::class,
     ];
@@ -83,6 +88,7 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
         Livewire::component('mesaservicio.tecnicos.show', TecnicoShow::class);
         Livewire::component('mesaservicio.reportes.index', ReportesIndex::class);
         Livewire::component('mesaservicio.catalogos.slas', Slas::class);
+        Livewire::component('mesaservicio.catalogos.catalogos-sdp', CatalogosSdp::class);
     }
 
     /**
@@ -97,30 +103,37 @@ class MesaServicioServiceProvider extends ModuleServiceProvider
      * en bootstrap/app.php). Confirmado leyendo ambas clases del framework
      * antes de escribir esto: NO hizo falta tocar bootstrap/app.php (que
      * hoy no tiene `withSchedule(...)`, ver docs/mesaservicio-progreso.md)
-     * para que este `everyFiveMinutes()` quede activo — basta con
+     * para que cualquiera de los schedules de abajo quede activo — basta con
      * sobreescribir este método aquí, en el service provider del módulo.
      */
     protected function configureSchedules(Schedule $schedule): void
     {
-        // `sdp:sync-tickets` YA NO corre automático (quitado 2026-09-11): en
-        // un servidor con disco limitado, un log que crece sin rotar
-        // (canal "single" por defecto) llegado a un volumen de tráfico o de
-        // errores suficiente puede llenar el disco entero corriendo cada 5
-        // minutos — ver docs/deploy-lemp.md §3.1 para el fix de logging en
-        // general. Ahora el usuario lo dispara a mano: botón "Sincronizar
-        // ahora" en el Dashboard (Livewire\Dashboard::sincronizar()) o por
-        // consola (`php artisan sdp:sync-tickets`). Si en el futuro se
-        // quiere volver a automatizarlo (con el logging ya resuelto), agrega
-        // aquí algo como `$schedule->command('sdp:sync-tickets')->hourly();`
-        // — evita `everyFiveMinutes()` salvo que el disco del servidor ya
-        // esté confirmado con margen de sobra.
-        //
-        // Nota: `sdp:daily-close`/`sdp:monthly-close` (abajo) siguen leyendo
-        // sdp_tickets tal cual esté al momento en que corren — sin el sync
-        // automático, esos cierres reflejarán los datos de la última vez que
-        // alguien haya sincronizado a mano, no necesariamente el día
-        // completo. Avisar al usuario de esto explícitamente si pregunta por
-        // qué un cierre salió con menos tickets de los esperados.
+        // `sdp:sync-tickets` NO corrió automático entre el 2026-09-11 y el
+        // 2026-09-17: en un servidor con disco limitado, un log que crece sin
+        // rotar (canal "single" por defecto) llegado a un volumen de tráfico
+        // o de errores suficiente puede llenar el disco entero corriendo
+        // cada 5 minutos — ver docs/deploy-lemp.md §3.1 para el fix de
+        // logging en general, ya aplicado (LOG_CHANNEL=daily). Con ese root
+        // cause resuelto, se reactivó el 2026-09-17 con una frecuencia más
+        // conservadora (`hourly()`, no el `everyFiveMinutes()` original) —
+        // margen de sobra frente al tamaño de log esperado incluso sin
+        // rotación, y suficiente para que el dashboard/cierres reflejen datos
+        // recientes sin depender de que alguien recuerde sincronizar a mano.
+        // El botón "Sincronizar ahora" del Dashboard
+        // (Livewire\Dashboard::sincronizar()) sigue disponible para forzar
+        // una corrida entre horas.
+        $schedule->command('sdp:sync-tickets')->hourly();
+
+        // `sdp:sync-sites` (Fase 8) es deliberadamente MANUAL-ONLY, no se
+        // agrega aquí — los sitios geográficos cambian con muy poca
+        // frecuencia, no justifican un schedule automático. Se corre a mano
+        // por consola cuando haga falta refrescar el catálogo.
+
+        // `sdp:sync-catalogos` (Fase 8, Parte 2) — mismo criterio MANUAL-ONLY
+        // que sdp:sync-sites: los 12 catálogos de configuración (categorías,
+        // prioridades, etc.) cambian con muy poca frecuencia. Se corre a
+        // mano por consola o desde el botón "Sincronizar catálogos" de
+        // /mesa-servicio/catalogos-sdp.
 
         // Cierre diario (Fase 4) — procesa "ayer" por defecto (ver
         // DailyCloseCommand). 00:05 le da margen a la última corrida de

@@ -130,13 +130,23 @@ class Slas extends Component
      * Consulta base de tickets creados dentro del rango desde/hasta
      * (inclusive, día completo en ambos extremos) — reusada por ambas
      * tablas de cumplimiento.
+     *
+     * Fase 8: un ticket "Combinado" (fusionado a otro ticket por SDP,
+     * detectado vía SyncTicketsCommand::detectMergesFromHistory()) se
+     * excluye explícitamente aquí — no debe contar en el % de cumplimiento
+     * de SLA ni en el tiempo de resolución, ya que su "resolución" fue en
+     * realidad una fusión administrativa, no trabajo real cerrado dentro de
+     * tiempo. Esto NO afecta ningún otro conteo del módulo (dashboard,
+     * cierres, ficha de técnico) — solo esta pantalla de cumplimiento.
      */
     private function ticketsEnRango(): Builder
     {
-        return SdpTicket::query()->whereBetween('created_time', [
-            Carbon::parse($this->desde)->startOfDay(),
-            Carbon::parse($this->hasta)->endOfDay(),
-        ]);
+        return SdpTicket::query()
+            ->whereBetween('created_time', [
+                Carbon::parse($this->desde)->startOfDay(),
+                Carbon::parse($this->hasta)->endOfDay(),
+            ])
+            ->whereNull('combinado_con_display_id');
     }
 
     /**

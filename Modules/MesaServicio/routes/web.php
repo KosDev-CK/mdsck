@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\MesaServicio\Http\Controllers\Ayuda\AyudaPdfController;
+use Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
 use Modules\MesaServicio\Livewire\Catalogos\Slas;
 use Modules\MesaServicio\Livewire\Catalogos\Tecnicos;
@@ -37,6 +38,10 @@ Route::middleware(['auth', 'permission:screens.mesaservicio-reportes.manage'])
 Route::middleware(['auth', 'permission:screens.mesaservicio-slas.manage'])
     ->get('/mesa-servicio/slas', Slas::class)
     ->name('mesaservicio.slas.index');
+
+Route::middleware(['auth', 'permission:screens.mesaservicio-catalogos-sdp.manage'])
+    ->get('/mesa-servicio/catalogos-sdp', CatalogosSdp::class)
+    ->name('mesaservicio.catalogos-sdp.index');
 
 // Dashboard y ficha de técnico comparten el mismo permiso (Fase 2) — la
 // ficha es un detalle del dashboard (se llega a ella desde ahí), no una

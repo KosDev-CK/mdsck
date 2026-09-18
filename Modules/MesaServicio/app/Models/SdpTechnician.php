@@ -14,6 +14,8 @@ class SdpTechnician extends Model
         'nombre',
         'correo',
         'puesto',
+        'zuid',
+        'tiene_acceso_sdp',
         'activo',
         'es_nivel_1',
     ];
@@ -21,6 +23,7 @@ class SdpTechnician extends Model
     protected $casts = [
         'activo' => 'boolean',
         'es_nivel_1' => 'boolean',
+        'tiene_acceso_sdp' => 'boolean',
     ];
 
     public function scopeActivos(Builder $query): Builder

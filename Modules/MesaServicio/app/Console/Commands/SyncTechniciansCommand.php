@@ -7,89 +7,96 @@ use Modules\MesaServicio\Console\Commands\Concerns\PaginatesSdpResults;
 use Modules\MesaServicio\Models\SdpTechnician;
 use Modules\MesaServicio\Services\SdpClient;
 
+/**
+ * Fase 8 (Parte 1) — sdp:sync-technicians deriva el catálogo local del
+ * recurso real /users (API v3, scope SDPOnDemand.users.ALL) filtrado por
+ * `search_criteria` `is_technician = true`, en vez de escanear el objeto
+ * "technician" embebido en los tickets de los últimos 12 meses (criterio
+ * anterior, Fase 1/2 — se abandonó porque no detectaba técnicos sin ningún
+ * ticket asignado todavía, y no distinguía si el técnico tiene un login real
+ * en SDP).
+ *
+ * `zuid` (id de cuenta de login de Zoho/SDP) es el dato nuevo clave: un valor
+ * numérico real indica que el técnico tiene un login funcional; el string
+ * literal "-1" indica que el usuario está marcado como técnico en el sentido
+ * de rol de SDP pero SIN acceso real — confirmado con ejemplos reales de la
+ * instancia. `tiene_acceso_sdp` se deriva de esto (true solo si `zuid` viene
+ * y no es "-1").
+ *
+ * El criterio de inactivación no cambia de forma (sigue siendo "activo=true
+ * que no aparece en esta corrida => se marca inactivo"), solo cambia la
+ * fuente de la que se deduce qué técnicos "aparecieron" — ahora son los
+ * usuarios que SDP marca con is_technician=true AHORA MISMO, no los que
+ * tuvieron actividad de tickets en los últimos 12 meses. Es una señal más
+ * precisa de "¿sigue siendo un rol de técnico en SDP?", que es lo que
+ * `activo` siempre ha significado en este catálogo.
+ */
 class SyncTechniciansCommand extends Command
 {
     use PaginatesSdpResults;
 
     protected $signature = 'sdp:sync-technicians';
 
-    protected $description = 'Deriva el catálogo local de técnicos (sdp_technicians) del objeto "technician" embebido en los tickets de los últimos 12 meses';
+    protected $description = 'Sincroniza el catálogo local de técnicos (sdp_technicians) desde el recurso /users de ServiceDesk Plus (is_technician=true)';
 
-    /**
-     * No existe un recurso "technicians" en la API v3 de SDP (ver SdpClient)
-     * — el catálogo se deriva/deduplica del objeto "technician" embebido en
-     * cada ticket devuelto por listRequests().
-     *
-     * NOTA (formato de search_criteria sin verificar contra la API real):
-     * no fue posible confirmar en esta sesión el formato exacto que SDP v3
-     * espera para filtrar por fecha de creación. Se implementa con
-     * ['field' => 'created_time', 'condition' => 'after', 'value' => <ms>]
-     * por ser el formato indicado explícitamente como mejor entendimiento
-     * disponible — revisar contra la instancia real (o la documentación de
-     * SDP v3) antes de confiar en el filtrado de 12 meses en producción. Si
-     * el campo/condición no es el correcto, la sintomatología esperada es
-     * que SDP devuelva un error 400 o ignore el filtro y traiga todo el
-     * histórico — en ambos casos el comando seguiría funcionando para
-     * técnicos activos, solo se perdería la acotación a 12 meses.
-     */
     public function handle(SdpClient $client): int
     {
-        $cutoffMs = (string) now()->subMonths(12)->getTimestampMs();
-
         $searchCriteria = [
-            ['field' => 'created_time', 'condition' => 'after', 'value' => $cutoffMs],
+            ['field' => 'is_technician', 'condition' => 'is', 'value' => true],
         ];
 
         $startIndex = 1;
         $rowCount = 100;
         $seenSdpIds = [];
-        $ticketsSeen = 0;
+        $usersSeen = 0;
 
         do {
             try {
-                $payload = $client->listRequests($searchCriteria, ['technician'], $startIndex, $rowCount);
+                $payload = $client->listUsers($searchCriteria, [], $startIndex, $rowCount);
             } catch (\Throwable $e) {
-                $this->error("No se pudo obtener tickets para derivar técnicos: {$e->getMessage()}");
+                $this->error("No se pudo obtener el catálogo de técnicos: {$e->getMessage()}");
 
                 return self::FAILURE;
             }
 
-            $requests = $payload['requests'] ?? [];
+            $users = $payload['users'] ?? [];
 
-            foreach ($requests as $request) {
-                $technician = $request['technician'] ?? null;
-
-                if (empty($technician['id'])) {
+            foreach ($users as $user) {
+                if (empty($user['id'])) {
                     continue;
                 }
 
+                $zuid = $user['zuid'] ?? null;
+                $tieneAccesoSdp = $zuid !== null && $zuid !== '' && (string) $zuid !== '-1';
+
                 SdpTechnician::updateOrCreate(
-                    ['sdp_id' => $technician['id']],
+                    ['sdp_id' => $user['id']],
                     [
-                        'nombre' => $technician['name'] ?? '',
-                        'correo' => $technician['email_id'] ?? null,
-                        'puesto' => $technician['job_title'] ?? null,
+                        'nombre' => $user['name'] ?? '',
+                        'correo' => $user['email_id'] ?? null,
+                        'puesto' => $user['job_title'] ?? null,
+                        'zuid' => $zuid !== null ? (string) $zuid : null,
+                        'tiene_acceso_sdp' => $tieneAccesoSdp,
                         'activo' => true,
                     ]
                 );
 
-                $seenSdpIds[] = $technician['id'];
+                $seenSdpIds[] = $user['id'];
             }
 
-            $ticketsSeen += count($requests);
+            $usersSeen += count($users);
 
             $listInfo = $payload['list_info'] ?? [];
-            $hasMore = $this->hasMoreRows($listInfo, $startIndex, $rowCount, count($requests));
+            $hasMore = $this->hasMoreRows($listInfo, $startIndex, $rowCount, count($users));
 
             $startIndex += $rowCount;
         } while ($hasMore);
 
-        // $seenSdpIds trae una entrada por TICKET visto, no por técnico —
-        // con varios miles de tickets en 12 meses, un whereNotIn() sin
-        // deduplicar genera igual de miles de placeholders y MySQL lo
-        // rechaza ("error 1390: Prepared statement contains too many
-        // placeholders"). Deduplicar aquí lo acota al tamaño real del
-        // catálogo de técnicos (decenas, no miles).
+        // Mismo cuidado que la versión anterior (basada en tickets): dedupe
+        // antes del whereNotIn() para no reventar el límite de placeholders
+        // de MySQL — aquí el volumen ya viene deduplicado por SDP en sí
+        // mismo (cada usuario aparece una sola vez en /users), pero se
+        // conserva la deduplicación explícita como red de seguridad barata.
         $uniqueSdpIds = array_values(array_unique($seenSdpIds));
 
         $inactivated = SdpTechnician::where('activo', true)
@@ -97,9 +104,8 @@ class SyncTechniciansCommand extends Command
             ->update(['activo' => false]);
 
         $this->info(sprintf(
-            'Tickets revisados: %d. Técnicos vistos: %d. Marcados inactivos: %d.',
-            $ticketsSeen,
-            count($uniqueSdpIds),
+            'Técnicos revisados: %d. Marcados inactivos: %d.',
+            $usersSeen,
             $inactivated
         ));
 

@@ -11,32 +11,35 @@ class SyncTechniciansCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function fakeTokenAndRequests(array $requests, array $listInfo = []): void
+    protected function fakeTokenAndUsers(array $users, array $listInfo = []): void
     {
         Http::fake([
             '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
-            '*/api/v3/requests*' => Http::response([
+            '*/api/v3/users*' => Http::response([
                 'response_status' => [['status_code' => 2000, 'status' => 'success']],
-                'requests' => $requests,
+                'users' => $users,
                 'list_info' => $listInfo,
             ], 200),
         ]);
     }
 
-    protected function ticket(?array $technician): array
+    protected function user(array $overrides = []): array
     {
-        return [
+        return array_merge([
             'id' => (string) fake()->randomNumber(9),
-            'subject' => 'Ticket de prueba',
-            'technician' => $technician,
-        ];
+            'name' => 'Juan Pérez',
+            'email_id' => 'juan@example.test',
+            'job_title' => 'Analista',
+            'is_technician' => true,
+            'zuid' => '20067336226',
+        ], $overrides);
     }
 
-    public function test_it_upserts_technicians_derived_from_the_embedded_technician_object(): void
+    public function test_it_upserts_technicians_from_the_users_endpoint(): void
     {
-        $this->fakeTokenAndRequests([
-            $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista']),
-            $this->ticket(['id' => 't2', 'name' => 'Ana Ruiz', 'email_id' => 'ana@example.test', 'job_title' => 'Técnico']),
+        $this->fakeTokenAndUsers([
+            $this->user(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista', 'zuid' => '20067336226']),
+            $this->user(['id' => 't2', 'name' => 'Ana Ruiz', 'email_id' => 'ana@example.test', 'job_title' => 'Técnico', 'zuid' => '20099999999']),
         ]);
 
         $this->artisan('sdp:sync-technicians')->assertSuccessful();
@@ -46,6 +49,8 @@ class SyncTechniciansCommandTest extends TestCase
             'nombre' => 'Juan Pérez',
             'correo' => 'juan@example.test',
             'puesto' => 'Analista',
+            'zuid' => '20067336226',
+            'tiene_acceso_sdp' => true,
             'activo' => true,
             'es_nivel_1' => false,
         ]);
@@ -59,23 +64,53 @@ class SyncTechniciansCommandTest extends TestCase
         $this->assertSame(2, SdpTechnician::count());
     }
 
-    public function test_it_skips_tickets_without_an_assigned_technician(): void
+    /**
+     * Caso real confirmado por el usuario: "Adrian Guerrero Gonzalez" tiene
+     * zuid "-1" (marcado técnico en SDP pero sin login real), "Adan Manuel
+     * Cortes Palomec" tiene un zuid numérico real (20067336226).
+     */
+    public function test_it_derives_tiene_acceso_sdp_from_zuid(): void
     {
-        $this->fakeTokenAndRequests([
-            $this->ticket(null),
-            $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista']),
+        $this->fakeTokenAndUsers([
+            $this->user(['id' => 'sin-login', 'name' => 'Adrian Guerrero Gonzalez', 'zuid' => '-1']),
+            $this->user(['id' => 'con-login', 'name' => 'Adan Manuel Cortes Palomec', 'zuid' => '20067336226']),
         ]);
 
         $this->artisan('sdp:sync-technicians')->assertSuccessful();
 
-        $this->assertSame(1, SdpTechnician::count());
+        $this->assertDatabaseHas('sdp_technicians', [
+            'sdp_id' => 'sin-login',
+            'zuid' => '-1',
+            'tiene_acceso_sdp' => false,
+        ]);
+
+        $this->assertDatabaseHas('sdp_technicians', [
+            'sdp_id' => 'con-login',
+            'zuid' => '20067336226',
+            'tiene_acceso_sdp' => true,
+        ]);
     }
 
-    public function test_it_deduplicates_the_same_technician_across_multiple_tickets(): void
+    public function test_it_derives_tiene_acceso_sdp_false_when_zuid_is_missing(): void
     {
-        $this->fakeTokenAndRequests([
-            $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista']),
-            $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista']),
+        $this->fakeTokenAndUsers([
+            $this->user(['id' => 't1', 'zuid' => null]),
+        ]);
+
+        $this->artisan('sdp:sync-technicians')->assertSuccessful();
+
+        $this->assertDatabaseHas('sdp_technicians', [
+            'sdp_id' => 't1',
+            'zuid' => null,
+            'tiene_acceso_sdp' => false,
+        ]);
+    }
+
+    public function test_it_skips_users_without_an_id(): void
+    {
+        $this->fakeTokenAndUsers([
+            ['id' => null, 'name' => 'Sin id'],
+            $this->user(['id' => 't1']),
         ]);
 
         $this->artisan('sdp:sync-technicians')->assertSuccessful();
@@ -99,8 +134,8 @@ class SyncTechniciansCommandTest extends TestCase
             'es_nivel_1' => true,
         ]);
 
-        $this->fakeTokenAndRequests([
-            $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista Senior']),
+        $this->fakeTokenAndUsers([
+            $this->user(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test', 'job_title' => 'Analista Senior']),
         ]);
 
         $this->artisan('sdp:sync-technicians')->assertSuccessful();
@@ -133,8 +168,8 @@ class SyncTechniciansCommandTest extends TestCase
             'es_nivel_1' => false,
         ]);
 
-        $this->fakeTokenAndRequests([
-            $this->ticket(['id' => 't-new', 'name' => 'Técnico Nuevo', 'email_id' => 'nuevo@example.test']),
+        $this->fakeTokenAndUsers([
+            $this->user(['id' => 't-new', 'name' => 'Técnico Nuevo', 'email_id' => 'nuevo@example.test']),
         ]);
 
         $this->artisan('sdp:sync-technicians')->assertSuccessful();
@@ -144,34 +179,11 @@ class SyncTechniciansCommandTest extends TestCase
         $this->assertDatabaseHas('sdp_technicians', ['sdp_id' => 't-inactive-already', 'activo' => false]);
     }
 
-    /**
-     * Regresión: $seenSdpIds acumula una entrada por TICKET visto (no por
-     * técnico) — con suficientes tickets duplicados, un whereNotIn() sin
-     * deduplicar antes de la consulta genera igual de placeholders y MySQL
-     * lo rechaza con "error 1390: Prepared statement contains too many
-     * placeholders" (reproducido contra la instancia real con ~3000
-     * tickets en 12 meses). El fix deduplica antes del whereNotIn.
-     */
-    public function test_it_does_not_fail_when_thousands_of_duplicate_tickets_are_seen(): void
-    {
-        $tickets = [];
-
-        for ($i = 0; $i < 3000; $i++) {
-            $tickets[] = $this->ticket(['id' => 't1', 'name' => 'Juan Pérez', 'email_id' => 'juan@example.test']);
-        }
-
-        $this->fakeTokenAndRequests($tickets);
-
-        $this->artisan('sdp:sync-technicians')->assertSuccessful();
-
-        $this->assertSame(1, SdpTechnician::count());
-    }
-
     public function test_it_paginates_across_multiple_pages(): void
     {
         Http::fake([
             '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
-            '*/api/v3/requests*' => function ($request) {
+            '*/api/v3/users*' => function ($request) {
                 $query = [];
                 parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
                 $inputData = json_decode($query['input_data'], true);
@@ -179,13 +191,13 @@ class SyncTechniciansCommandTest extends TestCase
 
                 if ($startIndex === 1) {
                     return Http::response([
-                        'requests' => [$this->ticket(['id' => 't1', 'name' => 'Uno', 'email_id' => 'uno@example.test'])],
+                        'users' => [$this->user(['id' => 't1', 'name' => 'Uno', 'email_id' => 'uno@example.test'])],
                         'list_info' => ['has_more_rows' => true],
                     ], 200);
                 }
 
                 return Http::response([
-                    'requests' => [$this->ticket(['id' => 't2', 'name' => 'Dos', 'email_id' => 'dos@example.test'])],
+                    'users' => [$this->user(['id' => 't2', 'name' => 'Dos', 'email_id' => 'dos@example.test'])],
                     'list_info' => ['has_more_rows' => false],
                 ], 200);
             },
@@ -196,5 +208,37 @@ class SyncTechniciansCommandTest extends TestCase
         $this->assertSame(2, SdpTechnician::count());
         $this->assertDatabaseHas('sdp_technicians', ['sdp_id' => 't1']);
         $this->assertDatabaseHas('sdp_technicians', ['sdp_id' => 't2']);
+    }
+
+    /**
+     * search_criteria enviado debe filtrar por is_technician=true, condición
+     * "is" — verificado reflejando la query real armada por el cliente HTTP
+     * (mismo patrón que SdpClientTest para inspeccionar input_data en un GET).
+     */
+    public function test_it_filters_by_is_technician_true(): void
+    {
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/users*' => Http::response([
+                'users' => [],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+        ]);
+
+        $this->artisan('sdp:sync-technicians')->assertSuccessful();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v3/users')) {
+                return false;
+            }
+
+            $query = [];
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $inputData = json_decode($query['input_data'], true);
+
+            return $inputData['list_info']['search_criteria'] === [
+                ['field' => 'is_technician', 'condition' => 'is', 'value' => true],
+            ];
+        });
     }
 }

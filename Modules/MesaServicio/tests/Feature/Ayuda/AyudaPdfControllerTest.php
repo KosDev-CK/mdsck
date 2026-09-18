@@ -16,7 +16,7 @@ class AyudaPdfControllerTest extends TestCase
     }
 
     /**
-     * Las 6 pantallas del módulo con contenido de ayuda — un archivo por
+     * Las 7 pantallas del módulo con contenido de ayuda — un archivo por
      * slug en Modules/MesaServicio/resources/ayuda/data/. Si se agrega una
      * pantalla nueva, agregar su slug aquí también.
      */
@@ -25,7 +25,7 @@ class AyudaPdfControllerTest extends TestCase
         $user = User::factory()->create(['is_active' => true]);
 
         $slugs = [
-            'dashboard', 'tecnicos', 'destinatarios', 'reportes', 'ficha-tecnico', 'sla',
+            'dashboard', 'tecnicos', 'destinatarios', 'reportes', 'ficha-tecnico', 'sla', 'catalogos-sdp',
         ];
 
         foreach ($slugs as $slug) {
