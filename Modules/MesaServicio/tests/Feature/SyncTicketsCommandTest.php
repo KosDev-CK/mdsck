@@ -498,7 +498,9 @@ class SyncTicketsCommandTest extends TestCase
         $this->assertSame('Hardware', $ticket->categoria_servicio);
         $this->assertSame('1. Mesa de Ayuda', $ticket->nivel);
         $this->assertSame(1700000001000, $ticket->assigned_time->getTimestampMs());
-        $this->assertSame(256000, $ticket->tiempo_transcurrido_segundos);
+        // time_elapsed llega en milisegundos ('256000' en el fixture) — se
+        // guarda convertido a segundos.
+        $this->assertSame(256, $ticket->tiempo_transcurrido_segundos);
         $this->assertSame('Ana Resolutora', $ticket->resuelto_por);
     }
 

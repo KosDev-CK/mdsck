@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\Schema;
  * Fase 8 — campos nuevos confirmados contra la instancia real de SDP:
  * item.name, service_category.name, level.name, assigned_time (mismo shape
  * {value,display_value} que created_time/etc.), time_elapsed (string plano
- * de segundos, NO envuelto en {value,display_value}), y
- * resolution.submitted_by.name (reutiliza el campo "resolution" ya pedido en
- * fields_required, sin agregarlo otra vez).
+ * en MILISEGUNDOS — NO segundos como se asumió al escribir esta migración,
+ * ver corrección y explicación completa en
+ * SyncTicketsCommand::upsertTicket()/parseElapsedSeconds() —, NO envuelto en
+ * {value,display_value}), y resolution.submitted_by.name (reutiliza el campo
+ * "resolution" ya pedido en fields_required, sin agregarlo otra vez).
  */
 return new class extends Migration
 {

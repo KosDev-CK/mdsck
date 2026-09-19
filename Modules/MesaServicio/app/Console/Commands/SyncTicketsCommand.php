@@ -281,9 +281,18 @@ class SyncTicketsCommand extends Command
                 'completed_time' => $this->parseEpochMs($ticket['completed_time']['value'] ?? null),
                 'due_time' => $this->parseEpochMs($ticket['due_by_time']['value'] ?? null),
                 'assigned_time' => $this->parseEpochMs($ticket['assigned_time']['value'] ?? null),
-                // time_elapsed llega como string plano de segundos (ej.
-                // "256000"), NO envuelto en {value, display_value} como las
-                // demás fechas — confirmado contra la instancia real.
+                // time_elapsed llega como string plano en MILISEGUNDOS (ej.
+                // "7984340000" = ~92 días), NO envuelto en {value,
+                // display_value} como las demás fechas, y NO en segundos como
+                // se asumió originalmente al agregar este campo — esa lectura
+                // se basó en una única muestra ("256000") ambigua entre
+                // segundos (71h, plausible) y milisegundos (4.3 min, también
+                // plausible), y solo se detectó el error real en producción
+                // el 2026-09-18 al desbordar la columna unsignedInteger con
+                // un ticket de larga duración (7,984,340,000 no cabe ni
+                // interpretado como segundos ni como milisegundos crudos en
+                // la columna — el valor correcto tras dividir entre 1000 sí
+                // cabe cómodo). Ver parseElapsedSeconds().
                 'tiempo_transcurrido_segundos' => $this->parseElapsedSeconds($ticket['time_elapsed'] ?? null),
                 'primera_respuesta_vencida' => (bool) ($ticket['is_first_response_overdue'] ?? false),
                 'vencido' => (bool) ($ticket['is_overdue'] ?? false),
@@ -320,7 +329,11 @@ class SyncTicketsCommand extends Command
             return null;
         }
 
-        return (int) $value;
+        // $value viene en milisegundos (ver comentario en upsertTicket()) —
+        // se divide entre 1000 para guardar segundos, que es lo que dice la
+        // columna (tiempo_transcurrido_segundos) y lo que espera el resto
+        // del módulo.
+        return (int) ((int) $value / 1000);
     }
 
     /**
