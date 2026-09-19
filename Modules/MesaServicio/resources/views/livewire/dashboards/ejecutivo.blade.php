@@ -166,12 +166,31 @@
         />
     </div>
 
-    {{-- 3. Tendencia mensual --}}
+    {{--
+        3. Tendencia mensual — `wire:ignore` en las 5 gráficas de esta pantalla
+        es OBLIGATORIO, no cosmético: ECharts inyecta su `<canvas>` por JS,
+        fuera de la plantilla Blade (que siempre renderiza el div vacío). Sin
+        `wire:ignore`, cualquier respuesta de Livewire que NO cambie el
+        `wire:key` de una gráfica (ej. "Aplicar", que solo despacha un evento
+        de cierre) igual hace un morph de sus hijos contra el HTML del
+        servidor — que está vacío — y borra el canvas ya dibujado sin volver
+        a correr `x-init` (el `wire:key` no cambió, Livewire lo trata como el
+        mismo elemento). `wire:ignore` le dice a Livewire que nunca toque el
+        contenido de este nodo en un patch; cuando el `wire:key` SÍ cambia
+        (nuevos datos), Livewire igual reemplaza el nodo completo —
+        `wire:ignore` no protege contra eso, así que la reinicialización con
+        datos nuevos sigue funcionando igual. Encontrado en producción
+        (2026-09-19): reproducido siempre que se usa el botón "Aplicar" del
+        panel de filtros, la variante inversa del bug de los toasts de esta
+        misma sesión (ahí el problema era que Livewire NO reemplazaba el
+        nodo cuando debía; aquí es que SÍ lo parchea cuando no debía).
+    --}}
     <x-ui.card padding="p-5">
         <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tendencia mensual de tickets creados</h2>
 
         <div
             wire:key="chart-tendencia-{{ $periodoKey }}"
+            wire:ignore
             x-data="{
                 chart: null,
                 async init() { this.chart = await window.initChart(this.$el, @js($tendenciaOption)); },
@@ -188,6 +207,7 @@
 
             <div
                 wire:key="chart-categoria-{{ $periodoKey }}"
+                wire:ignore
                 x-data="{
                     chart: null,
                     async init() {
@@ -206,6 +226,7 @@
 
             <div
                 wire:key="chart-sla-mes-{{ $periodoKey }}"
+                wire:ignore
                 x-data="{
                     chart: null,
                     async init() { this.chart = await window.initChart(this.$el, @js($slaPorMesOption)); },
@@ -221,6 +242,7 @@
 
             <div
                 wire:key="chart-departamento-{{ $periodoKey }}"
+                wire:ignore
                 x-data="{
                     chart: null,
                     async init() {
@@ -239,6 +261,7 @@
 
             <div
                 wire:key="chart-tipo-mes-{{ $periodoKey }}"
+                wire:ignore
                 x-data="{
                     chart: null,
                     async init() {
