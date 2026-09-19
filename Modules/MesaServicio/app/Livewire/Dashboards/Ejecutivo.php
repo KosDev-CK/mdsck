@@ -107,6 +107,14 @@ class Ejecutivo extends Component
 
     public ?string $tipoSolicitudFiltro = null;
 
+    /**
+     * Cache en memoria (una sola vez por request, no persiste entre
+     * requests — es una propiedad privada, Livewire solo hidrata las
+     * públicas) de las definiciones de SLA activas. Ver
+     * `resolverSlaDefinicion()`.
+     */
+    private ?Collection $slaDefinicionesActivas = null;
+
     public function mount(): void
     {
         $this->desde = now()->startOfYear()->toDateString();
@@ -251,13 +259,43 @@ class Ejecutivo extends Component
     }
 
     /**
+     * Mismo criterio de resolución que `SdpSlaDefinition::paraPrioridad()`
+     * (coincidencia exacta de prioridad primero, luego el catch-all de
+     * prioridad `null`), pero contra una colección cargada UNA sola vez
+     * por request en vez de 1-2 consultas por llamada.
+     *
+     * Encontrado en producción (2026-09-19): `calcularCumplimiento()` se
+     * llama sobre miles de tickets (el histórico completo del año,
+     * ~68k filas), y cada llamada a `paraPrioridad()` original pegaba a la
+     * base de datos — decenas de miles de consultas en una sola petición,
+     * suficiente para agotar el `max_execution_time` de 30s de PHP-FPM. Las
+     * definiciones de SLA son un catálogo pequeño (unas pocas filas) que no
+     * cambia durante la request, así que cachearlas aquí es seguro.
+     */
+    private function resolverSlaDefinicion(?string $prioridad): ?SdpSlaDefinition
+    {
+        $this->slaDefinicionesActivas ??= SdpSlaDefinition::where('activo', true)->get();
+
+        if ($prioridad !== null && $prioridad !== '') {
+            $especifica = $this->slaDefinicionesActivas->firstWhere('prioridad', $prioridad);
+
+            if ($especifica) {
+                return $especifica;
+            }
+        }
+
+        return $this->slaDefinicionesActivas->firstWhere('prioridad', null);
+    }
+
+    /**
      * Cálculo de cumplimiento de SLA sobre una colección de tickets, SIN
      * agrupar por técnico/categoría (a diferencia de
      * `Slas::calcularCumplimiento()`) — un solo bucket agregado. Mismo
      * criterio de inclusión/exclusión: por ticket se resuelve su
-     * `SdpSlaDefinition` aplicable vía `paraPrioridad()`; sin definición
-     * aplicable, o sin el timestamp necesario todavía, el ticket se excluye
-     * de ese numerador/denominador (no cuenta ni a favor ni en contra).
+     * `SdpSlaDefinition` aplicable vía `resolverSlaDefinicion()`; sin
+     * definición aplicable, o sin el timestamp necesario todavía, el
+     * ticket se excluye de ese numerador/denominador (no cuenta ni a
+     * favor ni en contra).
      *
      * @param  Collection<int, SdpTicket>  $tickets
      * @return array{
@@ -274,7 +312,7 @@ class Ejecutivo extends Component
 
         /** @var SdpTicket $ticket */
         foreach ($tickets as $ticket) {
-            $definicion = SdpSlaDefinition::paraPrioridad($ticket->prioridad);
+            $definicion = $this->resolverSlaDefinicion($ticket->prioridad);
 
             if (! $definicion) {
                 continue;
