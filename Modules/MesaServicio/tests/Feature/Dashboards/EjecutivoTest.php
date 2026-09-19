@@ -247,17 +247,16 @@ class EjecutivoTest extends TestCase
             ->assertViewHas('totalTickets', 1);
     }
 
-    public function test_it_defaults_tipo_periodo_to_rango_and_mes_ejercicio_to_the_current_month(): void
+    public function test_it_defaults_mes_to_todo_el_anio_and_ejercicio_to_the_current_year(): void
     {
         $this->actingAs($this->actingUser());
 
         Livewire::test(Ejecutivo::class)
-            ->assertSet('tipoPeriodo', 'rango')
-            ->assertSet('mes', now()->month)
+            ->assertSet('mes', null)
             ->assertSet('ejercicio', now()->year);
     }
 
-    public function test_tipo_periodo_mes_acota_al_mes_y_anio_elegidos(): void
+    public function test_changing_mes_and_ejercicio_acota_al_mes_elegido(): void
     {
         SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'Dentro del mes', 'created_time' => now()->subMonth()->startOfMonth()->addDays(3)]);
         SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'Mes actual', 'created_time' => now()]);
@@ -268,13 +267,14 @@ class EjecutivoTest extends TestCase
         $mesPasado = now()->subMonth();
 
         Livewire::test(Ejecutivo::class)
-            ->set('tipoPeriodo', 'mes')
             ->set('mes', $mesPasado->month)
             ->set('ejercicio', $mesPasado->year)
+            ->assertSet('desde', $mesPasado->copy()->startOfMonth()->toDateString())
+            ->assertSet('hasta', $mesPasado->copy()->endOfMonth()->toDateString())
             ->assertViewHas('totalTickets', 1);
     }
 
-    public function test_tipo_periodo_ejercicio_acota_al_anio_calendario_completo(): void
+    public function test_changing_ejercicio_with_mes_todo_el_anio_acota_al_anio_calendario_completo(): void
     {
         SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'Enero de este año', 'created_time' => now()->startOfYear()]);
         SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'Diciembre de este año', 'created_time' => now()->endOfYear()]);
@@ -283,25 +283,22 @@ class EjecutivoTest extends TestCase
         $this->actingAs($this->actingUser());
 
         Livewire::test(Ejecutivo::class)
-            ->set('tipoPeriodo', 'ejercicio')
             ->set('ejercicio', now()->year)
             ->assertViewHas('totalTickets', 2);
     }
 
-    public function test_resumen_periodo_shows_the_active_filter_for_each_mode(): void
+    public function test_resumen_periodo_reflects_desde_hasta_regardless_of_how_they_were_set(): void
     {
         $this->actingAs($this->actingUser());
 
         Livewire::test(Ejecutivo::class)
-            ->set('tipoPeriodo', 'mes')
             ->set('mes', 9)
             ->set('ejercicio', 2026)
-            ->assertViewHas('resumenPeriodo', 'Septiembre 2026');
+            ->assertViewHas('resumenPeriodo', \Carbon\Carbon::create(2026, 9, 1)->translatedFormat('j M Y').' – '.\Carbon\Carbon::create(2026, 9, 30)->translatedFormat('j M Y'));
 
         Livewire::test(Ejecutivo::class)
-            ->set('tipoPeriodo', 'ejercicio')
             ->set('ejercicio', 2026)
-            ->assertViewHas('resumenPeriodo', 'Ejercicio 2026');
+            ->assertViewHas('resumenPeriodo', \Carbon\Carbon::create(2026, 1, 1)->translatedFormat('j M Y').' – '.\Carbon\Carbon::create(2026, 12, 31)->translatedFormat('j M Y'));
     }
 
     public function test_aplicar_filtro_dispatches_the_close_event_for_the_slide_over(): void
@@ -311,5 +308,115 @@ class EjecutivoTest extends TestCase
         Livewire::test(Ejecutivo::class)
             ->call('aplicarFiltro')
             ->assertDispatched('close-filtros-periodo');
+    }
+
+    public function test_clicking_a_categoria_filters_the_whole_dashboard_by_it(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'categoria' => 'Oracle']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'categoria' => 'Oracle']);
+        SdpTicket::create(['sdp_id' => 'tk-3', 'asunto' => 'C', 'created_time' => now(), 'categoria' => 'Hardware']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->assertViewHas('totalTickets', 3)
+            ->call('seleccionarCategoria', 'Oracle')
+            ->assertSet('categoriaFiltro', 'Oracle')
+            ->assertViewHas('totalTickets', 2);
+    }
+
+    public function test_clicking_sin_categoria_filters_by_the_real_null_value(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'categoria' => null]);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'categoria' => 'Hardware']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->call('seleccionarCategoria', 'Sin categoría')
+            ->assertViewHas('totalTickets', 1);
+    }
+
+    public function test_combining_categoria_and_departamento_filters_apply_as_and(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'categoria' => 'Oracle', 'departamento' => 'Finanzas']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'categoria' => 'Oracle', 'departamento' => 'Ventas']);
+        SdpTicket::create(['sdp_id' => 'tk-3', 'asunto' => 'C', 'created_time' => now(), 'categoria' => 'Hardware', 'departamento' => 'Finanzas']);
+
+        $this->actingAs($this->actingUser());
+
+        $component = Livewire::test(Ejecutivo::class)
+            ->call('seleccionarCategoria', 'Oracle')
+            ->assertViewHas('totalTickets', 2);
+
+        $component->call('seleccionarDepartamento', 'Finanzas')
+            ->assertViewHas('totalTickets', 1);
+    }
+
+    public function test_clicking_the_same_categoria_twice_toggles_the_filter_off(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'categoria' => 'Oracle']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'categoria' => 'Hardware']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->call('seleccionarCategoria', 'Oracle')
+            ->assertSet('categoriaFiltro', 'Oracle')
+            ->call('seleccionarCategoria', 'Oracle')
+            ->assertSet('categoriaFiltro', null)
+            ->assertViewHas('totalTickets', 2);
+    }
+
+    public function test_clicking_otras_is_ignored(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'categoria' => 'Oracle']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'categoria' => 'Hardware']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->call('seleccionarCategoria', 'Otras')
+            ->assertSet('categoriaFiltro', null)
+            ->assertViewHas('totalTickets', 2);
+    }
+
+    public function test_clicking_a_tipo_solicitud_kpi_or_stacked_chart_series_filters_by_it(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => now(), 'tipo_solicitud' => 'Incidente']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => now(), 'tipo_solicitud' => 'Solicitud']);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->call('seleccionarTipoSolicitud', 'Incidente')
+            ->assertSet('tipoSolicitudFiltro', 'Incidente')
+            ->assertViewHas('totalTickets', 1);
+    }
+
+    public function test_limpiar_filtros_seleccion_resets_the_three_click_filters_without_touching_the_period(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->set('desde', now()->subMonth()->toDateString())
+            ->call('seleccionarCategoria', 'Oracle')
+            ->call('seleccionarDepartamento', 'Finanzas')
+            ->call('seleccionarTipoSolicitud', 'Incidente')
+            ->call('limpiarFiltrosSeleccion')
+            ->assertSet('categoriaFiltro', null)
+            ->assertSet('departamentoFiltro', null)
+            ->assertSet('tipoSolicitudFiltro', null)
+            ->assertSet('desde', now()->subMonth()->toDateString());
+    }
+
+    public function test_active_click_filters_are_shown_as_removable_chips(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->call('seleccionarCategoria', 'Oracle')
+            ->assertSee('Categoría: Oracle')
+            ->assertSee('Limpiar filtros');
     }
 }

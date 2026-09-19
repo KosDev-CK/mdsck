@@ -97,11 +97,19 @@ export function initChart(el, option) {
     let chart = echarts.init(el, isDarkMode() ? buildTheme(true) : buildTheme(false));
     chart.setOption(option);
 
+    // Listeners registrados vía el helper `onClick` de abajo (ej. cross-filtering
+    // de dashboards) — se guardan aquí para volver a engancharlos cada vez que
+    // el theme toggle fuerza un dispose()+init() de una instancia nueva de
+    // ECharts (ver themeObserver abajo); si no, el clic deja de funcionar en
+    // cuanto el usuario cambia de tema una vez.
+    const clickHandlers = [];
+
     const themeObserver = new MutationObserver(() => {
         const dark = isDarkMode();
         chart.dispose();
         chart = echarts.init(el, buildTheme(dark));
         chart.setOption(option);
+        clickHandlers.forEach((handler) => chart.on('click', handler));
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
@@ -115,6 +123,10 @@ export function initChart(el, option) {
         setOption(next) {
             option = next;
             chart.setOption(next);
+        },
+        onClick(handler) {
+            clickHandlers.push(handler);
+            chart.on('click', handler);
         },
         dispose() {
             themeObserver.disconnect();

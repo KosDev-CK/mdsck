@@ -4,14 +4,6 @@
     @endpush
 
     @push('page-actions')
-        <button
-            type="button"
-            onclick="window.dispatchEvent(new CustomEvent('open-filtros-periodo'))"
-            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-            title="Filtrar periodo"
-        >
-            <x-heroicon-o-adjustments-horizontal class="h-6 w-6" />
-        </button>
         <x-ui.help-button />
     @endpush
 
@@ -25,59 +17,86 @@
         @endif
     </x-ui.toast-group>
 
-    {{-- Resumen del periodo activo: siempre visible, aunque el panel de filtros esté cerrado. --}}
+    {{-- Resumen del periodo activo (siempre visible, aunque el panel esté cerrado) + botón para abrirlo. --}}
     <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <button
+            type="button"
+            onclick="window.dispatchEvent(new CustomEvent('open-filtros-periodo'))"
+            class="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            title="Filtrar periodo"
+        >
+            <x-heroicon-o-funnel class="h-4 w-4" />
+        </button>
+
         <x-heroicon-o-calendar-days class="h-4 w-4 shrink-0" />
         <span>Periodo: <span class="font-medium text-gray-700 dark:text-gray-300">{{ $resumenPeriodo }}</span></span>
     </div>
 
+    {{--
+        Chips de cross-filtering activo (clics en gráficas/KPIs, ver
+        seleccionarCategoria()/seleccionarDepartamento()/seleccionarTipoSolicitud()
+        en la clase) — se acumulan encima del periodo de arriba, no lo
+        reemplazan, y son independientes de él (no se resetean al cambiar
+        de periodo). El "×" de cada chip vuelve a llamar al mismo método
+        `seleccionar*` con el valor legible original, que hace toggle y lo
+        quita.
+    --}}
+    @if (! empty($filtrosActivos))
+        <div class="flex flex-wrap items-center gap-2">
+            @foreach ($filtrosActivos as $filtro)
+                <x-ui.badge color="indigo" wire:key="filtro-activo-{{ $loop->index }}">
+                    <span class="flex items-center gap-1.5">
+                        {{ $filtro['etiqueta'] }}
+                        <button
+                            type="button"
+                            wire:click="{{ $filtro['metodo'] }}(@js($filtro['valor']))"
+                            class="text-primary/70 hover:text-primary"
+                            title="Quitar filtro"
+                        >
+                            <x-heroicon-o-x-mark class="h-3.5 w-3.5" />
+                        </button>
+                    </span>
+                </x-ui.badge>
+            @endforeach
+
+            <button
+                type="button"
+                wire:click="limpiarFiltrosSeleccion"
+                class="text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+                Limpiar filtros
+            </button>
+        </div>
+    @endif
+
     <x-ui.slide-over title="Filtrar periodo" event="open-filtros-periodo" close-event="close-filtros-periodo">
-        <div>
-            <span class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tipo de periodo</span>
-            <div class="grid grid-cols-3 gap-2">
-                @foreach (['rango' => 'Rango de días', 'mes' => 'Mes', 'ejercicio' => 'Ejercicio'] as $valor => $etiqueta)
-                    <button
-                        type="button"
-                        wire:click="$set('tipoPeriodo', '{{ $valor }}')"
-                        class="rounded-md border px-2 py-2 text-xs font-medium transition
-                            {{ $tipoPeriodo === $valor
-                                ? 'border-primary bg-primary/10 text-primary'
-                                : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800' }}"
-                    >
-                        {{ $etiqueta }}
-                    </button>
+        {{--
+            Los 4 controles conviven siempre visibles, sin pestañas ni modos
+            mutuamente excluyentes (decisión explícita del usuario, ver
+            docblock de la clase) — Año/Mes son atajos que rellenan
+            Desde/Hasta de inmediato (updatedEjercicio()/updatedMes()),
+            Desde/Hasta siguen siendo editables a mano y son lo único que
+            realmente usa la consulta.
+        --}}
+        <div class="grid grid-cols-2 gap-3">
+            <x-ui.select label="Año" name="ejercicio" wire:model.live="ejercicio">
+                @foreach ($aniosDisponibles as $anio)
+                    <option value="{{ $anio }}">{{ $anio }}</option>
                 @endforeach
-            </div>
+            </x-ui.select>
+
+            <x-ui.select label="Mes" name="mes" wire:model.live="mes">
+                <option value="">Todo el año</option>
+                @foreach ($mesesDelAnio as $numero => $nombre)
+                    <option value="{{ $numero }}">{{ $nombre }}</option>
+                @endforeach
+            </x-ui.select>
         </div>
 
-        @if ($tipoPeriodo === 'rango')
-            <div class="space-y-3" wire:key="filtro-rango">
-                <x-ui.input label="Desde" name="desde" type="date" wire:model="desde" />
-                <x-ui.input label="Hasta" name="hasta" type="date" wire:model="hasta" />
-            </div>
-        @elseif ($tipoPeriodo === 'mes')
-            <div class="space-y-3" wire:key="filtro-mes">
-                <x-ui.select label="Mes" name="mes" wire:model="mes">
-                    @foreach ($mesesDelAnio as $numero => $nombre)
-                        <option value="{{ $numero }}">{{ $nombre }}</option>
-                    @endforeach
-                </x-ui.select>
-
-                <x-ui.select label="Año" name="ejercicio" wire:model="ejercicio">
-                    @foreach ($aniosDisponibles as $anio)
-                        <option value="{{ $anio }}">{{ $anio }}</option>
-                    @endforeach
-                </x-ui.select>
-            </div>
-        @else
-            <div wire:key="filtro-ejercicio">
-                <x-ui.select label="Año" name="ejercicio" wire:model="ejercicio">
-                    @foreach ($aniosDisponibles as $anio)
-                        <option value="{{ $anio }}">{{ $anio }}</option>
-                    @endforeach
-                </x-ui.select>
-            </div>
-        @endif
+        <div class="space-y-3">
+            <x-ui.input label="Desde" name="desde" type="date" wire:model="desde" />
+            <x-ui.input label="Hasta" name="hasta" type="date" wire:model="hasta" />
+        </div>
 
         <div class="border-t border-gray-100 pt-4 dark:border-gray-800">
             <x-ui.button type="button" wire:click="aplicarFiltro" class="w-full justify-center">
@@ -105,11 +124,39 @@
         />
     </div>
 
-    {{-- 2. KPIs secundarios --}}
+    {{--
+        2. KPIs secundarios — Incidentes/Solicitudes/Requerimientos son
+        clicables: mismo cross-filtering que la gráfica de tipo de
+        solicitud por mes (seleccionarTipoSolicitud()), con el mismo
+        toggle (clic de nuevo sobre el ya activo lo quita). Tickets
+        combinados no participa del cross-filtering (no es una dimensión
+        filtrable en esta iteración).
+    --}}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <x-ui.stat-tile label="Incidentes" :value="$incidentes" icon="bolt" color="danger" />
-        <x-ui.stat-tile label="Solicitudes" :value="$solicitudes" icon="inbox-stack" color="info" />
-        <x-ui.stat-tile label="Requerimientos" :value="$requerimientos" icon="squares-plus" color="primary" />
+        <x-ui.stat-tile
+            label="Incidentes"
+            :value="$incidentes"
+            icon="bolt"
+            color="danger"
+            wire:click="seleccionarTipoSolicitud('Incidente')"
+            class="cursor-pointer transition hover:ring-2 hover:ring-danger/40 {{ $tipoSolicitudFiltro === 'Incidente' ? 'ring-2 ring-danger/60' : '' }}"
+        />
+        <x-ui.stat-tile
+            label="Solicitudes"
+            :value="$solicitudes"
+            icon="inbox-stack"
+            color="info"
+            wire:click="seleccionarTipoSolicitud('Solicitud')"
+            class="cursor-pointer transition hover:ring-2 hover:ring-info/40 {{ $tipoSolicitudFiltro === 'Solicitud' ? 'ring-2 ring-info/60' : '' }}"
+        />
+        <x-ui.stat-tile
+            label="Requerimientos"
+            :value="$requerimientos"
+            icon="squares-plus"
+            color="primary"
+            wire:click="seleccionarTipoSolicitud('Requerimiento')"
+            class="cursor-pointer transition hover:ring-2 hover:ring-primary/40 {{ $tipoSolicitudFiltro === 'Requerimiento' ? 'ring-2 ring-primary/60' : '' }}"
+        />
         <x-ui.stat-tile
             label="Tickets combinados"
             :value="$combinados"
@@ -143,7 +190,10 @@
                 wire:key="chart-categoria-{{ $periodoKey }}"
                 x-data="{
                     chart: null,
-                    async init() { this.chart = await window.initChart(this.$el, @js($categoriaOption)); },
+                    async init() {
+                        this.chart = await window.initChart(this.$el, @js($categoriaOption));
+                        this.chart.onClick((params) => $wire.seleccionarCategoria(params.name));
+                    },
                     destroy() { this.chart?.dispose(); },
                 }"
                 class="h-72"
@@ -173,7 +223,10 @@
                 wire:key="chart-departamento-{{ $periodoKey }}"
                 x-data="{
                     chart: null,
-                    async init() { this.chart = await window.initChart(this.$el, @js($departamentoOption)); },
+                    async init() {
+                        this.chart = await window.initChart(this.$el, @js($departamentoOption));
+                        this.chart.onClick((params) => $wire.seleccionarDepartamento(params.name));
+                    },
                     destroy() { this.chart?.dispose(); },
                 }"
                 class="h-72"
@@ -188,7 +241,17 @@
                 wire:key="chart-tipo-mes-{{ $periodoKey }}"
                 x-data="{
                     chart: null,
-                    async init() { this.chart = await window.initChart(this.$el, @js($tipoPorMesOption)); },
+                    async init() {
+                        this.chart = await window.initChart(this.$el, @js($tipoPorMesOption));
+                        {{--
+                            El clic selecciona el TIPO (nombre de la serie
+                            apilada: Solicitud/Incidente/Requerimiento), no
+                            el mes (params.name sería el mes clickeado) — el
+                            periodo lo sigue controlando el filtro de fecha,
+                            no este clic.
+                        --}}
+                        this.chart.onClick((params) => $wire.seleccionarTipoSolicitud(params.seriesName));
+                    },
                     destroy() { this.chart?.dispose(); },
                 }"
                 class="h-72"

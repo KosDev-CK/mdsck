@@ -59,67 +59,116 @@ class Ejecutivo extends Component
     private const TOP_CATEGORIAS_HEATMAP = 8;
 
     /**
-     * Modo de acotamiento del periodo — mutuamente excluyentes. `'rango'`
-     * usa `$desde`/`$hasta` libres (comportamiento original de esta
-     * pantalla); `'mes'` y `'ejercicio'` existen para que dirección pueda
-     * comparar mes contra mes o año contra año sin tener que calcular a
-     * mano el primer/último día del periodo. Viven en un panel lateral
-     * (ver `slide-over.blade.php`) en vez de sueltos arriba del contenido,
-     * porque a futuro se van a sumar más filtros a esta pantalla.
+     * Centinela usado para distinguir "el usuario hizo clic en el valor
+     * NULL real" (`categoria`/`departamento` son nullable en `sdp_tickets`,
+     * mostrados como "Sin categoría"/"Sin departamento" agregando los NULL)
+     * de "sin filtro activo" (`null` en las propiedades de abajo). No puede
+     * colisionar con un valor real de esas columnas.
      */
-    public string $tipoPeriodo = 'rango';
+    private const SIN_DATO = '__sin_dato__';
 
+    /**
+     * `$desde`/`$hasta` son el filtro real (único usado por
+     * `ticketsEnRango()`) — `$ejercicio`/`$mes` son atajos de UI que solo
+     * rellenan esos dos campos al cambiar (ver `aplicarSelectorRapido()`),
+     * no un modo aparte: los 4 controles conviven siempre visibles en el
+     * panel lateral (ver `slide-over.blade.php`), sin pestañas ni ocultar
+     * unos u otros — decisión explícita del usuario tras una primera
+     * versión con 3 modos mutuamente excluyentes que resultó confusa.
+     */
     public string $desde = '';
 
     public string $hasta = '';
 
-    /** 1 a 12. Usado solo cuando `tipoPeriodo === 'mes'`. */
-    public int $mes = 1;
+    /**
+     * 1 a 12, o `null` = "Todo el año" (atajo hacia el ejercicio completo
+     * de `$ejercicio`). Cambiar este selector recalcula `$desde`/`$hasta`
+     * de inmediato (ver `updatedMes()`); el usuario puede seguir ajustando
+     * `$desde`/`$hasta` a mano después, ya que son los campos que
+     * realmente se usan.
+     */
+    public ?int $mes = null;
+
+    /** Año calendario (enero a diciembre — mdsLandIT no maneja año fiscal distinto). */
+    public int $ejercicio = 2000;
 
     /**
-     * Año calendario (enero a diciembre — mdsLandIT no maneja año fiscal
-     * distinto). Usado como el año del mes elegido cuando
-     * `tipoPeriodo === 'mes'`, y como el año completo cuando
-     * `tipoPeriodo === 'ejercicio'`.
+     * Filtros de cross-filtering (estilo Power BI) disparados al hacer clic
+     * en un elemento de una gráfica — se ACUMULAN sobre el filtro de periodo
+     * (`$desde`/`$hasta`), no lo reemplazan, y son independientes entre sí
+     * (AND). `null` = sin filtro activo en esa dimensión;
+     * {@see self::SIN_DATO} = filtrar explícitamente por el valor NULL de
+     * la columna. No se resetean al cambiar el periodo — solo
+     * `limpiarFiltrosSeleccion()` los limpia.
      */
-    public int $ejercicio = 2000;
+    public ?string $categoriaFiltro = null;
+
+    public ?string $departamentoFiltro = null;
+
+    public ?string $tipoSolicitudFiltro = null;
 
     public function mount(): void
     {
         $this->desde = now()->startOfYear()->toDateString();
         $this->hasta = now()->toDateString();
         $this->ejercicio = now()->year;
-        $this->mes = now()->month;
+    }
+
+    /** Recalcula `$desde`/`$hasta` cuando cambia el selector de año. */
+    public function updatedEjercicio(): void
+    {
+        $this->aplicarSelectorRapido();
+    }
+
+    /** Recalcula `$desde`/`$hasta` cuando cambia el selector de mes. */
+    public function updatedMes(): void
+    {
+        $this->aplicarSelectorRapido();
+    }
+
+    private function aplicarSelectorRapido(): void
+    {
+        $this->desde = ($this->mes !== null
+            ? Carbon::create($this->ejercicio, $this->mes, 1)->startOfMonth()
+            : Carbon::create($this->ejercicio, 1, 1)->startOfYear()
+        )->toDateString();
+
+        $this->hasta = ($this->mes !== null
+            ? Carbon::create($this->ejercicio, $this->mes, 1)->endOfMonth()
+            : Carbon::create($this->ejercicio, 1, 1)->endOfYear()
+        )->toDateString();
     }
 
     private function inicio(): Carbon
     {
-        return match ($this->tipoPeriodo) {
-            'mes' => Carbon::create($this->ejercicio, $this->mes, 1)->startOfMonth(),
-            'ejercicio' => Carbon::create($this->ejercicio, 1, 1)->startOfYear(),
-            default => Carbon::parse($this->desde)->startOfDay(),
-        };
+        return Carbon::parse($this->desde)->startOfDay();
     }
 
     private function fin(): Carbon
     {
-        return match ($this->tipoPeriodo) {
-            'mes' => Carbon::create($this->ejercicio, $this->mes, 1)->endOfMonth(),
-            'ejercicio' => Carbon::create($this->ejercicio, 1, 1)->endOfYear(),
-            default => Carbon::parse($this->hasta)->endOfDay(),
-        };
+        return Carbon::parse($this->hasta)->endOfDay();
     }
 
     /**
      * Clave compuesta usada como `wire:key` de las 6 gráficas ECharts —
-     * deben re-inicializarse (destroy + init) cada vez que el periodo
-     * efectivo cambia, sin importar de qué modo venga (antes solo incluía
-     * `$desde`/`$hasta`, lo que dejaba las gráficas "congeladas" al cambiar
-     * de modo sin tocar esas dos propiedades).
+     * deben re-inicializarse (destroy + init) cada vez que `$desde`/`$hasta`
+     * cambian, sin importar si vino de editar las fechas a mano o de un
+     * atajo de año/mes (que ya escribe en esos mismos dos campos). También
+     * incluye los 3 filtros de cross-filtering: sin esto, un clic que
+     * cambia los datos de una gráfica no la reinicializa (Livewire hace
+     * morph del nodo existente en vez de reemplazarlo) y Alpine nunca
+     * vuelve a correr `x-init`, dejando la gráfica "congelada" con los
+     * datos viejos aunque el servidor ya haya recalculado todo.
      */
     private function periodoKey(): string
     {
-        return "{$this->tipoPeriodo}-{$this->desde}-{$this->hasta}-{$this->mes}-{$this->ejercicio}";
+        return implode('-', [
+            $this->desde,
+            $this->hasta,
+            $this->categoriaFiltro ?? '',
+            $this->departamentoFiltro ?? '',
+            $this->tipoSolicitudFiltro ?? '',
+        ]);
     }
 
     /**
@@ -128,18 +177,14 @@ class Ejecutivo extends Component
      */
     private function resumenPeriodo(): string
     {
-        return match ($this->tipoPeriodo) {
-            'mes' => $this->etiquetaPeriodo(sprintf('%04d-%02d', $this->ejercicio, $this->mes), 'F Y'),
-            'ejercicio' => 'Ejercicio '.$this->ejercicio,
-            default => $this->inicio()->translatedFormat('j M Y').' – '.$this->fin()->translatedFormat('j M Y'),
-        };
+        return $this->inicio()->translatedFormat('j M Y').' – '.$this->fin()->translatedFormat('j M Y');
     }
 
     /**
-     * Rango real de años con datos, para poblar los `<select>` de año en
-     * los modos "mes" y "ejercicio" — 2022 (el año más antiguo observado
-     * hoy en producción) no está garantizado a futuro, así que se calcula
-     * a partir del dato real en vez de hardcodearse.
+     * Rango real de años con datos, para poblar el `<select>` de año —
+     * 2022 (el año más antiguo observado hoy en producción) no está
+     * garantizado a futuro, así que se calcula a partir del dato real en
+     * vez de hardcodearse.
      *
      * @return array<int, int> años ascendentes, de más antiguo a hoy
      */
@@ -167,10 +212,33 @@ class Ejecutivo extends Component
      * solo que ya con la colección cargada en vez de una segunda consulta),
      * el subconjunto sin combinados usado en los cálculos de SLA/tiempo de
      * resolución.
+     *
+     * Los 3 filtros de cross-filtering (categoría/departamento/tipo de
+     * solicitud) se aplican aquí encima del periodo, cada uno en su propio
+     * `when()` independiente para que se combinen entre sí con AND —
+     * `null` en la propiedad correspondiente significa "sin filtro activo
+     * en esa dimensión" y no toca la query.
      */
     private function ticketsEnRango(): Builder
     {
-        return SdpTicket::query()->whereBetween('created_time', [$this->inicio(), $this->fin()]);
+        return SdpTicket::query()
+            ->whereBetween('created_time', [$this->inicio(), $this->fin()])
+            ->when(
+                $this->categoriaFiltro !== null,
+                fn (Builder $q) => $this->categoriaFiltro === self::SIN_DATO
+                    ? $q->whereNull('categoria')
+                    : $q->where('categoria', $this->categoriaFiltro)
+            )
+            ->when(
+                $this->departamentoFiltro !== null,
+                fn (Builder $q) => $this->departamentoFiltro === self::SIN_DATO
+                    ? $q->whereNull('departamento')
+                    : $q->where('departamento', $this->departamentoFiltro)
+            )
+            ->when(
+                $this->tipoSolicitudFiltro !== null,
+                fn (Builder $q) => $q->where('tipo_solicitud', $this->tipoSolicitudFiltro)
+            );
     }
 
     private function etiquetaPeriodo(string $periodo, string $formato = 'M Y'): string
@@ -659,20 +727,122 @@ class Ejecutivo extends Component
 
     /**
      * Cierra el panel de filtros desde el servidor tras aplicar (el propio
-     * `<x-ui.slide-over>` también escucha este evento). Los `wire:model`
-     * (sin `.live`) de los controles del panel ya viajaron con esta misma
-     * request antes de que el método se ejecute, así que no hace falta
-     * recalcular nada aquí — el siguiente `render()` ya usa los valores
-     * nuevos.
+     * `<x-ui.slide-over>` también escucha este evento). `$desde`/`$hasta`
+     * ya están al día en este punto — o porque el usuario los editó
+     * directamente (`wire:model` sin `.live`, viajan con esta misma
+     * request), o porque un cambio previo en año/mes ya los recalculó vía
+     * `updatedEjercicio()`/`updatedMes()` — así que no hace falta
+     * recalcular nada aquí.
      */
     public function aplicarFiltro(): void
     {
         $this->dispatch('close-filtros-periodo');
     }
 
+    /**
+     * Cross-filtering estilo Power BI: clic en un elemento de una gráfica
+     * filtra TODO el dashboard, además del periodo (ver docblock de las
+     * propiedades `*Filtro`). Toggle: clic en el valor ya seleccionado lo
+     * quita. "Otras" es un bucket agregado (categorías fuera del top N),
+     * no un valor real de la columna — un clic ahí se ignora.
+     */
+    public function seleccionarCategoria(string $valor): void
+    {
+        if ($valor === 'Otras') {
+            return;
+        }
+
+        $real = $valor === 'Sin categoría' ? self::SIN_DATO : $valor;
+
+        $this->categoriaFiltro = $this->categoriaFiltro === $real ? null : $real;
+    }
+
+    public function seleccionarDepartamento(string $valor): void
+    {
+        if ($valor === 'Otras') {
+            return;
+        }
+
+        $real = $valor === 'Sin departamento' ? self::SIN_DATO : $valor;
+
+        $this->departamentoFiltro = $this->departamentoFiltro === $real ? null : $real;
+    }
+
+    /**
+     * `tipo_solicitud` no tiene agregados "Otras"/"Sin dato" en esta
+     * pantalla (ni la gráfica apilada ni las tarjetas KPI secundarias los
+     * muestran) — el valor recibido siempre es directamente filtrable.
+     */
+    public function seleccionarTipoSolicitud(string $valor): void
+    {
+        $this->tipoSolicitudFiltro = $this->tipoSolicitudFiltro === $valor ? null : $valor;
+    }
+
+    /** Limpia los 3 filtros de cross-filtering sin tocar el periodo (`$desde`/`$hasta`). */
+    public function limpiarFiltrosSeleccion(): void
+    {
+        $this->categoriaFiltro = null;
+        $this->departamentoFiltro = null;
+        $this->tipoSolicitudFiltro = null;
+    }
+
+    /**
+     * Filtros de cross-filtering activos, listos para pintarse como chips
+     * removibles — traduce {@see self::SIN_DATO} de vuelta a la etiqueta
+     * legible que el usuario originalmente clickeó. El `metodo`/`valor` de
+     * cada chip es exactamente lo que hay que volver a pasarle al método
+     * `seleccionar*` correspondiente para des-seleccionarlo (mismo patrón
+     * de toggle que un segundo clic en la gráfica).
+     *
+     * @return array<int, array{etiqueta:string, metodo:string, valor:string}>
+     */
+    private function filtrosActivos(): array
+    {
+        $filtros = [];
+
+        if ($this->categoriaFiltro !== null) {
+            $valor = $this->categoriaFiltro === self::SIN_DATO ? 'Sin categoría' : $this->categoriaFiltro;
+            $filtros[] = ['etiqueta' => "Categoría: {$valor}", 'metodo' => 'seleccionarCategoria', 'valor' => $valor];
+        }
+
+        if ($this->departamentoFiltro !== null) {
+            $valor = $this->departamentoFiltro === self::SIN_DATO ? 'Sin departamento' : $this->departamentoFiltro;
+            $filtros[] = ['etiqueta' => "Departamento: {$valor}", 'metodo' => 'seleccionarDepartamento', 'valor' => $valor];
+        }
+
+        if ($this->tipoSolicitudFiltro !== null) {
+            $filtros[] = ['etiqueta' => "Tipo: {$this->tipoSolicitudFiltro}", 'metodo' => 'seleccionarTipoSolicitud', 'valor' => $this->tipoSolicitudFiltro];
+        }
+
+        return $filtros;
+    }
+
+    /**
+     * Columnas realmente usadas sobre los modelos de `$ticketsTotal`/
+     * `$ticketsSla` en toda la clase (auditado con grep antes de escribir
+     * esto, no es una lista a ojo). `sdp_ticket_status_id` es la FK que
+     * necesita el eager load de `ticketStatus`, no se usa directo.
+     *
+     * Encontrado en producción (2026-09-19): con el histórico completo de
+     * 2026 ya sincronizado, cargar el `SELECT *` completo de miles de
+     * tickets — incluyendo `raw_payload` (el JSON íntegro de cada ticket
+     * en SDP, potencialmente grande) y el resto de columnas que esta
+     * pantalla nunca toca — agotaba el `memory_limit` de PHP-FPM (128MB) y
+     * tiraba el dashboard con 500. Acotar el `SELECT` a solo estas 12
+     * columnas es la corrección real; no es una optimización opcional.
+     */
+    private const COLUMNAS_TICKET_EJECUTIVO = [
+        'id', 'created_time', 'responded_time', 'resolved_time', 'completed_time',
+        'prioridad', 'nivel', 'categoria', 'departamento', 'tipo_solicitud',
+        'combinado_con_display_id', 'sdp_ticket_status_id',
+    ];
+
     public function render()
     {
-        $ticketsTotal = $this->ticketsEnRango()->with('ticketStatus')->get();
+        $ticketsTotal = $this->ticketsEnRango()
+            ->select(self::COLUMNAS_TICKET_EJECUTIVO)
+            ->with('ticketStatus')
+            ->get();
         $ticketsSla = $ticketsTotal->whereNull('combinado_con_display_id')->values();
 
         $cumplimientoGlobal = $this->calcularCumplimiento($ticketsSla);
@@ -697,6 +867,7 @@ class Ejecutivo extends Component
             'resumenMensual' => $this->resumenMensual($ticketsTotal, $ticketsSla),
             'metaSlaPct' => self::META_SLA_PCT,
             'resumenPeriodo' => $this->resumenPeriodo(),
+            'filtrosActivos' => $this->filtrosActivos(),
             'periodoKey' => $this->periodoKey(),
             'aniosDisponibles' => $this->aniosDisponibles(),
             'mesesDelAnio' => $this->mesesDelAnio(),
