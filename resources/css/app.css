@@ -22,6 +22,36 @@
     --color-danger: #DC2626;
     --color-warning: #D97706;
     --color-info: #2563EB;
+
+    /*
+     * Paleta categórica para gráficas (ECharts) y elementos decorativos que
+     * solo necesitan distinguir categorías (categoría de ticket,
+     * departamento...), NUNCA fijos ni configurables por sitio como los de
+     * arriba. A propósito NO reutiliza success/warning/danger (rojo/amarillo/
+     * verde): esos 3 son el semáforo de estado de la app (mal/medio/bien) en
+     * cualquier contexto — KPIs, badges de SLA, hallazgos — y usarlos también
+     * para "la categoría #3 es roja" mezclaría una señal de juicio (bueno/
+     * malo) con una simple distinción visual sin significado.
+     *
+     * Los 15 tonos son las 3 paletas de 5 colores que el usuario entregó
+     * (Adobe Color), en el mismo orden en que las dio — chart-1..5 =
+     * paleta 1, chart-6..10 = paleta 2, chart-11..15 = paleta 3.
+     */
+    --color-chart-1: #E8C2A0;
+    --color-chart-2: #D8A0E8;
+    --color-chart-3: #A0DBE8;
+    --color-chart-4: #CDE8A0;
+    --color-chart-5: #938272;
+    --color-chart-6: #E8BE7D;
+    --color-chart-7: #6F91E8;
+    --color-chart-8: #35E8B3;
+    --color-chart-9: #695D5B;
+    --color-chart-10: #5A5E69;
+    --color-chart-11: #E8B266;
+    --color-chart-12: #E83BE6;
+    --color-chart-13: #9AC9E8;
+    --color-chart-14: #92E866;
+    --color-chart-15: #938572;
 }
 
 /*

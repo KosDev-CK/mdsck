@@ -29,7 +29,7 @@
         </button>
 
         <x-heroicon-o-calendar-days class="h-4 w-4 shrink-0" />
-        <span>Periodo: <span class="font-medium text-gray-700 dark:text-gray-300">{{ $resumenPeriodo }}</span></span>
+        <span class="font-medium text-gray-700 dark:text-gray-300">{{ $periodoFiltroTexto }}</span>
     </div>
 
     {{--
@@ -105,23 +105,70 @@
         </div>
     </x-ui.slide-over>
 
+    <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Indicadores clave de desempeño
+    </div>
+
     {{-- 1. KPIs principales --}}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <x-ui.stat-tile label="Total tickets" :value="$totalTickets" icon="ticket" color="primary" />
-        <x-ui.stat-tile label="Completados" :value="$completados" icon="check-circle" color="success" />
         <x-ui.stat-tile
-            label="% SLA cumplido"
-            :value="$pctSlaCumplido !== null ? $pctSlaCumplido.'%' : 'Sin datos'"
-            icon="shield-check"
-            :color="$pctSlaCumplido === null ? 'primary' : ($pctSlaCumplido >= $metaSlaPct ? 'success' : 'danger')"
-            :hint="'Meta de referencia: '.$metaSlaPct.'%'"
-        />
+            variant="accent"
+            label="Total de tickets"
+            :value="number_format($totalTickets)"
+            color="primary"
+            :hint="$periodoFiltroTexto"
+        >
+            @if ($tendenciaTotalTickets !== null)
+                <x-ui.badge color="indigo">
+                    {{ $tendenciaTotalTickets['pct'] >= 0 ? '↑' : '↓' }}
+                    {{ number_format(abs($tendenciaTotalTickets['pct']), 1) }}% vs primer mes del periodo
+                </x-ui.badge>
+            @endif
+        </x-ui.stat-tile>
         <x-ui.stat-tile
+            variant="accent"
+            label="Tickets completados"
+            :value="number_format($completados)"
+            color="success"
+            :hint="$totalTickets > 0 ? number_format($completados / $totalTickets * 100, 1).'% tasa de cierre' : 'Sin datos'"
+        >
+            @if ($totalTickets > 0)
+                @php $tasaCierre = $completados / $totalTickets * 100; @endphp
+                @if ($tasaCierre >= 90)
+                    <x-ui.badge color="emerald">✓ Alta efectividad</x-ui.badge>
+                @elseif ($tasaCierre < 70)
+                    <x-ui.badge color="red">↓ Tasa de cierre por mejorar</x-ui.badge>
+                @endif
+            @endif
+        </x-ui.stat-tile>
+        <x-ui.stat-tile
+            variant="accent"
+            label="SLA vencido"
+            :value="number_format($ticketsSlaVencidos)"
+            color="danger"
+            :hint="$totalTickets > 0 ? number_format($ticketsSlaVencidos / $totalTickets * 100, 1).'% del total' : 'Sin datos'"
+        >
+            @if ($pctSlaCumplido !== null)
+                <x-ui.badge :color="$pctSlaCumplido >= $metaSlaPct ? 'emerald' : 'red'">
+                    {{ $pctSlaCumplido >= $metaSlaPct ? '✓ Cumple la meta' : '↓ Por debajo de la meta' }}
+                </x-ui.badge>
+            @endif
+        </x-ui.stat-tile>
+        <x-ui.stat-tile
+            variant="accent"
             label="Tiempo mediano de resolución"
             :value="$medianaResolucionHoras !== null ? number_format($medianaResolucionHoras, 1).' h' : 'Sin datos'"
-            icon="clock"
-            color="info"
-        />
+            color="warning"
+            hint="Mediana del periodo seleccionado"
+        >
+            @if ($tendenciaTiempoResolucion !== null)
+                <x-ui.badge :color="$tendenciaTiempoResolucion['pct'] <= 0 ? 'emerald' : 'red'">
+                    {{ $tendenciaTiempoResolucion['pct'] <= 0 ? '↓' : '↑' }}
+                    {{ number_format(abs($tendenciaTiempoResolucion['pct']), 1) }}%
+                    {{ $tendenciaTiempoResolucion['pct'] <= 0 ? 'más rápido' : 'más lento' }} vs primer mes
+                </x-ui.badge>
+            @endif
+        </x-ui.stat-tile>
     </div>
 
     {{--
@@ -134,33 +181,36 @@
     --}}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <x-ui.stat-tile
+            variant="accent"
             label="Incidentes"
-            :value="$incidentes"
-            icon="bolt"
+            :value="number_format($incidentes)"
             color="danger"
+            :hint="$totalTickets > 0 ? number_format($incidentes / $totalTickets * 100, 1).'% del total' : 'Sin datos'"
             wire:click="seleccionarTipoSolicitud('Incidente')"
             class="cursor-pointer transition hover:ring-2 hover:ring-danger/40 {{ $tipoSolicitudFiltro === 'Incidente' ? 'ring-2 ring-danger/60' : '' }}"
         />
         <x-ui.stat-tile
+            variant="accent"
             label="Solicitudes"
-            :value="$solicitudes"
-            icon="inbox-stack"
+            :value="number_format($solicitudes)"
             color="info"
+            :hint="$totalTickets > 0 ? number_format($solicitudes / $totalTickets * 100, 1).'% del total' : 'Sin datos'"
             wire:click="seleccionarTipoSolicitud('Solicitud')"
             class="cursor-pointer transition hover:ring-2 hover:ring-info/40 {{ $tipoSolicitudFiltro === 'Solicitud' ? 'ring-2 ring-info/60' : '' }}"
         />
         <x-ui.stat-tile
+            variant="accent"
             label="Requerimientos"
-            :value="$requerimientos"
-            icon="squares-plus"
+            :value="number_format($requerimientos)"
             color="primary"
+            :hint="$totalTickets > 0 ? number_format($requerimientos / $totalTickets * 100, 1).'% del total' : 'Sin datos'"
             wire:click="seleccionarTipoSolicitud('Requerimiento')"
             class="cursor-pointer transition hover:ring-2 hover:ring-primary/40 {{ $tipoSolicitudFiltro === 'Requerimiento' ? 'ring-2 ring-primary/60' : '' }}"
         />
         <x-ui.stat-tile
+            variant="accent"
             label="Tickets combinados"
-            :value="$combinados"
-            icon="document-duplicate"
+            :value="number_format($combinados)"
             color="warning"
             hint="Fusionados a otro folio en SDP"
         />
@@ -185,44 +235,85 @@
         misma sesión (ahí el problema era que Livewire NO reemplazaba el
         nodo cuando debía; aquí es que SÍ lo parchea cuando no debía).
     --}}
-    <x-ui.card padding="p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tendencia mensual de tickets creados</h2>
-
-        <div
-            wire:key="chart-tendencia-{{ $periodoKey }}"
-            wire:ignore
-            x-data="{
-                chart: null,
-                async init() { this.chart = await window.initChart(this.$el, @js($tendenciaOption)); },
-                destroy() { this.chart?.dispose(); },
-            }"
-            class="h-72"
-        ></div>
-    </x-ui.card>
-
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {{-- 4. Dona de categorías --}}
-        <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Distribución por categoría</h2>
+    <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Volumen y distribución
+    </div>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        {{-- 3. Tendencia mensual — el doble de ancha que sus vecinas (lg:col-span-2 de 4), el resto de la fila igual de dividida entre categoría y SLA. --}}
+        <x-ui.card padding="p-5" class="lg:col-span-2">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Evolución de tickets {{ $granularidadTexto }}</h2>
 
             <div
-                wire:key="chart-categoria-{{ $periodoKey }}"
+                wire:key="chart-tendencia-{{ $periodoKey }}"
                 wire:ignore
                 x-data="{
                     chart: null,
-                    async init() {
-                        this.chart = await window.initChart(this.$el, @js($categoriaOption));
-                        this.chart.onClick((params) => $wire.seleccionarCategoria(params.name));
-                    },
+                    async init() { this.chart = await window.initChart(this.$el, @js($tendenciaOption)); },
                     destroy() { this.chart?.dispose(); },
                 }"
                 class="h-72"
             ></div>
         </x-ui.card>
 
+        {{--
+            4. Dona de categorías — sin leyenda propia de ECharts (removida
+            en categoriaOption(), ver Ejecutivo.php): el total va al centro
+            de la dona vía el `title` de ECharts, y la participación de cada
+            categoría se lee en la tabla de al lado, no en callouts
+            alrededor del donut ni en una leyenda aparte.
+        --}}
+        <x-ui.card padding="p-5">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Categorías principales</h2>
+
+            <div class="flex items-center gap-4">
+                <div
+                    wire:key="chart-categoria-{{ $periodoKey }}"
+                    wire:ignore
+                    x-data="{
+                        chart: null,
+                        async init() {
+                            this.chart = await window.initChart(this.$el, @js($categoriaOption));
+                            this.chart.onClick((params) => $wire.seleccionarCategoria(params.name));
+                        },
+                        destroy() { this.chart?.dispose(); },
+                    }"
+                    class="h-32 w-32 shrink-0"
+                ></div>
+
+                @php
+                    // Paleta CATEGÓRICA de 15 tonos (ver --color-chart-1..15
+                    // en app.css) — nunca success/warning/danger: una
+                    // categoría no tiene un juicio de bien/mal que comunicar
+                    // con su color. Se escribe como array literal (no
+                    // generado con un loop) a propósito: Tailwind escanea el
+                    // código fuente buscando literales de clase, "bg-chart-
+                    // {$n}" interpolado nunca generaría la utilidad.
+                    $puntoColor = [
+                        0 => 'bg-chart-1', 1 => 'bg-chart-2', 2 => 'bg-chart-3', 3 => 'bg-chart-4', 4 => 'bg-chart-5',
+                        5 => 'bg-chart-6', 6 => 'bg-chart-7', 7 => 'bg-chart-8', 8 => 'bg-chart-9', 9 => 'bg-chart-10',
+                        10 => 'bg-chart-11', 11 => 'bg-chart-12', 12 => 'bg-chart-13', 13 => 'bg-chart-14', 14 => 'bg-chart-15',
+                    ];
+                @endphp
+                <table class="w-full min-w-0 text-sm">
+                    <tbody>
+                        @foreach ($categoriaTabla as $fila)
+                            <tr wire:key="categoria-tabla-{{ $loop->index }}" class="cursor-pointer" wire:click="seleccionarCategoria(@js($fila['etiqueta']))">
+                                <td class="w-2.5 py-1 pr-2">
+                                    <span class="inline-block h-2.5 w-2.5 rounded-full {{ $puntoColor[$fila['colorIndex']] }}"></span>
+                                </td>
+                                <td class="truncate py-1 pr-2 text-gray-700 dark:text-gray-300">{{ $fila['etiqueta'] }}</td>
+                                <td class="py-1 pr-2 text-right font-semibold text-gray-900 dark:text-gray-100">{{ number_format($fila['total']) }}</td>
+                                <td class="py-1 text-right text-gray-400 dark:text-gray-500">{{ $fila['pct'] }}%</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </x-ui.card>
+
         {{-- 5. Cumplimiento de SLA por mes --}}
         <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Cumplimiento de SLA por mes</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Cumplimiento de SLA {{ $granularidadTexto }}</h2>
 
             <div
                 wire:key="chart-sla-mes-{{ $periodoKey }}"
@@ -232,10 +323,27 @@
                     async init() { this.chart = await window.initChart(this.$el, @js($slaPorMesOption)); },
                     destroy() { this.chart?.dispose(); },
                 }"
-                class="h-72"
+                class="h-56"
             ></div>
-        </x-ui.card>
 
+            <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+                <span class="text-xs text-gray-500 dark:text-gray-400">Promedio del periodo</span>
+                <span class="text-lg font-bold text-warning">
+                    {{ $pctSlaCumplido !== null ? $pctSlaCumplido.'%' : 'Sin datos' }}
+                </span>
+            </div>
+            @if ($pctSlaCumplido !== null && $pctSlaCumplido < $metaSlaPct)
+                <p class="mt-1 text-xs text-danger">
+                    ⚠ Meta corporativa: {{ $metaSlaPct }}% · Brecha: {{ number_format($pctSlaCumplido - $metaSlaPct, 1) }}pp
+                </p>
+            @endif
+        </x-ui.card>
+    </div>
+
+    <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Desglose operativo
+    </div>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {{-- 6. Áreas con mayor demanda --}}
         <x-ui.card padding="p-5">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Áreas con mayor demanda</h2>
@@ -255,9 +363,9 @@
             ></div>
         </x-ui.card>
 
-        {{-- 7. Tipo de solicitud por mes --}}
+        {{-- 7. Tipo de solicitud por periodo --}}
         <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tipo de solicitud por mes</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tipo de solicitud {{ $granularidadTexto }}</h2>
 
             <div
                 wire:key="chart-tipo-mes-{{ $periodoKey }}"
@@ -282,50 +390,106 @@
         </x-ui.card>
     </div>
 
-    {{-- 8. Distribución por nivel de atención --}}
-    <x-ui.card padding="p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Distribución por nivel de atención</h2>
+    <div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        Escalamiento y detalle por categoría
+    </div>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {{-- 8. Distribución por nivel de atención --}}
+        <x-ui.card padding="p-5">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Distribución por nivel de atención</h2>
 
-        <x-ui.table :headers="['Nivel', 'Tickets', '%']" :empty="$nivelDistribucion->isEmpty()" empty-title="Sin tickets en el rango seleccionado">
-            @foreach ($nivelDistribucion as $fila)
-                <tr wire:key="nivel-{{ $loop->index }}" class="border-b border-gray-50 dark:border-gray-800">
-                    <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $fila['etiqueta'] }}</td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $fila['total'] }}</td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $fila['pct'] }}%</td>
-                </tr>
-            @endforeach
-        </x-ui.table>
-    </x-ui.card>
-
-    {{-- 9. Categorías por mes (heatmap) --}}
-    <x-ui.card padding="p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Categorías por mes</h2>
-
-        @if (empty($heatmap['filas']))
-            <x-ui.empty-state title="Sin tickets en el rango seleccionado" />
-        @else
-            <x-ui.table :headers="array_merge(['Categoría'], $heatmap['meses'])">
-                @foreach ($heatmap['filas'] as $fila)
-                    <tr wire:key="heatmap-{{ $loop->index }}" class="border-b border-gray-50 dark:border-gray-800">
-                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $fila['etiqueta'] }}</td>
-                        @foreach ($fila['valores'] as $valor)
-                            @php
-                                $intensidad = $fila['max'] > 0 ? $valor / $fila['max'] : 0;
-                                $clase = match (true) {
-                                    $valor === 0 => 'text-gray-300 dark:text-gray-600',
-                                    $intensidad >= 0.75 => 'bg-primary/40 font-semibold text-gray-900 dark:text-gray-100',
-                                    $intensidad >= 0.5 => 'bg-primary/25 text-gray-900 dark:text-gray-100',
-                                    $intensidad >= 0.25 => 'bg-primary/15 text-gray-700 dark:text-gray-200',
-                                    default => 'bg-primary/10 text-gray-600 dark:text-gray-300',
-                                };
-                            @endphp
-                            <td class="py-2 text-center text-sm {{ $clase }}">{{ $valor }}</td>
-                        @endforeach
+            <x-ui.table :headers="['Nivel', 'Tickets', 'Proporción', '%']" :empty="$nivelDistribucion->isEmpty()" empty-title="Sin tickets en el rango seleccionado">
+                @foreach ($nivelDistribucion as $fila)
+                    <tr wire:key="nivel-{{ $loop->index }}" class="border-b border-gray-50 dark:border-gray-800">
+                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $fila['etiqueta'] }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $fila['total'] }}</td>
+                        <td class="py-2">
+                            <div class="h-2 w-full max-w-32 rounded-full bg-gray-100 dark:bg-gray-800">
+                                <div class="h-2 rounded-full bg-primary" style="width: {{ $fila['pct'] }}%"></div>
+                            </div>
+                        </td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $fila['pct'] }}%</td>
                     </tr>
                 @endforeach
             </x-ui.table>
-        @endif
-    </x-ui.card>
+
+            @if ($fortalezaOperativaNivel !== null)
+                <x-ui.alert variant="success" class="mt-4">
+                    <p class="font-semibold">✓ Fortaleza operativa</p>
+                    <p class="mt-0.5">
+                        {{ $fortalezaOperativaNivel['pct'] }}% de los tickets con nivel asignado se resolvieron sin
+                        necesidad de escalar a un grupo especialista o proveedor externo.
+                    </p>
+                </x-ui.alert>
+            @endif
+        </x-ui.card>
+
+        {{-- 9. Categorías por periodo (heatmap) --}}
+        <x-ui.card padding="p-5">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Categorías {{ $granularidadTexto }}</h2>
+
+            @if (empty($heatmap['filas']))
+                <x-ui.empty-state title="Sin tickets en el rango seleccionado" />
+            @else
+                @php
+                    // Un tono CATEGÓRICO por FILA (categoría), cíclico —
+                    // dentro de una fila la intensidad va de más clara
+                    // (valor bajo) a más fuerte (valor alto) del MISMO
+                    // tono, nunca mezclando dos colores en una misma fila.
+                    // Nunca success/warning/danger: ver el comentario junto
+                    // a TOKENS_COLOR_CATEGORIA en Ejecutivo.php.
+                    // [0]=más fuerte (texto blanco) ... [3]=más clara.
+                    $tonosPorIndice = [
+                        0 => ['bg-chart-1', 'bg-chart-1/50', 'bg-chart-1/25', 'bg-chart-1/10'],
+                        1 => ['bg-chart-2', 'bg-chart-2/50', 'bg-chart-2/25', 'bg-chart-2/10'],
+                        2 => ['bg-chart-3', 'bg-chart-3/50', 'bg-chart-3/25', 'bg-chart-3/10'],
+                        3 => ['bg-chart-4', 'bg-chart-4/50', 'bg-chart-4/25', 'bg-chart-4/10'],
+                        4 => ['bg-chart-5', 'bg-chart-5/50', 'bg-chart-5/25', 'bg-chart-5/10'],
+                        5 => ['bg-chart-6', 'bg-chart-6/50', 'bg-chart-6/25', 'bg-chart-6/10'],
+                        6 => ['bg-chart-7', 'bg-chart-7/50', 'bg-chart-7/25', 'bg-chart-7/10'],
+                        7 => ['bg-chart-8', 'bg-chart-8/50', 'bg-chart-8/25', 'bg-chart-8/10'],
+                        8 => ['bg-chart-9', 'bg-chart-9/50', 'bg-chart-9/25', 'bg-chart-9/10'],
+                        9 => ['bg-chart-10', 'bg-chart-10/50', 'bg-chart-10/25', 'bg-chart-10/10'],
+                        10 => ['bg-chart-11', 'bg-chart-11/50', 'bg-chart-11/25', 'bg-chart-11/10'],
+                        11 => ['bg-chart-12', 'bg-chart-12/50', 'bg-chart-12/25', 'bg-chart-12/10'],
+                        12 => ['bg-chart-13', 'bg-chart-13/50', 'bg-chart-13/25', 'bg-chart-13/10'],
+                        13 => ['bg-chart-14', 'bg-chart-14/50', 'bg-chart-14/25', 'bg-chart-14/10'],
+                        14 => ['bg-chart-15', 'bg-chart-15/50', 'bg-chart-15/25', 'bg-chart-15/10'],
+                    ];
+                @endphp
+                <x-ui.table :headers="array_merge(['Categoría'], $heatmap['meses'])">
+                    @foreach ($heatmap['filas'] as $fila)
+                        @php $tonos = $tonosPorIndice[$fila['colorIndex']]; @endphp
+                        <tr wire:key="heatmap-{{ $loop->index }}" class="border-b border-gray-50 dark:border-gray-800">
+                            <td class="py-2 pr-3 font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{{ $fila['etiqueta'] }}</td>
+                            @foreach ($fila['valores'] as $valor)
+                                @php
+                                    $intensidad = $fila['max'] > 0 ? $valor / $fila['max'] : 0;
+                                    [$fondo, $texto] = match (true) {
+                                        $valor === 0 => ['', 'text-gray-300 dark:text-gray-600'],
+                                        $intensidad >= 0.75 => [$tonos[0], 'text-white font-semibold'],
+                                        $intensidad >= 0.5 => [$tonos[1], 'text-white'],
+                                        $intensidad >= 0.25 => [$tonos[2], 'text-gray-900 dark:text-gray-100'],
+                                        default => [$tonos[3], 'text-gray-700 dark:text-gray-300'],
+                                    };
+                                @endphp
+                                <td class="p-1 text-center text-sm">
+                                    <div class="rounded-md px-2 py-1.5 {{ $fondo }} {{ $texto }}">{{ $valor }}</div>
+                                </td>
+                            @endforeach
+                        </tr>
+                    @endforeach
+                </x-ui.table>
+
+                <div class="mt-3 flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
+                    <span>Tonalidad:</span>
+                    <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-chart-1/10"></span>Bajo</span>
+                    <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-chart-1/50"></span>Medio</span>
+                    <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-chart-1"></span>Alto</span>
+                </div>
+            @endif
+        </x-ui.card>
+    </div>
 
     {{-- 10. Hallazgos estratégicos --}}
     <x-ui.card padding="p-5">
@@ -341,10 +505,25 @@
                 description="Amplía el rango de fechas (se necesitan al menos 2 meses con datos para algunos hallazgos)."
             />
         @else
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            @php
+                // Mismo vocabulario de color que x-ui.stat-tile/x-ui.badge —
+                // cada hallazgo trae su propio icono/color fijo por REGLA
+                // (ver hallazgos() en Ejecutivo.php) para que la sección se
+                // lea con variedad temática en vez de un lightbulb repetido.
+                $iconoColores = [
+                    'primary' => 'bg-primary/10 text-primary',
+                    'success' => 'bg-success/10 text-success',
+                    'danger' => 'bg-danger/10 text-danger',
+                    'warning' => 'bg-warning/10 text-warning',
+                    'info' => 'bg-info/10 text-info',
+                ];
+            @endphp
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 @foreach ($hallazgos as $hallazgo)
                     <div wire:key="hallazgo-{{ $loop->index }}" class="flex gap-3 rounded-lg border border-gray-100 p-4 dark:border-gray-800">
-                        <x-heroicon-o-light-bulb class="h-5 w-5 shrink-0 text-primary" />
+                        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {{ $iconoColores[$hallazgo['color']] ?? $iconoColores['primary'] }}">
+                            <x-dynamic-component :component="'heroicon-o-'.$hallazgo['icono']" class="h-5 w-5" />
+                        </div>
                         <div>
                             <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ $hallazgo['titulo'] }}</p>
                             <p class="text-sm text-gray-500 dark:text-gray-400">{{ $hallazgo['texto'] }}</p>
@@ -357,32 +536,54 @@
 
     {{-- 11. Resumen mensual --}}
     <x-ui.card padding="p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Resumen mensual</h2>
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Resumen {{ $granularidadTexto }}</h2>
 
         <x-ui.table
-            :headers="['Mes', 'Total', 'Completados', '% SLA', 'Mediana resolución']"
+            :headers="[ucfirst(str_replace('por ', '', $granularidadTexto)), 'Tickets', 'Completados', 'Vencidos', '% SLA', 'T. mediano res.', 'Incidentes', 'Solicitudes']"
             :empty="$resumenMensual->isEmpty()"
             empty-title="Sin tickets en el rango seleccionado"
         >
             @foreach ($resumenMensual as $fila)
                 @php
-                    $celda = $fila['esTotal']
-                        ? 'py-2 font-semibold text-gray-900 dark:text-gray-100'
-                        : 'py-2 text-gray-500 dark:text-gray-400';
+                    $negrita = $fila['esTotal'] ? 'font-semibold' : '';
+                    $slaColor = match (true) {
+                        $fila['pctSla'] === null => 'text-gray-400 dark:text-gray-500',
+                        $fila['pctSla'] >= $metaSlaPct => 'bg-success/10 text-success',
+                        $fila['pctSla'] >= $metaSlaPct - 10 => 'bg-warning/10 text-warning',
+                        default => 'bg-danger/10 text-danger',
+                    };
                 @endphp
-                <tr wire:key="resumen-mes-{{ $loop->index }}" class="border-b border-gray-50 dark:border-gray-800">
-                    <td class="{{ $fila['esTotal'] ? $celda : 'py-2 font-medium text-gray-900 dark:text-gray-100' }}">{{ $fila['etiqueta'] }}</td>
-                    <td class="{{ $celda }}">{{ $fila['total'] }}</td>
-                    <td class="{{ $celda }}">{{ $fila['completados'] }}</td>
-                    <td class="{{ $celda }}">
-                        {{ $fila['pctSla'] !== null ? $fila['pctSla'].'%' : 'Sin datos' }}
+                <tr
+                    wire:key="resumen-mes-{{ $loop->index }}"
+                    class="border-b border-gray-50 dark:border-gray-800 {{ $fila['esTotal'] ? 'bg-primary/5 dark:bg-primary/10' : '' }}"
+                >
+                    <td class="py-2 {{ $negrita }} text-gray-900 dark:text-gray-100">{{ $fila['etiqueta'] }}</td>
+                    <td class="py-2 {{ $negrita }} {{ $fila['esTotal'] ? 'text-primary' : 'text-gray-700 dark:text-gray-300' }}">{{ number_format($fila['total']) }}</td>
+                    <td class="py-2 {{ $negrita }} text-success">{{ number_format($fila['completados']) }}</td>
+                    <td class="py-2 {{ $negrita }} text-danger">{{ number_format($fila['vencidos']) }}</td>
+                    <td class="py-2 {{ $negrita }}">
+                        @if ($fila['pctSla'] !== null)
+                            <span class="inline-block rounded-full px-2 py-0.5 {{ $slaColor }}">{{ $fila['pctSla'] }}%</span>
+                        @else
+                            <span class="text-gray-400 dark:text-gray-500">Sin datos</span>
+                        @endif
                     </td>
-                    <td class="{{ $celda }}">
-                        {{ $fila['medianaHoras'] !== null ? number_format($fila['medianaHoras'], 1).' h' : 'Sin datos' }}
+                    <td class="py-2 {{ $negrita }} text-gray-700 dark:text-gray-300">
+                        {{ $fila['medianaHoras'] !== null ? number_format($fila['medianaHoras'], 1).' h' : 'Sin datos' }}{{ $fila['medianaPocoConfiable'] ? '*' : '' }}
                     </td>
+                    <td class="py-2 {{ $negrita }} text-danger">{{ number_format($fila['incidentes']) }}</td>
+                    <td class="py-2 {{ $negrita }} text-info">{{ number_format($fila['solicitudes']) }}</td>
                 </tr>
             @endforeach
         </x-ui.table>
+
+        @if (! empty($resumenMensualNotas))
+            <div class="mt-2 space-y-0.5">
+                @foreach ($resumenMensualNotas as $nota)
+                    <p wire:key="resumen-nota-{{ $loop->index }}" class="text-xs text-gray-400 dark:text-gray-500">* {{ $nota }}</p>
+                @endforeach
+            </div>
+        @endif
     </x-ui.card>
 
     <x-ui.help-modal titulo="Dashboard Ejecutivo" :pdf-url="route('mesaservicio.ayuda.pdf', 'dashboard-ejecutivo')">

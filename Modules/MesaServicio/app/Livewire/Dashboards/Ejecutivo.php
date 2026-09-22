@@ -28,14 +28,21 @@ use Modules\MesaServicio\Models\SdpTicketStatus;
  * SLA/tiempo de resolución (ver `ticketsEnRangoExcluyendoCombinados()`),
  * igual que en la pantalla de Cumplimiento de SLA.
  *
- * Todas las consultas de agrupación por mes usan `SUBSTR(created_time, 1, 7)`
- * en vez de `YEAR()`/`MONTH()` (funciones nativas de MySQL, la base de
- * producción) a propósito: la suite de pruebas corre contra SQLite en
- * memoria (ver phpunit.xml), que no tiene `YEAR()`/`MONTH()` pero sí
- * soporta `SUBSTR()` — mismo espíritu portátil que ya usa
- * `PatronesDetector` con `DATE(created_time)`. El resultado ('YYYY-MM') es
- * directamente ordenable como texto y se traduce a una etiqueta legible con
- * `etiquetaPeriodo()`.
+ * Todas las consultas de agrupación por periodo usan
+ * `SUBSTR(created_time, 1, N)` en vez de `YEAR()`/`MONTH()`/`HOUR()`
+ * (funciones nativas de MySQL, la base de producción) a propósito: la
+ * suite de pruebas corre contra SQLite en memoria (ver phpunit.xml), que
+ * no tiene esas funciones pero sí soporta `SUBSTR()` — mismo espíritu
+ * portátil que ya usa `PatronesDetector` con `DATE(created_time)`. El
+ * resultado ('YYYY-MM', 'YYYY-MM-DD' o 'YYYY-MM-DD HH' según
+ * {@see self::granularidad()}) es directamente ordenable como texto y se
+ * traduce a una etiqueta legible con `etiquetaGranular()`.
+ *
+ * Las 5 piezas "por periodo" (tendencia, cumplimiento de SLA, tipo de
+ * solicitud, categorías y resumen) hacen zoom automático de granularidad
+ * según el ancho real de `$desde`/`$hasta` — mes para rangos largos, día
+ * para un mes o menos, hora para un solo día (ver `granularidad()`) — para
+ * que un mes seleccionado no se vea como una sola barra sin detalle.
  */
 #[Layout('layouts.app')]
 class Ejecutivo extends Component
@@ -180,12 +187,61 @@ class Ejecutivo extends Component
     }
 
     /**
-     * Texto corto siempre visible junto al título, para no perder contexto
-     * de qué se está filtrando cuando el panel lateral está cerrado.
+     * Rango de fechas crudo del periodo activo ("1 Ene 2026 – 22 Sep
+     * 2026") — usado como último recurso por {@see self::periodoFiltroTexto()}
+     * cuando el rango no calza limpio con un año/mes/día completo, y
+     * todavía cubierto por su propio test (`resumenPeriodo` en la vista).
      */
     private function resumenPeriodo(): string
     {
         return $this->inicio()->translatedFormat('j M Y').' – '.$this->fin()->translatedFormat('j M Y');
+    }
+
+    /**
+     * Texto corto siempre visible junto al título (y como hint del KPI
+     * "Total de tickets"), para no perder contexto de qué se está
+     * filtrando cuando el panel lateral está cerrado — a pedido explícito
+     * del usuario, un año/mes/día completo se muestra COMO TAL ("Año:
+     * 2026", "Mes: Septiembre 2026", "Día: 10 de septiembre de 2026"),
+     * nunca como el rango de fechas crudo (más difícil de leer de un
+     * vistazo). Se deriva de los valores REALES de `$desde`/`$hasta`, no
+     * solo de `$mes`/`$ejercicio` (esos son atajos de UI que pueden
+     * desincronizarse si el usuario edita las fechas a mano después de
+     * usarlos) — `$mes`/`$ejercicio` solo se usan como pista adicional
+     * para decidir entre "Mes: X" y un rango personalizado cuando el
+     * ancho ya calza con un mes completo. Un rango que no calza limpio
+     * con año/mes/día completo (ej. "15 Mar – 20 Abr", editado a mano)
+     * cae de vuelta a `resumenPeriodo()` — no hay una sola palabra que lo
+     * represente sin perder información.
+     */
+    private function periodoFiltroTexto(): string
+    {
+        if ($this->desde === $this->hasta) {
+            return 'Día: '.Carbon::parse($this->desde)->translatedFormat('j \d\e F \d\e Y');
+        }
+
+        $inicio = Carbon::parse($this->desde);
+
+        $esMesCompleto = $this->mes !== null
+            && $this->desde === $inicio->copy()->startOfMonth()->toDateString()
+            && $this->hasta === $inicio->copy()->endOfMonth()->toDateString();
+
+        if ($esMesCompleto) {
+            return 'Mes: '.ucfirst($inicio->translatedFormat('F \d\e Y'));
+        }
+
+        $esAnioCompleto = $this->mes === null
+            && $this->desde === $inicio->copy()->startOfYear()->toDateString()
+            && (
+                $this->hasta === $inicio->copy()->endOfYear()->toDateString()
+                || $this->hasta === now()->toDateString()
+            );
+
+        if ($esAnioCompleto) {
+            return 'Año: '.$inicio->year;
+        }
+
+        return 'Periodo: '.$this->resumenPeriodo();
     }
 
     /**
@@ -256,6 +312,83 @@ class Ejecutivo extends Component
         // servidor) para no desbordar a otro mes cuando hoy es un día que
         // no existe en el mes destino (ej. hoy 31, mes destino con 30 días).
         return ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat($formato));
+    }
+
+    /**
+     * Granularidad temporal de las 5 piezas "por periodo" del dashboard
+     * (tendencia, cumplimiento de SLA, tipo de solicitud, categorías por
+     * periodo y resumen) — se deriva SIEMPRE del ancho real de
+     * `$desde`/`$hasta`, nunca de qué control de la UI lo produjo (el
+     * atajo Año/Mes o editar las fechas a mano dan el mismo resultado si
+     * el rango es equivalente). No afecta a `hallazgos()`, que sigue
+     * agrupando siempre por mes (son insights de "vista de alto nivel",
+     * independientes del zoom de las gráficas — se auto-omiten igual si
+     * el rango no tiene los 2+ meses que necesitan).
+     *
+     * - Un solo día (Desde = Hasta) → 'hora' (00h a 23h de ese día).
+     * - Hasta 31 días (~ un mes)    → 'dia'.
+     * - Más de 31 días              → 'mes' (comportamiento original).
+     */
+    private function granularidad(): string
+    {
+        if ($this->desde === $this->hasta) {
+            return 'hora';
+        }
+
+        $dias = Carbon::parse($this->desde)->diffInDays(Carbon::parse($this->hasta)) + 1;
+
+        return $dias <= 31 ? 'dia' : 'mes';
+    }
+
+    /** Longitud de `SUBSTR(created_time, 1, N)` para agrupar EN SQL según la granularidad activa. */
+    private function longitudSubstrPeriodo(): int
+    {
+        return match ($this->granularidad()) {
+            'hora' => 13, // 'YYYY-MM-DD HH'
+            'dia' => 10,  // 'YYYY-MM-DD'
+            'mes' => 7,   // 'YYYY-MM'
+        };
+    }
+
+    /** Mismo agrupador que {@see self::longitudSubstrPeriodo()} pero para `Carbon::format()` sobre una colección ya cargada en PHP. */
+    private function formatoPeriodoPhp(): string
+    {
+        return match ($this->granularidad()) {
+            'hora' => 'Y-m-d H',
+            'dia' => 'Y-m-d',
+            'mes' => 'Y-m',
+        };
+    }
+
+    /**
+     * Etiqueta legible de una clave de periodo cruda (tal como la produce
+     * `longitudSubstrPeriodo()`/`formatoPeriodoPhp()`), según la
+     * granularidad activa — a diferencia de {@see self::etiquetaPeriodo()}
+     * (fija en formato de mes, usada solo por `hallazgos()`), esta se
+     * ajusta sola.
+     */
+    private function etiquetaGranular(string $periodo, bool $completo = false): string
+    {
+        return match ($this->granularidad()) {
+            'hora' => Carbon::createFromFormat('Y-m-d H', $periodo)->format('H:00'),
+            'dia' => ucfirst(Carbon::createFromFormat('Y-m-d', $periodo)->translatedFormat($completo ? 'j \d\e F' : 'j M')),
+            'mes' => ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat($completo ? 'F Y' : 'M Y')),
+        };
+    }
+
+    /**
+     * Sufijo "por mes"/"por día"/"por hora" para los títulos de las 5
+     * piezas dinámicas en la vista — para que el título de cada tarjeta
+     * siempre sea consistente con la granularidad real de sus datos (ver
+     * `granularidad()`).
+     */
+    private function granularidadTexto(): string
+    {
+        return match ($this->granularidad()) {
+            'hora' => 'por hora',
+            'dia' => 'por día',
+            'mes' => 'por mes',
+        };
     }
 
     /**
@@ -389,6 +522,66 @@ class Ejecutivo extends Component
     }
 
     /**
+     * Tendencia de 2 puntos (primer mes vs último mes con tickets dentro del
+     * rango seleccionado) para el indicador debajo del KPI "Total de
+     * tickets" — a propósito NO es el promedio ni una serie completa (esa ya
+     * la muestra la gráfica de "Evolución mensual"), solo el extremo inicial
+     * contra el final, igual de simple que los indicadores del mockup de
+     * referencia pero calculado sobre datos reales en vez de fijo.
+     *
+     * @param  Collection<int, SdpTicket>  $ticketsTotal
+     * @return array{pct: float}|null null si hay menos de 2 meses con
+     *     tickets en el rango, o el mes inicial no tiene tickets (división
+     *     indefinida) — en ese caso la tarjeta simplemente no muestra
+     *     indicador de tendencia.
+     */
+    private function tendenciaTotalTickets(Collection $ticketsTotal): ?array
+    {
+        $porMes = $ticketsTotal->groupBy(fn (SdpTicket $t) => $t->created_time->format('Y-m'))->sortKeys();
+
+        if ($porMes->count() < 2) {
+            return null;
+        }
+
+        $primero = $porMes->first()->count();
+        $ultimo = $porMes->last()->count();
+
+        if ($primero === 0) {
+            return null;
+        }
+
+        return ['pct' => round(($ultimo - $primero) / $primero * 100, 1)];
+    }
+
+    /**
+     * Mismo espíritu que {@see self::tendenciaTotalTickets()} pero sobre la
+     * mediana de horas de resolución del primer y último mes del rango
+     * (menor es mejor — un `pct` negativo significa que el último mes
+     * resolvió más rápido que el primero).
+     *
+     * @param  Collection<int, SdpTicket>  $ticketsSla
+     * @return array{pct: float}|null null si hay menos de 2 meses con
+     *     mediana calculable en ambos extremos.
+     */
+    private function tendenciaTiempoResolucion(Collection $ticketsSla): ?array
+    {
+        $porMes = $ticketsSla->groupBy(fn (SdpTicket $t) => $t->created_time->format('Y-m'))->sortKeys();
+
+        if ($porMes->count() < 2) {
+            return null;
+        }
+
+        $primero = $this->tiempoMedianoResolucionHoras($porMes->first());
+        $ultimo = $this->tiempoMedianoResolucionHoras($porMes->last());
+
+        if ($primero === null || $ultimo === null || $primero == 0.0) {
+            return null;
+        }
+
+        return ['pct' => round(($ultimo - $primero) / $primero * 100, 1)];
+    }
+
+    /**
      * @param  Collection<string,int>  $conteosOrdenadosDesc  etiqueta => total, YA ordenado desc
      * @return Collection<string,int>
      */
@@ -401,13 +594,16 @@ class Ejecutivo extends Component
     }
 
     /**
-     * Conteo de tickets creados por mes dentro del rango — agrupado en SQL
-     * (ver docblock de la clase sobre por qué SUBSTR y no YEAR()/MONTH()).
+     * Conteo de tickets creados por periodo dentro del rango (mes/día/hora
+     * según `granularidad()`) — agrupado en SQL (ver docblock de la clase
+     * sobre por qué SUBSTR y no YEAR()/MONTH()).
      */
     private function tendenciaOption(): array
     {
+        $longitud = $this->longitudSubstrPeriodo();
+
         $filas = $this->ticketsEnRango()
-            ->selectRaw("SUBSTR(created_time, 1, 7) as periodo, COUNT(*) as total")
+            ->selectRaw("SUBSTR(created_time, 1, {$longitud}) as periodo, COUNT(*) as total")
             ->groupBy('periodo')
             ->orderBy('periodo')
             ->get();
@@ -417,20 +613,40 @@ class Ejecutivo extends Component
             'xAxis' => [
                 'type' => 'category',
                 'boundaryGap' => false,
-                'data' => $filas->map(fn ($f) => $this->etiquetaPeriodo($f->periodo))->all(),
+                'data' => $filas->map(fn ($f) => $this->etiquetaGranular($f->periodo))->all(),
             ],
             'yAxis' => ['type' => 'value'],
             'series' => [[
                 'type' => 'line',
                 'smooth' => true,
-                'areaStyle' => ['opacity' => 0.15],
+                'symbol' => 'circle',
+                'symbolSize' => 8,
+                'lineStyle' => ['width' => 3],
+                // El relleno real (degradado de color a transparente) lo
+                // arma `conDegradadoDeArea()` en charts.js con el color
+                // semántico ya resuelto en runtime — aquí solo se declara
+                // que la serie SÍ lleva área, sin fijar un color de marca.
+                'areaStyle' => [],
+                'label' => [
+                    'show' => true,
+                    'position' => 'top',
+                    'fontSize' => 18,
+                    'fontWeight' => 'bold',
+                ],
                 'data' => $filas->pluck('total')->map(fn ($v) => (int) $v)->all(),
             ]],
         ];
     }
 
-    /** Dona de categorías: top N + "Otras" agregando el resto. */
-    private function categoriaOption(): array
+    /**
+     * Top N categorías + "Otras" agregando el resto — base compartida por
+     * `categoriaOption()` (la dona) y la tabla de participación que la
+     * acompaña en la vista, para no calcularlo dos veces ni arriesgar que
+     * ambas se desincronicen.
+     *
+     * @return Collection<string,int> etiqueta => total, ordenado desc
+     */
+    private function desgloseCategoria(): Collection
     {
         $conteos = $this->ticketsEnRango()
             ->selectRaw("COALESCE(categoria, 'Sin categoría') as etiqueta, COUNT(*) as total")
@@ -438,58 +654,145 @@ class Ejecutivo extends Component
             ->orderByDesc('total')
             ->pluck('total', 'etiqueta');
 
-        $datos = $this->topMasOtras($conteos, self::TOP_CATEGORIAS);
+        return $this->topMasOtras($conteos, self::TOP_CATEGORIAS);
+    }
+
+    /**
+     * Filas listas para la tabla de participación junto a la dona —
+     * `colorIndex` es la posición dentro de la paleta CATEGÓRICA de 6
+     * colores que ya usa `buildTheme()` en charts.js (ver
+     * {@see self::TOKENS_COLOR_CATEGORIA}, en ese orden y cíclica), para
+     * que el punto de color de cada fila coincida con el color real que
+     * ECharts le asignó a esa rebanada de la dona sin tener que mandar un
+     * hexadecimal fijo desde PHP.
+     *
+     * @return array<int, array{etiqueta:string, total:int, pct:float, colorIndex:int}>
+     */
+    private function desgloseCategoriaTabla(Collection $desglose): array
+    {
+        $total = $desglose->sum();
+        $numColores = count(self::TOKENS_COLOR_CATEGORIA);
+
+        return $desglose->keys()->values()
+            ->map(fn (string $etiqueta, int $indice) => [
+                'etiqueta' => $etiqueta,
+                'total' => $desglose->get($etiqueta),
+                'pct' => $total > 0 ? round($desglose->get($etiqueta) / $total * 100, 1) : 0.0,
+                'colorIndex' => $indice % $numColores,
+            ])
+            ->all();
+    }
+
+    /**
+     * Dona de categorías — sin leyenda ni etiquetas externas (esas las
+     * muestra la tabla de participación en la vista, ver
+     * `desgloseCategoriaTabla()`); el total del periodo se muestra al
+     * centro vía el componente `title` de ECharts, superpuesto en el hueco
+     * de la dona.
+     */
+    private function categoriaOption(Collection $desglose): array
+    {
+        $total = $desglose->sum();
 
         return [
             'tooltip' => ['trigger' => 'item'],
-            'legend' => ['bottom' => 0, 'type' => 'scroll'],
+            'title' => [
+                'text' => number_format($total),
+                'subtext' => 'tickets',
+                'left' => 'center',
+                'top' => 'center',
+                'textStyle' => ['fontSize' => 20, 'fontWeight' => 'bold'],
+                'subtextStyle' => ['fontSize' => 11],
+            ],
             'series' => [[
                 'type' => 'pie',
-                'radius' => ['45%', '70%'],
-                'label' => ['formatter' => '{b}: {d}%'],
-                'data' => $datos->map(fn ($total, $etiqueta) => ['name' => $etiqueta, 'value' => $total])->values()->all(),
+                'radius' => ['62%', '85%'],
+                'label' => ['show' => false],
+                'data' => $desglose->map(fn ($total, $etiqueta) => ['name' => $etiqueta, 'value' => $total])->values()->all(),
             ]],
         ];
     }
 
     /**
-     * % de cumplimiento de SLA (resolución) por mes + línea de meta fija.
+     * Los 15 tokens de la paleta CATEGÓRICA (mismo orden que
+     * `categoricalColors()` en charts.js — las 3 paletas de 5 colores que el
+     * usuario entregó vía Adobe Color) tal cual, SIN resolver — el nombre de
+     * la custom property de `app.css`, no un hex. PHP no puede saber el hex
+     * real; `initChart()` resuelve estos nombres a su valor real en runtime
+     * vía `resolveSemanticTokens()`. Usados por `departamentoOption()`
+     * (degradado del color fuerte a una versión clara del MISMO color,
+     * cíclico entre departamentos) — a propósito NUNCA success/warning/danger
+     * (el semáforo rojo/ámbar/verde de estado): un departamento cualquiera no
+     * tiene un juicio de "bien/mal" que comunicar, solo necesita distinguirse
+     * de los demás — mezclar ambas paletas le daría una lectura de semáforo
+     * que no existe (ver también `slaPorMesOption()`, que sí usa el semáforo
+     * real porque ahí el color SÍ es un juicio contra la meta).
+     */
+    private const TOKENS_COLOR_CATEGORIA = [
+        '--color-chart-1', '--color-chart-2', '--color-chart-3', '--color-chart-4', '--color-chart-5',
+        '--color-chart-6', '--color-chart-7', '--color-chart-8', '--color-chart-9', '--color-chart-10',
+        '--color-chart-11', '--color-chart-12', '--color-chart-13', '--color-chart-14', '--color-chart-15',
+    ];
+
+    /**
+     * % de cumplimiento de SLA (resolución) por mes, barra horizontal — un
+     * mes se colorea según qué tan lejos está de {@see self::META_SLA_PCT}
+     * (cumple / dentro de 10pp / más de 10pp por debajo), no con colores
+     * fijos por mes. El promedio del periodo y la brecha contra la meta se
+     * muestran debajo de la gráfica en la vista (`$pctSlaCumplido`/
+     * `$metaSlaPct`, ya calculados en `render()`), no como una segunda
+     * serie aquí.
      *
      * @param  Collection<int, SdpTicket>  $ticketsSla
      */
     private function slaPorMesOption(Collection $ticketsSla): array
     {
-        $porMes = $ticketsSla->groupBy(fn (SdpTicket $t) => $t->created_time->format('Y-m'))->sortKeys();
+        $porMes = $ticketsSla->groupBy(fn (SdpTicket $t) => $t->created_time->format($this->formatoPeriodoPhp()))->sortKeys();
 
-        $etiquetas = $porMes->keys()->map(fn ($p) => $this->etiquetaPeriodo($p))->all();
-        $pcts = $porMes->map(fn (Collection $grupo) => $this->calcularCumplimiento($grupo)['resolucion']['pct']);
+        $filas = $porMes->map(function (Collection $grupo, string $periodo) {
+            $pct = $this->calcularCumplimiento($grupo)['resolucion']['pct'] ?? 0.0;
+
+            return [
+                'etiqueta' => $this->etiquetaGranular($periodo),
+                'pct' => $pct,
+                'color' => match (true) {
+                    $pct >= self::META_SLA_PCT => '--color-success',
+                    $pct >= self::META_SLA_PCT - 10 => '--color-warning',
+                    default => '--color-danger',
+                },
+            ];
+        })->values()->reverse()->values(); // reverse: Enero queda arriba en el eje Y categórico.
 
         return [
-            'tooltip' => ['trigger' => 'axis'],
-            'legend' => ['data' => ['% SLA cumplido', 'Meta'], 'bottom' => 0],
-            'xAxis' => ['type' => 'category', 'data' => $etiquetas],
-            'yAxis' => ['type' => 'value', 'max' => 100, 'axisLabel' => ['formatter' => '{value}%']],
-            'series' => [
-                [
-                    'name' => '% SLA cumplido',
-                    'type' => 'bar',
-                    // Mes sin tickets evaluables (pct null) se muestra como 0
-                    // en la barra — no hay forma de representar "sin dato" en
-                    // una barra sin dejar un hueco engañoso; el tooltip de
-                    // ECharts igual muestra el valor crudo.
-                    'data' => $pcts->map(fn ($pct) => $pct ?? 0)->values()->all(),
+            'tooltip' => ['trigger' => 'axis', 'axisPointer' => ['type' => 'shadow'], 'valueFormatter' => '{value}%'],
+            'grid' => ['left' => '22%', 'right' => '10%', 'top' => 8, 'bottom' => 8, 'containLabel' => false],
+            'xAxis' => ['type' => 'value', 'max' => 100, 'show' => false],
+            'yAxis' => ['type' => 'category', 'data' => $filas->pluck('etiqueta')->all()],
+            'series' => [[
+                'type' => 'bar',
+                'showBackground' => true,
+                'barWidth' => '55%',
+                'itemStyle' => ['borderRadius' => 4],
+                'label' => [
+                    'show' => true,
+                    'position' => 'insideRight',
+                    'color' => '#fff',
+                    'fontWeight' => 'bold',
+                    'formatter' => '{c}%',
                 ],
-                [
-                    'name' => 'Meta',
-                    'type' => 'line',
-                    'symbol' => 'none',
-                    'data' => array_fill(0, $porMes->count(), self::META_SLA_PCT),
-                ],
-            ],
+                'data' => $filas->map(fn (array $f) => ['value' => $f['pct'], 'itemStyle' => ['color' => $f['color']]])->all(),
+            ]],
         ];
     }
 
-    /** Barra horizontal de departamentos con más tickets (top N, sin agregar "Otras"). */
+    /**
+     * Barra horizontal de departamentos con más tickets (top N, sin agregar
+     * "Otras") — cada barra es UN solo color CATEGÓRICO (cíclico sobre
+     * {@see self::TOKENS_COLOR_CATEGORIA}, una barra por departamento), en
+     * degradado del color fuerte a una versión más clara del MISMO color
+     * (35% de opacidad, ver `resolveSemanticTokens()` en charts.js) — nunca
+     * una mezcla entre dos colores distintos dentro de la misma barra.
+     */
     private function departamentoOption(): array
     {
         $conteos = $this->ticketsEnRango()
@@ -500,30 +803,62 @@ class Ejecutivo extends Component
             ->pluck('total', 'etiqueta')
             ->reverse(); // ascendente: la barra más grande queda arriba en un eje Y categórico.
 
+        $numTokens = count(self::TOKENS_COLOR_CATEGORIA);
+
+        $datos = $conteos->values()
+            ->map(function (int $total, int $indice) use ($numTokens) {
+                $token = self::TOKENS_COLOR_CATEGORIA[$indice % $numTokens];
+
+                return [
+                    'value' => $total,
+                    'itemStyle' => [
+                        'borderRadius' => 4,
+                        'color' => [
+                            'type' => 'linear', 'x' => 0, 'y' => 0, 'x2' => 1, 'y2' => 0,
+                            'colorStops' => [
+                                ['offset' => 0, 'color' => $token],
+                                ['offset' => 1, 'color' => $token.'/35'],
+                            ],
+                        ],
+                    ],
+                ];
+            })
+            ->all();
+
         return [
             'tooltip' => ['trigger' => 'axis', 'axisPointer' => ['type' => 'shadow']],
-            'grid' => ['left' => '28%', 'right' => '6%'],
-            'xAxis' => ['type' => 'value'],
+            'grid' => ['left' => '28%', 'right' => '8%', 'top' => 8, 'bottom' => 8],
+            'xAxis' => ['type' => 'value', 'show' => false],
             'yAxis' => ['type' => 'category', 'data' => $conteos->keys()->all()],
             'series' => [[
                 'type' => 'bar',
-                'data' => $conteos->values()->all(),
+                'showBackground' => true,
+                'barWidth' => '60%',
+                'label' => [
+                    'show' => true,
+                    'position' => 'insideRight',
+                    'color' => '#fff',
+                    'fontWeight' => 'bold',
+                ],
+                'data' => $datos,
             ]],
         ];
     }
 
-    /** Tipo de solicitud por mes, barra apilada. */
+    /** Tipo de solicitud por periodo (mes/día/hora), barra apilada. */
     private function tipoPorMesOption(): array
     {
+        $longitud = $this->longitudSubstrPeriodo();
+
         $filas = $this->ticketsEnRango()
             ->whereNotNull('tipo_solicitud')
-            ->selectRaw("SUBSTR(created_time, 1, 7) as periodo, tipo_solicitud, COUNT(*) as total")
+            ->selectRaw("SUBSTR(created_time, 1, {$longitud}) as periodo, tipo_solicitud, COUNT(*) as total")
             ->groupBy('periodo', 'tipo_solicitud')
             ->orderBy('periodo')
             ->get();
 
         $periodos = $filas->pluck('periodo')->unique()->sort()->values();
-        $etiquetas = $periodos->map(fn ($p) => $this->etiquetaPeriodo($p));
+        $etiquetas = $periodos->map(fn ($p) => $this->etiquetaGranular($p));
 
         $tipos = ['Solicitud', 'Incidente', 'Requerimiento'];
 
@@ -572,15 +907,51 @@ class Ejecutivo extends Component
     }
 
     /**
-     * Matriz categoría (top N + "Otras") x mes, con conteo por celda y el
-     * máximo de cada fila (para la intensidad de color en la vista).
+     * "Fortaleza operativa" — % de los tickets CON nivel asignado que se
+     * resolvieron sin escalar a un grupo especialista o proveedor externo,
+     * es decir, todo lo que no cayó en el nivel 3 del catálogo de SDP
+     * (confirmado contra datos reales: el nivel de escalamiento externo
+     * siempre empieza con el prefijo `"3."` — ej. "3. Escalado a grupo
+     * especialista o a proveedor" — se detecta por el prefijo numérico, no
+     * el texto completo, porque SDP puede reeditar la redacción del
+     * catálogo sin tocar su numeración). "Sin nivel" se excluye de ambos
+     * lados de la proporción — no es "resuelto sin escalar", es "sin dato
+     * todavía" (ver docblock de `distribucionPorNivel()`), así que
+     * mezclarlo con la proporción real inflaría el % artificialmente en
+     * rangos donde la mayoría de los tickets aún no tienen nivel
+     * sincronizado.
+     *
+     * @param  Collection<int, array{etiqueta:string, total:int, pct:float}>  $nivelDistribucion
+     * @return array{pct: float}|null null si ningún ticket del rango tiene
+     *     nivel asignado todavía.
+     */
+    private function fortalezaOperativaNivel(Collection $nivelDistribucion): ?array
+    {
+        $conNivelAsignado = $nivelDistribucion->reject(fn (array $fila) => $fila['etiqueta'] === 'Sin nivel');
+        $totalConNivel = $conNivelAsignado->sum('total');
+
+        if ($totalConNivel === 0) {
+            return null;
+        }
+
+        $escalados = $conNivelAsignado->first(fn (array $fila) => str_starts_with($fila['etiqueta'], '3.'));
+
+        return ['pct' => round(($totalConNivel - ($escalados['total'] ?? 0)) / $totalConNivel * 100, 1)];
+    }
+
+    /**
+     * Matriz categoría (top N + "Otras") x periodo (mes/día/hora), con
+     * conteo por celda y el máximo de cada fila (para la intensidad de
+     * color en la vista).
      *
      * @return array{meses: array<int,string>, filas: array<int, array{etiqueta:string, valores:array<int,int>, max:int}>}
      */
     private function heatmapCategoriasPorMes(): array
     {
+        $longitud = $this->longitudSubstrPeriodo();
+
         $filas = $this->ticketsEnRango()
-            ->selectRaw("COALESCE(categoria, 'Sin categoría') as etiqueta, SUBSTR(created_time, 1, 7) as periodo, COUNT(*) as total")
+            ->selectRaw("COALESCE(categoria, 'Sin categoría') as etiqueta, SUBSTR(created_time, 1, {$longitud}) as periodo, COUNT(*) as total")
             ->groupBy('etiqueta', 'periodo')
             ->get();
 
@@ -613,8 +984,17 @@ class Ejecutivo extends Component
             $matriz->push($construirFila('Otras', $filasOtras));
         }
 
+        // Cada fila (categoría) se pinta en un tono CATEGÓRICO distinto —
+        // ver la vista — cíclico sobre los 6 tokens de
+        // {@see self::TOKENS_COLOR_CATEGORIA}, igual que
+        // desgloseCategoriaTabla()/departamentoOption() — nunca el semáforo
+        // success/warning/danger, que aquí no representaría ningún juicio
+        // real (ver el comentario junto a esa constante).
+        $numColoresHeatmap = count(self::TOKENS_COLOR_CATEGORIA);
+        $matriz = $matriz->values()->map(fn (array $fila, int $indice) => [...$fila, 'colorIndex' => $indice % $numColoresHeatmap]);
+
         return [
-            'meses' => $periodos->map(fn ($p) => $this->etiquetaPeriodo($p))->all(),
+            'meses' => $periodos->map(fn ($p) => $this->etiquetaGranular($p))->all(),
             'filas' => $matriz->all(),
         ];
     }
@@ -626,9 +1006,17 @@ class Ejecutivo extends Component
      * corto, sin datos suficientes) simplemente se omite, sin generar una
      * tarjeta vacía ni dividir por cero.
      *
+     * Cada hallazgo trae su propio `icono` (nombre corto, sin el prefijo
+     * `heroicon-o-` — lo agrega la vista) y `color` (mismo vocabulario que
+     * `x-ui.stat-tile`/`x-ui.badge`: primary/success/warning/danger/info),
+     * fijos por REGLA (no por el valor calculado) para que la sección se
+     * lea con variedad temática en vez de repetir el mismo ícono/color en
+     * las 6 tarjetas — la lista completa de hallazgos sigue siendo 100%
+     * dinámica en contenido, solo la presentación de cada tipo es fija.
+     *
      * @param  Collection<int, SdpTicket>  $ticketsTotal
      * @param  Collection<int, SdpTicket>  $ticketsSla
-     * @return array<int, array{titulo:string, texto:string}>
+     * @return array<int, array{titulo:string, texto:string, icono:string, color:string}>
      */
     private function hallazgos(Collection $ticketsTotal, Collection $ticketsSla): array
     {
@@ -649,6 +1037,8 @@ class Ejecutivo extends Component
                 $hallazgos[] = [
                     'titulo' => 'Categoría con más tickets',
                     'texto' => "\"{$etiqueta}\" concentra {$conteo} tickets ({$pct}% del total) en el periodo seleccionado.",
+                    'icono' => 'trophy',
+                    'color' => 'info',
                 ];
             }
 
@@ -665,6 +1055,8 @@ class Ejecutivo extends Component
                 $hallazgos[] = [
                     'titulo' => 'Área con más demanda',
                     'texto' => "\"{$etiqueta}\" generó {$conteo} tickets ({$pct}% del total) en el periodo seleccionado.",
+                    'icono' => 'building-office-2',
+                    'color' => 'primary',
                 ];
             }
         }
@@ -680,6 +1072,8 @@ class Ejecutivo extends Component
             $hallazgos[] = [
                 'titulo' => 'Mes con más tickets creados',
                 'texto' => $this->etiquetaPeriodo($mesPicoKey, 'F Y')." tuvo {$conteoMesPico} tickets creados, frente a un promedio de ".number_format($promedio, 1).' por mes en el periodo seleccionado.',
+                'icono' => 'arrow-trending-up',
+                'color' => 'success',
             ];
         }
 
@@ -696,10 +1090,14 @@ class Ejecutivo extends Component
                 $hallazgos[] = [
                     'titulo' => 'Mejor mes de cumplimiento de SLA',
                     'texto' => $this->etiquetaPeriodo($mejorKey, 'F Y').' tuvo el mejor cumplimiento del periodo: '.$pctPorMes->get($mejorKey)['pct'].'%.',
+                    'icono' => 'check-badge',
+                    'color' => 'success',
                 ];
                 $hallazgos[] = [
                     'titulo' => 'Mes con oportunidad de mejora en SLA',
                     'texto' => $this->etiquetaPeriodo($peorKey, 'F Y').' tuvo el cumplimiento más bajo del periodo: '.$pctPorMes->get($peorKey)['pct'].'%.',
+                    'icono' => 'exclamation-triangle',
+                    'color' => 'danger',
                 ];
             }
         }
@@ -713,6 +1111,8 @@ class Ejecutivo extends Component
                 $hallazgos[] = [
                     'titulo' => 'Tickets combinados',
                     'texto' => "{$combinados} tickets ({$pctCombinados}%) se fusionaron a otro folio en ServiceDesk Plus durante el periodo — representan trabajo real que no aparece como folio independiente en el conteo simple.",
+                    'icono' => 'document-duplicate',
+                    'color' => 'warning',
                 ];
             }
         }
@@ -721,46 +1121,84 @@ class Ejecutivo extends Component
     }
 
     /**
+     * Tamaño de muestra mínimo para considerar "confiable" la mediana de
+     * resolución de un mes en el resumen mensual — por debajo de esto el
+     * dato sigue siendo real (no se oculta ni se inventa), pero se marca
+     * con una nota dinámica (ver `resumenMensualNotas()`) porque una
+     * mediana sobre 1-4 tickets es fácilmente arrastrada por un solo caso
+     * atípico.
+     */
+    private const MUESTRA_MINIMA_MEDIANA = 5;
+
+    /**
      * Resumen mensual con las mismas métricas del KPI principal (total,
-     * completados, % SLA, tiempo mediano) calculadas por mes, más una fila
-     * final "Total" que recalcula el agregado real sobre todo el rango (no
-     * es la suma/promedio de las filas mensuales).
+     * completados, vencidos de SLA, % SLA, tiempo mediano, incidentes,
+     * solicitudes) calculadas por mes, más una fila final "Total" que
+     * recalcula el agregado real sobre todo el rango (no es la
+     * suma/promedio de las filas mensuales).
      *
      * @param  Collection<int, SdpTicket>  $ticketsTotal
      * @param  Collection<int, SdpTicket>  $ticketsSla
-     * @return Collection<int, array{etiqueta:string, total:int, completados:int, pctSla:?float, medianaHoras:?float, esTotal:bool}>
+     * @return Collection<int, array{etiqueta:string, total:int, completados:int, vencidos:int, pctSla:?float, medianaHoras:?float, muestraMediana:int, medianaPocoConfiable:bool, incidentes:int, solicitudes:int, esTotal:bool}>
      */
     private function resumenMensual(Collection $ticketsTotal, Collection $ticketsSla): Collection
     {
-        $porMesTotal = $ticketsTotal->groupBy(fn (SdpTicket $t) => $t->created_time->format('Y-m'))->sortKeys();
-        $porMesSla = $ticketsSla->groupBy(fn (SdpTicket $t) => $t->created_time->format('Y-m'));
-
-        $filas = $porMesTotal->map(function (Collection $grupoTotal, string $periodo) use ($porMesSla) {
-            $grupoSla = $porMesSla->get($periodo, collect());
+        $construirFila = function (Collection $grupoTotal, Collection $grupoSla, string $etiqueta, bool $esTotal): array {
             $cumplimiento = $this->calcularCumplimiento($grupoSla);
+            $muestraMediana = $grupoSla
+                ->filter(fn (SdpTicket $t) => ($t->resolved_time ?? $t->completed_time) !== null)
+                ->count();
 
             return [
-                'etiqueta' => $this->etiquetaPeriodo($periodo, 'F Y'),
+                'etiqueta' => $etiqueta,
                 'total' => $grupoTotal->count(),
                 'completados' => $grupoTotal->filter(fn (SdpTicket $t) => $t->ticketStatus?->tipo === SdpTicketStatus::TIPO_COMPLETADO)->count(),
+                'vencidos' => $cumplimiento['resolucion']['evaluables'] - $cumplimiento['resolucion']['cumplidas'],
                 'pctSla' => $cumplimiento['resolucion']['pct'],
                 'medianaHoras' => $this->tiempoMedianoResolucionHoras($grupoSla),
-                'esTotal' => false,
+                'muestraMediana' => $muestraMediana,
+                'medianaPocoConfiable' => $muestraMediana > 0 && $muestraMediana < self::MUESTRA_MINIMA_MEDIANA,
+                'incidentes' => $grupoTotal->where('tipo_solicitud', 'Incidente')->count(),
+                'solicitudes' => $grupoTotal->where('tipo_solicitud', 'Solicitud')->count(),
+                'esTotal' => $esTotal,
             ];
-        })->values();
+        };
 
-        $cumplimientoTotal = $this->calcularCumplimiento($ticketsSla);
+        $porMesTotal = $ticketsTotal->groupBy(fn (SdpTicket $t) => $t->created_time->format($this->formatoPeriodoPhp()))->sortKeys();
+        $porMesSla = $ticketsSla->groupBy(fn (SdpTicket $t) => $t->created_time->format($this->formatoPeriodoPhp()));
 
-        $filas->push([
-            'etiqueta' => 'Total',
-            'total' => $ticketsTotal->count(),
-            'completados' => $ticketsTotal->filter(fn (SdpTicket $t) => $t->ticketStatus?->tipo === SdpTicketStatus::TIPO_COMPLETADO)->count(),
-            'pctSla' => $cumplimientoTotal['resolucion']['pct'],
-            'medianaHoras' => $this->tiempoMedianoResolucionHoras($ticketsSla),
-            'esTotal' => true,
-        ]);
+        $filas = $porMesTotal->map(fn (Collection $grupoTotal, string $periodo) => $construirFila(
+            $grupoTotal,
+            $porMesSla->get($periodo, collect()),
+            $this->etiquetaGranular($periodo, completo: true),
+            false
+        ))->values();
+
+        $filas->push($construirFila($ticketsTotal, $ticketsSla, 'Total', true));
 
         return $filas;
+    }
+
+    /**
+     * Notas dinámicas debajo de la tabla de resumen mensual — una por cada
+     * mes cuya mediana de resolución se calculó sobre una muestra menor a
+     * {@see self::MUESTRA_MINIMA_MEDIANA}. A diferencia del mockup de
+     * referencia (que traía una nota fija hardcodeada sobre un mes
+     * puntual), esta lista sale vacía cuando ningún mes del rango
+     * seleccionado califica — nunca un texto fijo sin relación con los
+     * datos reales.
+     *
+     * @param  Collection<int, array{etiqueta:string, medianaPocoConfiable:bool, muestraMediana:int, esTotal:bool}>  $filas
+     * @return array<int, string>
+     */
+    private function resumenMensualNotas(Collection $filas): array
+    {
+        return $filas
+            ->reject(fn (array $fila) => $fila['esTotal'])
+            ->filter(fn (array $fila) => $fila['medianaPocoConfiable'])
+            ->map(fn (array $fila) => "{$fila['etiqueta']}: mediana de resolución calculada sobre solo {$fila['muestraMediana']} ticket(s) con tiempo registrado — dato poco representativo.")
+            ->values()
+            ->all();
     }
 
     /**
@@ -884,27 +1322,41 @@ class Ejecutivo extends Component
         $ticketsSla = $ticketsTotal->whereNull('combinado_con_display_id')->values();
 
         $cumplimientoGlobal = $this->calcularCumplimiento($ticketsSla);
+        $desgloseCategoria = $this->desgloseCategoria();
+        $nivelDistribucion = $this->distribucionPorNivel($ticketsTotal);
 
         return view('mesaservicio::livewire.dashboards.ejecutivo', [
             'totalTickets' => $ticketsTotal->count(),
             'completados' => $ticketsTotal->filter(fn (SdpTicket $t) => $t->ticketStatus?->tipo === SdpTicketStatus::TIPO_COMPLETADO)->count(),
             'pctSlaCumplido' => $cumplimientoGlobal['resolucion']['pct'],
+            // Tickets evaluables de SLA que NO cumplieron resolución dentro
+            // del tiempo definido — el complemento de $pctSlaCumplido, no un
+            // conteo nuevo: mismo numerador/denominador ya calculados por
+            // calcularCumplimiento(), solo restados en vez de divididos.
+            'ticketsSlaVencidos' => $cumplimientoGlobal['resolucion']['evaluables'] - $cumplimientoGlobal['resolucion']['cumplidas'],
             'medianaResolucionHoras' => $this->tiempoMedianoResolucionHoras($ticketsSla),
+            'tendenciaTotalTickets' => $this->tendenciaTotalTickets($ticketsTotal),
+            'tendenciaTiempoResolucion' => $this->tendenciaTiempoResolucion($ticketsSla),
             'incidentes' => $ticketsTotal->where('tipo_solicitud', 'Incidente')->count(),
             'solicitudes' => $ticketsTotal->where('tipo_solicitud', 'Solicitud')->count(),
             'requerimientos' => $ticketsTotal->where('tipo_solicitud', 'Requerimiento')->count(),
             'combinados' => $ticketsTotal->filter(fn (SdpTicket $t) => $t->combinado_con_display_id !== null)->count(),
             'tendenciaOption' => $this->tendenciaOption(),
-            'categoriaOption' => $this->categoriaOption(),
+            'categoriaOption' => $this->categoriaOption($desgloseCategoria),
+            'categoriaTabla' => $this->desgloseCategoriaTabla($desgloseCategoria),
             'slaPorMesOption' => $this->slaPorMesOption($ticketsSla),
             'departamentoOption' => $this->departamentoOption(),
             'tipoPorMesOption' => $this->tipoPorMesOption(),
-            'nivelDistribucion' => $this->distribucionPorNivel($ticketsTotal),
+            'nivelDistribucion' => $nivelDistribucion,
+            'fortalezaOperativaNivel' => $this->fortalezaOperativaNivel($nivelDistribucion),
             'heatmap' => $this->heatmapCategoriasPorMes(),
             'hallazgos' => $this->hallazgos($ticketsTotal, $ticketsSla),
-            'resumenMensual' => $this->resumenMensual($ticketsTotal, $ticketsSla),
+            'resumenMensual' => $resumenMensual = $this->resumenMensual($ticketsTotal, $ticketsSla),
+            'resumenMensualNotas' => $this->resumenMensualNotas($resumenMensual),
             'metaSlaPct' => self::META_SLA_PCT,
             'resumenPeriodo' => $this->resumenPeriodo(),
+            'periodoFiltroTexto' => $this->periodoFiltroTexto(),
+            'granularidadTexto' => $this->granularidadTexto(),
             'filtrosActivos' => $this->filtrosActivos(),
             'periodoKey' => $this->periodoKey(),
             'aniosDisponibles' => $this->aniosDisponibles(),

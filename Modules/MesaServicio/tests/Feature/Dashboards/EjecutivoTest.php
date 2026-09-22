@@ -419,4 +419,100 @@ class EjecutivoTest extends TestCase
             ->assertSee('Categoría: Oracle')
             ->assertSee('Limpiar filtros');
     }
+
+    public function test_granularidad_defaults_to_mes_for_the_year_to_date_range(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        // Rango por defecto (año a la fecha) siempre es más de 31 días
+        // salvo el 1 de enero — suficiente para asumir granularidad de mes.
+        Livewire::test(Ejecutivo::class)
+            ->assertViewHas('granularidadTexto', 'por mes');
+    }
+
+    public function test_granularidad_switches_to_dia_for_a_range_of_a_month_or_less(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => '2026-03-02 10:00:00']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => '2026-03-05 10:00:00']);
+
+        $this->actingAs($this->actingUser());
+
+        $component = Livewire::test(Ejecutivo::class)
+            ->set('desde', '2026-03-01')
+            ->set('hasta', '2026-03-10')
+            ->assertViewHas('granularidadTexto', 'por día');
+
+        // Con granularidad de día, los 2 tickets (días distintos) generan 2
+        // puntos en la tendencia, no 1 (que sería el caso si siguiera
+        // agrupando por mes).
+        $this->assertCount(2, $component->viewData('tendenciaOption')['xAxis']['data']);
+    }
+
+    public function test_granularidad_switches_to_hora_for_a_single_day_range(): void
+    {
+        SdpTicket::create(['sdp_id' => 'tk-1', 'asunto' => 'A', 'created_time' => '2026-03-02 08:00:00']);
+        SdpTicket::create(['sdp_id' => 'tk-2', 'asunto' => 'B', 'created_time' => '2026-03-02 14:00:00']);
+
+        $this->actingAs($this->actingUser());
+
+        $component = Livewire::test(Ejecutivo::class)
+            ->set('desde', '2026-03-02')
+            ->set('hasta', '2026-03-02')
+            ->assertViewHas('granularidadTexto', 'por hora');
+
+        $tendencia = $component->viewData('tendenciaOption');
+
+        // 2 tickets en horas distintas del mismo día → 2 puntos, etiquetados
+        // como hora (formato "H:00"), no como día ni mes.
+        $this->assertCount(2, $tendencia['xAxis']['data']);
+        $this->assertContains('08:00', $tendencia['xAxis']['data']);
+        $this->assertContains('14:00', $tendencia['xAxis']['data']);
+    }
+
+    public function test_periodo_filtro_texto_shows_anio_for_a_full_or_year_to_date_range(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        // Por defecto (año a la fecha) sin tocar ningún control.
+        Livewire::test(Ejecutivo::class)
+            ->assertViewHas('periodoFiltroTexto', 'Año: '.now()->year);
+
+        // Año completo (1 ene - 31 dic) vía el atajo "Todo el año".
+        Livewire::test(Ejecutivo::class)
+            ->set('ejercicio', 2026)
+            ->assertViewHas('periodoFiltroTexto', 'Año: 2026');
+    }
+
+    public function test_periodo_filtro_texto_shows_mes_for_a_full_month_range(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->set('mes', 9)
+            ->set('ejercicio', 2026)
+            ->assertViewHas('periodoFiltroTexto', 'Mes: Septiembre de 2026');
+    }
+
+    public function test_periodo_filtro_texto_shows_dia_for_a_single_day_range(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->set('desde', '2026-09-10')
+            ->set('hasta', '2026-09-10')
+            ->assertViewHas('periodoFiltroTexto', 'Día: 10 de septiembre de 2026');
+    }
+
+    public function test_periodo_filtro_texto_falls_back_to_the_raw_range_for_a_custom_span(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Ejecutivo::class)
+            ->set('desde', '2026-03-15')
+            ->set('hasta', '2026-04-20')
+            ->assertViewHas(
+                'periodoFiltroTexto',
+                'Periodo: '.\Carbon\Carbon::create(2026, 3, 15)->translatedFormat('j M Y').' – '.\Carbon\Carbon::create(2026, 4, 20)->translatedFormat('j M Y')
+            );
+    }
 }
