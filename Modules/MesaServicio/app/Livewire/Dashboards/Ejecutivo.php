@@ -383,8 +383,15 @@ class Ejecutivo extends Component
             'dia' => $completo
                 ? ucfirst(Carbon::createFromFormat('Y-m-d', $periodo)->translatedFormat('j \d\e F'))
                 : Carbon::createFromFormat('Y-m-d', $periodo)->format('j'),
+            // Sin año en ninguna de las 2 variantes (ni siquiera la
+            // "completa"): a diferencia de 'dia' (que puede cruzar meses
+            // distintos dentro del mismo rango y sí necesita el mes por
+            // fila), un rango en granularidad 'mes' es siempre "más de 31
+            // días" — el año no varía fila a fila salvo que el rango cruce
+            // varios años, caso ya cubierto por el "· 2026"/"· 2025 - 2026"
+            // del título vía `contextoGranularTexto()`.
             'mes' => $completo
-                ? ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat('F Y'))
+                ? ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat('F'))
                 : ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat('M')),
         };
     }
@@ -462,6 +469,60 @@ class Ejecutivo extends Component
     }
 
     /**
+     * Caché en memoria (una sola vez por request, por ticket) de la
+     * evaluación de SLA de cada ticket — ver docblock de
+     * {@see self::evaluarSlaTicket()} sobre por qué existe.
+     *
+     * @var array<int, array{aplica:bool, evaluableRespuesta?:bool, cumplidaRespuesta?:bool, evaluableResolucion?:bool, cumplidaResolucion?:bool}>
+     */
+    private array $evaluacionSlaCache = [];
+
+    /**
+     * Evalúa el cumplimiento de SLA de UN ticket (respuesta y resolución),
+     * memoizado por `$ticket->id` — el resultado no cambia entre llamadas
+     * dentro de la misma request, así que se calcula una sola vez sin
+     * importar cuántas agrupaciones distintas lo consulten.
+     *
+     * Encontrado en producción (2026-09-23): el mismo ticket pasaba por este
+     * cálculo (2 `Carbon::diffInMinutes()` cada vez, la operación más cara
+     * por ticket en toda la pantalla) hasta 3 VECES en una sola carga —
+     * una vez en `calcularCumplimiento()` global (`$cumplimientoGlobal`),
+     * otra vez por cada mes/día en `resumenMensual()`, y otra vez por cada
+     * mes en `hallazgos()` (que siempre agrupa por mes, sin importar la
+     * granularidad activa) — con el histórico completo del año, eso son
+     * decenas de miles de `diffInMinutes()` redundantes. Memoizar por
+     * ticket aquí hace que cada uno se calcule una sola vez sin importar en
+     * cuántas agrupaciones distintas participe.
+     */
+    private function evaluarSlaTicket(SdpTicket $ticket): array
+    {
+        return $this->evaluacionSlaCache[$ticket->id] ??= (function () use ($ticket): array {
+            $definicion = $this->resolverSlaDefinicion($ticket->prioridad);
+
+            if (! $definicion) {
+                return ['aplica' => false];
+            }
+
+            $evaluableRespuesta = $definicion->tiempo_primera_respuesta_minutos !== null && $ticket->responded_time !== null;
+            $cumplidaRespuesta = $evaluableRespuesta
+                && abs($ticket->created_time->diffInMinutes($ticket->responded_time)) <= $definicion->tiempo_primera_respuesta_minutos;
+
+            $tiempoResolucion = $ticket->resolved_time ?? $ticket->completed_time;
+            $evaluableResolucion = $definicion->tiempo_resolucion_minutos !== null && $tiempoResolucion !== null;
+            $cumplidaResolucion = $evaluableResolucion
+                && abs($ticket->created_time->diffInMinutes($tiempoResolucion)) <= $definicion->tiempo_resolucion_minutos;
+
+            return [
+                'aplica' => true,
+                'evaluableRespuesta' => $evaluableRespuesta,
+                'cumplidaRespuesta' => $cumplidaRespuesta,
+                'evaluableResolucion' => $evaluableResolucion,
+                'cumplidaResolucion' => $cumplidaResolucion,
+            ];
+        })();
+    }
+
+    /**
      * Cálculo de cumplimiento de SLA sobre una colección de tickets, SIN
      * agrupar por técnico/categoría (a diferencia de
      * `Slas::calcularCumplimiento()`) — un solo bucket agregado. Mismo
@@ -469,7 +530,8 @@ class Ejecutivo extends Component
      * `SdpSlaDefinition` aplicable vía `resolverSlaDefinicion()`; sin
      * definición aplicable, o sin el timestamp necesario todavía, el
      * ticket se excluye de ese numerador/denominador (no cuenta ni a
-     * favor ni en contra).
+     * favor ni en contra). La evaluación de cada ticket viene de
+     * {@see self::evaluarSlaTicket()}, memoizada por ticket.
      *
      * @param  Collection<int, SdpTicket>  $tickets
      * @return array{
@@ -486,30 +548,20 @@ class Ejecutivo extends Component
 
         /** @var SdpTicket $ticket */
         foreach ($tickets as $ticket) {
-            $definicion = $this->resolverSlaDefinicion($ticket->prioridad);
+            $evaluacion = $this->evaluarSlaTicket($ticket);
 
-            if (! $definicion) {
+            if (! $evaluacion['aplica']) {
                 continue;
             }
 
-            if ($definicion->tiempo_primera_respuesta_minutos !== null && $ticket->responded_time !== null) {
+            if ($evaluacion['evaluableRespuesta']) {
                 $evaluablesRespuesta++;
-                $minutos = abs($ticket->created_time->diffInMinutes($ticket->responded_time));
-
-                if ($minutos <= $definicion->tiempo_primera_respuesta_minutos) {
-                    $cumplidasRespuesta++;
-                }
+                $cumplidasRespuesta += $evaluacion['cumplidaRespuesta'] ? 1 : 0;
             }
 
-            $tiempoResolucion = $ticket->resolved_time ?? $ticket->completed_time;
-
-            if ($definicion->tiempo_resolucion_minutos !== null && $tiempoResolucion !== null) {
+            if ($evaluacion['evaluableResolucion']) {
                 $evaluablesResolucion++;
-                $minutos = abs($ticket->created_time->diffInMinutes($tiempoResolucion));
-
-                if ($minutos <= $definicion->tiempo_resolucion_minutos) {
-                    $cumplidasResolucion++;
-                }
+                $cumplidasResolucion += $evaluacion['cumplidaResolucion'] ? 1 : 0;
             }
         }
 
@@ -528,22 +580,47 @@ class Ejecutivo extends Component
     }
 
     /**
+     * Caché en memoria (una sola vez por request, por ticket) de las horas
+     * de resolución — mismo espíritu que {@see self::evaluarSlaTicket()},
+     * pero esta métrica NO depende de si hay una `SdpSlaDefinition`
+     * aplicable (existe siempre que el ticket tenga `resolved_time`/
+     * `completed_time`), así que se memoiza aparte.
+     *
+     * @var array<int, float|null>
+     */
+    private array $horasResolucionCache = [];
+
+    private function horasResolucionTicket(SdpTicket $ticket): ?float
+    {
+        if (array_key_exists($ticket->id, $this->horasResolucionCache)) {
+            return $this->horasResolucionCache[$ticket->id];
+        }
+
+        $tiempoResolucion = $ticket->resolved_time ?? $ticket->completed_time;
+
+        return $this->horasResolucionCache[$ticket->id] = $tiempoResolucion
+            ? abs($ticket->created_time->diffInMinutes($tiempoResolucion)) / 60
+            : null;
+    }
+
+    /**
      * Mediana (no promedio) en horas de `resolved_time ?? completed_time`
      * menos `created_time`, sobre los tickets de la colección que sí tienen
      * ese timestamp poblado. Calculada en PHP sobre una Collection
      * ordenada — mismo criterio de "cargar la colección del rango en
-     * memoria" que ya usa `Slas::calcularCumplimiento()`.
+     * memoria" que ya usa `Slas::calcularCumplimiento()`. Igual que
+     * `calcularCumplimiento()`, esta pantalla llama a esta función sobre
+     * varios subconjuntos distintos del mismo periodo (global, por mes en
+     * el resumen, primer/último mes en la tendencia) — memoizar por ticket
+     * vía {@see self::horasResolucionTicket()} evita recalcular el mismo
+     * `diffInMinutes()` una y otra vez.
      *
      * @param  Collection<int, SdpTicket>  $tickets
      */
     private function tiempoMedianoResolucionHoras(Collection $tickets): ?float
     {
         $horas = $tickets
-            ->map(function (SdpTicket $ticket) {
-                $tiempoResolucion = $ticket->resolved_time ?? $ticket->completed_time;
-
-                return $tiempoResolucion ? abs($ticket->created_time->diffInMinutes($tiempoResolucion)) / 60 : null;
-            })
+            ->map(fn (SdpTicket $ticket) => $this->horasResolucionTicket($ticket))
             ->filter(fn (?float $horas) => $horas !== null)
             ->sort()
             ->values();
@@ -818,7 +895,13 @@ class Ejecutivo extends Component
         })->values()->reverse()->values(); // reverse: Enero queda arriba en el eje Y categórico.
 
         return [
-            'tooltip' => ['trigger' => 'axis', 'axisPointer' => ['type' => 'shadow'], 'valueFormatter' => '{value}%'],
+            // `tooltip.valueFormatter` (a diferencia de `tooltip.formatter`)
+            // espera una FUNCIÓN JS de verdad, nunca una plantilla de texto
+            // — con un string ahí, ECharts intenta invocarlo como función en
+            // cuanto se muestra el tooltip y truena ("f is not a function",
+            // visto en consola en producción). `formatter` sí acepta el
+            // string de plantilla ({a}/{b}/{c}) para este mismo propósito.
+            'tooltip' => ['trigger' => 'axis', 'axisPointer' => ['type' => 'shadow'], 'formatter' => '{b}: {c}%'],
             'grid' => ['left' => '22%', 'right' => '10%', 'top' => 8, 'bottom' => 8, 'containLabel' => false],
             'xAxis' => ['type' => 'value', 'max' => 100, 'show' => false],
             'yAxis' => ['type' => 'category', 'data' => $filas->pluck('etiqueta')->all()],

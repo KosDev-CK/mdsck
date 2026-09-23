@@ -536,7 +536,7 @@
 
     {{-- 11. Resumen mensual --}}
     <x-ui.card padding="p-5">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Resumen {{ $granularidadTexto }}</h2>
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Resumen {{ $granularidadTexto }} {{ $granularidadContexto }}</h2>
 
         <x-ui.table
             :headers="[ucfirst(str_replace('por ', '', $granularidadTexto)), 'Tickets', 'Completados', 'Vencidos', '% SLA', 'T. mediano res.', 'Incidentes', 'Solicitudes']"
