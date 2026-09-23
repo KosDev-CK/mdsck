@@ -366,13 +366,54 @@ class Ejecutivo extends Component
      * granularidad activa — a diferencia de {@see self::etiquetaPeriodo()}
      * (fija en formato de mes, usada solo por `hallazgos()`), esta se
      * ajusta sola.
+     *
+     * La variante compacta (`completo: false`, usada en ejes/categorías de
+     * gráfica) YA NO repite el mes/año en cada punto — el mes o año es
+     * constante a lo largo de todo el rango filtrado, así que repetirlo en
+     * cada barra/columna es ruido; ese contexto se muestra una sola vez en
+     * el título de la tarjeta vía {@see self::contextoGranularTexto()}. La
+     * variante completa (`completo: true`, usada en filas de tabla como
+     * "Resumen mensual") sí conserva mes/año porque ahí cada fila necesita
+     * poder leerse sola.
      */
     private function etiquetaGranular(string $periodo, bool $completo = false): string
     {
         return match ($this->granularidad()) {
             'hora' => Carbon::createFromFormat('Y-m-d H', $periodo)->format('H:00'),
-            'dia' => ucfirst(Carbon::createFromFormat('Y-m-d', $periodo)->translatedFormat($completo ? 'j \d\e F' : 'j M')),
-            'mes' => ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat($completo ? 'F Y' : 'M Y')),
+            'dia' => $completo
+                ? ucfirst(Carbon::createFromFormat('Y-m-d', $periodo)->translatedFormat('j \d\e F'))
+                : Carbon::createFromFormat('Y-m-d', $periodo)->format('j'),
+            'mes' => $completo
+                ? ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat('F Y'))
+                : ucfirst(Carbon::createFromFormat('Y-m-d', $periodo.'-01')->translatedFormat('M')),
+        };
+    }
+
+    /**
+     * Sufijo "· Agosto 2026" / "· 2026" para los títulos de las tarjetas
+     * cuyos ejes/categorías perdieron el mes o año (ver docblock de
+     * {@see self::etiquetaGranular()}) — calculado sobre el rango real
+     * filtrado (`$desde`/`$hasta`), no sobre el catálogo de periodos de cada
+     * gráfica en particular, para que las 4 tarjetas afectadas siempre
+     * coincidan entre sí. Vacío en granularidad 'hora' porque ahí el eje ya
+     * no tiene mes/año que perder (son horas de un solo día) y esa fecha ya
+     * se muestra en `$periodoFiltroTexto`.
+     */
+    private function contextoGranularTexto(): string
+    {
+        $inicio = Carbon::parse($this->desde);
+        $fin = Carbon::parse($this->hasta);
+
+        return match ($this->granularidad()) {
+            'hora' => '',
+            'dia' => match (true) {
+                $inicio->isSameMonth($fin) => '· '.ucfirst($inicio->translatedFormat('F Y')),
+                $inicio->isSameYear($fin) => '· '.ucfirst($inicio->translatedFormat('M')).' - '.ucfirst($fin->translatedFormat('M \d\e Y')),
+                default => '· '.ucfirst($inicio->translatedFormat('M Y')).' - '.ucfirst($fin->translatedFormat('M Y')),
+            },
+            'mes' => $inicio->isSameYear($fin)
+                ? '· '.$inicio->year
+                : '· '.$inicio->year.' - '.$fin->year,
         };
     }
 
@@ -595,25 +636,35 @@ class Ejecutivo extends Component
 
     /**
      * Conteo de tickets creados por periodo dentro del rango (mes/día/hora
-     * según `granularidad()`) — agrupado en SQL (ver docblock de la clase
-     * sobre por qué SUBSTR y no YEAR()/MONTH()).
+     * según `granularidad()`) — agrupado en PHP sobre `$ticketsTotal` (ya
+     * cargada una sola vez por `render()`), NO con una consulta SQL propia.
+     *
+     * Encontrado en producción (2026-09-23): esta pantalla hacía 1 consulta
+     * para cargar `$ticketsTotal` completa MÁS 5 consultas de agregación
+     * independientes (esta, `desgloseCategoria()`, `departamentoOption()`,
+     * `tipoPorMesOption()`, `heatmapCategoriasPorMes()`) que volvían a
+     * escanear el MISMO rango de fechas desde cero — con el histórico
+     * completo del año (~68k filas), eso son 6 recorridos completos de la
+     * tabla por carga de página, suficiente para que abrir el dashboard
+     * tardara hasta un minuto. Como `$ticketsTotal` ya está en memoria (se
+     * necesita de todos modos para los KPIs/SLA/hallazgos), agrupar ahí en
+     * vez de volver a pegarle a MySQL reduce esas 6 consultas a 1 sola.
      */
-    private function tendenciaOption(): array
+    private function tendenciaOption(Collection $ticketsTotal): array
     {
-        $longitud = $this->longitudSubstrPeriodo();
+        $formato = $this->formatoPeriodoPhp();
 
-        $filas = $this->ticketsEnRango()
-            ->selectRaw("SUBSTR(created_time, 1, {$longitud}) as periodo, COUNT(*) as total")
-            ->groupBy('periodo')
-            ->orderBy('periodo')
-            ->get();
+        $porPeriodo = $ticketsTotal
+            ->groupBy(fn (SdpTicket $t) => $t->created_time->format($formato))
+            ->map->count()
+            ->sortKeys();
 
         return [
             'tooltip' => ['trigger' => 'axis'],
             'xAxis' => [
                 'type' => 'category',
                 'boundaryGap' => false,
-                'data' => $filas->map(fn ($f) => $this->etiquetaGranular($f->periodo))->all(),
+                'data' => $porPeriodo->keys()->map(fn ($p) => $this->etiquetaGranular($p))->all(),
             ],
             'yAxis' => ['type' => 'value'],
             'series' => [[
@@ -633,7 +684,7 @@ class Ejecutivo extends Component
                     'fontSize' => 18,
                     'fontWeight' => 'bold',
                 ],
-                'data' => $filas->pluck('total')->map(fn ($v) => (int) $v)->all(),
+                'data' => $porPeriodo->values()->all(),
             ]],
         ];
     }
@@ -644,15 +695,18 @@ class Ejecutivo extends Component
      * acompaña en la vista, para no calcularlo dos veces ni arriesgar que
      * ambas se desincronicen.
      *
+     * Agrupado en PHP sobre `$ticketsTotal` ya cargada — ver el docblock de
+     * {@see self::tendenciaOption()} sobre por qué (evita una consulta SQL
+     * más que vuelva a escanear el rango completo).
+     *
      * @return Collection<string,int> etiqueta => total, ordenado desc
      */
-    private function desgloseCategoria(): Collection
+    private function desgloseCategoria(Collection $ticketsTotal): Collection
     {
-        $conteos = $this->ticketsEnRango()
-            ->selectRaw("COALESCE(categoria, 'Sin categoría') as etiqueta, COUNT(*) as total")
-            ->groupBy('etiqueta')
-            ->orderByDesc('total')
-            ->pluck('total', 'etiqueta');
+        $conteos = $ticketsTotal
+            ->groupBy(fn (SdpTicket $t) => $t->categoria ?? 'Sin categoría')
+            ->map->count()
+            ->sortDesc();
 
         return $this->topMasOtras($conteos, self::TOP_CATEGORIAS);
     }
@@ -792,15 +846,17 @@ class Ejecutivo extends Component
      * degradado del color fuerte a una versión más clara del MISMO color
      * (35% de opacidad, ver `resolveSemanticTokens()` en charts.js) — nunca
      * una mezcla entre dos colores distintos dentro de la misma barra.
+     *
+     * Agrupado en PHP sobre `$ticketsTotal` ya cargada — ver el docblock de
+     * {@see self::tendenciaOption()} sobre por qué.
      */
-    private function departamentoOption(): array
+    private function departamentoOption(Collection $ticketsTotal): array
     {
-        $conteos = $this->ticketsEnRango()
-            ->selectRaw("COALESCE(departamento, 'Sin departamento') as etiqueta, COUNT(*) as total")
-            ->groupBy('etiqueta')
-            ->orderByDesc('total')
-            ->limit(self::TOP_DEPARTAMENTOS)
-            ->pluck('total', 'etiqueta')
+        $conteos = $ticketsTotal
+            ->groupBy(fn (SdpTicket $t) => $t->departamento ?? 'Sin departamento')
+            ->map->count()
+            ->sortDesc()
+            ->take(self::TOP_DEPARTAMENTOS)
             ->reverse(); // ascendente: la barra más grande queda arriba en un eje Y categórico.
 
         $numTokens = count(self::TOKENS_COLOR_CATEGORIA);
@@ -845,31 +901,30 @@ class Ejecutivo extends Component
         ];
     }
 
-    /** Tipo de solicitud por periodo (mes/día/hora), barra apilada. */
-    private function tipoPorMesOption(): array
+    /**
+     * Tipo de solicitud por periodo (mes/día/hora), barra apilada.
+     * Agrupado en PHP sobre `$ticketsTotal` ya cargada — ver el docblock de
+     * {@see self::tendenciaOption()} sobre por qué.
+     */
+    private function tipoPorMesOption(Collection $ticketsTotal): array
     {
-        $longitud = $this->longitudSubstrPeriodo();
+        $formato = $this->formatoPeriodoPhp();
 
-        $filas = $this->ticketsEnRango()
+        $porPeriodo = $ticketsTotal
             ->whereNotNull('tipo_solicitud')
-            ->selectRaw("SUBSTR(created_time, 1, {$longitud}) as periodo, tipo_solicitud, COUNT(*) as total")
-            ->groupBy('periodo', 'tipo_solicitud')
-            ->orderBy('periodo')
-            ->get();
+            ->groupBy(fn (SdpTicket $t) => $t->created_time->format($formato));
 
-        $periodos = $filas->pluck('periodo')->unique()->sort()->values();
+        $periodos = $porPeriodo->keys()->sort()->values();
         $etiquetas = $periodos->map(fn ($p) => $this->etiquetaGranular($p));
 
         $tipos = ['Solicitud', 'Incidente', 'Requerimiento'];
 
-        $series = collect($tipos)->map(function (string $tipo) use ($filas, $periodos) {
-            $porPeriodo = $filas->where('tipo_solicitud', $tipo)->keyBy('periodo');
-
+        $series = collect($tipos)->map(function (string $tipo) use ($porPeriodo, $periodos) {
             return [
                 'name' => $tipo,
                 'type' => 'bar',
                 'stack' => 'total',
-                'data' => $periodos->map(fn ($p) => (int) ($porPeriodo->get($p)->total ?? 0))->all(),
+                'data' => $periodos->map(fn ($p) => $porPeriodo->get($p, collect())->where('tipo_solicitud', $tipo)->count())->all(),
             ];
         })->values()->all();
 
@@ -944,28 +999,31 @@ class Ejecutivo extends Component
      * conteo por celda y el máximo de cada fila (para la intensidad de
      * color en la vista).
      *
+     * Agrupado en PHP sobre `$ticketsTotal` ya cargada — ver el docblock de
+     * {@see self::tendenciaOption()} sobre por qué.
+     *
      * @return array{meses: array<int,string>, filas: array<int, array{etiqueta:string, valores:array<int,int>, max:int}>}
      */
-    private function heatmapCategoriasPorMes(): array
+    private function heatmapCategoriasPorMes(Collection $ticketsTotal): array
     {
-        $longitud = $this->longitudSubstrPeriodo();
+        $formato = $this->formatoPeriodoPhp();
 
-        $filas = $this->ticketsEnRango()
-            ->selectRaw("COALESCE(categoria, 'Sin categoría') as etiqueta, SUBSTR(created_time, 1, {$longitud}) as periodo, COUNT(*) as total")
-            ->groupBy('etiqueta', 'periodo')
-            ->get();
+        $porCategoria = $ticketsTotal->groupBy(fn (SdpTicket $t) => $t->categoria ?? 'Sin categoría');
 
-        $totalesPorCategoria = $filas->groupBy('etiqueta')
-            ->map(fn (Collection $g) => $g->sum('total'))
-            ->sortDesc();
+        $totalesPorCategoria = $porCategoria->map->count()->sortDesc();
 
         $topCategorias = $totalesPorCategoria->take(self::TOP_CATEGORIAS_HEATMAP)->keys();
         $categoriasRestantes = $totalesPorCategoria->slice(self::TOP_CATEGORIAS_HEATMAP)->keys();
 
-        $periodos = $filas->pluck('periodo')->unique()->sort()->values();
+        $periodos = $ticketsTotal
+            ->map(fn (SdpTicket $t) => $t->created_time->format($formato))
+            ->unique()->sort()->values();
 
-        $construirFila = function (string $etiqueta, Collection $filasEtiqueta) use ($periodos) {
-            $porPeriodo = $filasEtiqueta->groupBy('periodo')->map(fn (Collection $g) => $g->sum('total'));
+        $construirFila = function (string $etiqueta, Collection $ticketsEtiqueta) use ($periodos, $formato) {
+            $porPeriodo = $ticketsEtiqueta
+                ->groupBy(fn (SdpTicket $t) => $t->created_time->format($formato))
+                ->map->count();
+
             $valores = $periodos->map(fn ($p) => (int) ($porPeriodo->get($p) ?? 0))->all();
 
             return [
@@ -976,12 +1034,12 @@ class Ejecutivo extends Component
         };
 
         $matriz = $topCategorias
-            ->map(fn (string $etiqueta) => $construirFila($etiqueta, $filas->where('etiqueta', $etiqueta)))
+            ->map(fn (string $etiqueta) => $construirFila($etiqueta, $porCategoria->get($etiqueta)))
             ->values();
 
         if ($categoriasRestantes->isNotEmpty()) {
-            $filasOtras = $filas->whereIn('etiqueta', $categoriasRestantes->all());
-            $matriz->push($construirFila('Otras', $filasOtras));
+            $ticketsOtras = $categoriasRestantes->flatMap(fn (string $etiqueta) => $porCategoria->get($etiqueta));
+            $matriz->push($construirFila('Otras', $ticketsOtras));
         }
 
         // Cada fila (categoría) se pinta en un tono CATEGÓRICO distinto —
@@ -1322,7 +1380,7 @@ class Ejecutivo extends Component
         $ticketsSla = $ticketsTotal->whereNull('combinado_con_display_id')->values();
 
         $cumplimientoGlobal = $this->calcularCumplimiento($ticketsSla);
-        $desgloseCategoria = $this->desgloseCategoria();
+        $desgloseCategoria = $this->desgloseCategoria($ticketsTotal);
         $nivelDistribucion = $this->distribucionPorNivel($ticketsTotal);
 
         return view('mesaservicio::livewire.dashboards.ejecutivo', [
@@ -1341,15 +1399,15 @@ class Ejecutivo extends Component
             'solicitudes' => $ticketsTotal->where('tipo_solicitud', 'Solicitud')->count(),
             'requerimientos' => $ticketsTotal->where('tipo_solicitud', 'Requerimiento')->count(),
             'combinados' => $ticketsTotal->filter(fn (SdpTicket $t) => $t->combinado_con_display_id !== null)->count(),
-            'tendenciaOption' => $this->tendenciaOption(),
+            'tendenciaOption' => $this->tendenciaOption($ticketsTotal),
             'categoriaOption' => $this->categoriaOption($desgloseCategoria),
             'categoriaTabla' => $this->desgloseCategoriaTabla($desgloseCategoria),
             'slaPorMesOption' => $this->slaPorMesOption($ticketsSla),
-            'departamentoOption' => $this->departamentoOption(),
-            'tipoPorMesOption' => $this->tipoPorMesOption(),
+            'departamentoOption' => $this->departamentoOption($ticketsTotal),
+            'tipoPorMesOption' => $this->tipoPorMesOption($ticketsTotal),
             'nivelDistribucion' => $nivelDistribucion,
             'fortalezaOperativaNivel' => $this->fortalezaOperativaNivel($nivelDistribucion),
-            'heatmap' => $this->heatmapCategoriasPorMes(),
+            'heatmap' => $this->heatmapCategoriasPorMes($ticketsTotal),
             'hallazgos' => $this->hallazgos($ticketsTotal, $ticketsSla),
             'resumenMensual' => $resumenMensual = $this->resumenMensual($ticketsTotal, $ticketsSla),
             'resumenMensualNotas' => $this->resumenMensualNotas($resumenMensual),
@@ -1357,6 +1415,7 @@ class Ejecutivo extends Component
             'resumenPeriodo' => $this->resumenPeriodo(),
             'periodoFiltroTexto' => $this->periodoFiltroTexto(),
             'granularidadTexto' => $this->granularidadTexto(),
+            'granularidadContexto' => $this->contextoGranularTexto(),
             'filtrosActivos' => $this->filtrosActivos(),
             'periodoKey' => $this->periodoKey(),
             'aniosDisponibles' => $this->aniosDisponibles(),

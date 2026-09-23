@@ -241,7 +241,7 @@
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-4">
         {{-- 3. Tendencia mensual — el doble de ancha que sus vecinas (lg:col-span-2 de 4), el resto de la fila igual de dividida entre categoría y SLA. --}}
         <x-ui.card padding="p-5" class="lg:col-span-2">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Evolución de tickets {{ $granularidadTexto }}</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Evolución de tickets {{ $granularidadTexto }} {{ $granularidadContexto }}</h2>
 
             <div
                 wire:key="chart-tendencia-{{ $periodoKey }}"
@@ -313,7 +313,7 @@
 
         {{-- 5. Cumplimiento de SLA por mes --}}
         <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Cumplimiento de SLA {{ $granularidadTexto }}</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Cumplimiento de SLA {{ $granularidadTexto }} {{ $granularidadContexto }}</h2>
 
             <div
                 wire:key="chart-sla-mes-{{ $periodoKey }}"
@@ -365,7 +365,7 @@
 
         {{-- 7. Tipo de solicitud por periodo --}}
         <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tipo de solicitud {{ $granularidadTexto }}</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Tipo de solicitud {{ $granularidadTexto }} {{ $granularidadContexto }}</h2>
 
             <div
                 wire:key="chart-tipo-mes-{{ $periodoKey }}"
@@ -426,7 +426,7 @@
 
         {{-- 9. Categorías por periodo (heatmap) --}}
         <x-ui.card padding="p-5">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Categorías {{ $granularidadTexto }}</h2>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Categorías {{ $granularidadTexto }} {{ $granularidadContexto }}</h2>
 
             @if (empty($heatmap['filas']))
                 <x-ui.empty-state title="Sin tickets en el rango seleccionado" />
