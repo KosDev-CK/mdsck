@@ -14,7 +14,7 @@ class Asset extends Model
         'dado_de_alta_por_id', 'vendor_id', 'fecha_alta_stock',
         'fecha_inicio_garantia', 'fecha_fin_garantia', 'ubicacion_actual_id',
         'sic_reservada_id', 'proyecto_presupuesto_id', 'estatus_id',
-        'propiedad_id', 'invoice_id', 'nota_adquisicion_original',
+        'propiedad_id', 'invoice_id', 'nota_adquisicion_original', 'articulo_id',
     ];
 
     protected $casts = [
@@ -116,6 +116,17 @@ class Asset extends Model
     public function modelo()
     {
         return $this->belongsTo(Modelo::class);
+    }
+
+    /**
+     * El Artículo del catálogo (Catálogo de Compras) del que salió este
+     * Activo — heredado al recibir una compra (`Recepciones::save()`) o al
+     * elegirlo en Registro Manual, ajustable por unidad si hace falta. Ver
+     * docs/gestionti-progreso.md, entrada "Catálogo unificado de Artículos".
+     */
+    public function articulo()
+    {
+        return $this->belongsTo(ArticuloSolicitud::class, 'articulo_id');
     }
 
     public function dadoDeAltaPor()

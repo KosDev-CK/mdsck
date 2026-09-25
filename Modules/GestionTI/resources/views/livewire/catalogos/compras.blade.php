@@ -71,7 +71,7 @@
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->codigo }}</td>
                         <td class="py-2">{{ $record->descripcion }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->unidad_medida }}</td>
-                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->categoria }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ \Modules\GestionTI\Support\Catalogos\CategoriaArticulo::LABELS[$record->categoria] ?? $record->categoria }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->tipoEquipo?->nombre ?? '—' }}</td>
                     @endif
                     <td class="py-2">
@@ -123,7 +123,12 @@
                 </div>
                 <x-ui.input label="Descripción" name="form.descripcion" wire:model="form.descripcion" />
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <x-ui.input label="Categoría" name="form.categoria" wire:model="form.categoria" />
+                    <x-ui.select label="Categoría (opcional)" name="form.categoria" wire:model="form.categoria">
+                        <option value="">Sin asignar</option>
+                        @foreach (\Modules\GestionTI\Support\Catalogos\CategoriaArticulo::LABELS as $value => $label)
+                            <option value="{{ $value }}">{{ $label }}</option>
+                        @endforeach
+                    </x-ui.select>
                     <x-ui.select label="Tipo de equipo" name="form.tipo_equipo_id" wire:model="form.tipo_equipo_id">
                         <option value="">Sin asignar</option>
                         @foreach ($tipoEquipoOptions as $tipoEquipo)
@@ -131,6 +136,29 @@
                         @endforeach
                     </x-ui.select>
                 </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <x-ui.select label="Marca (opcional)" name="form.marca_id" wire:model="form.marca_id">
+                        <option value="">Sin asignar</option>
+                        @foreach ($marcaOptions as $marca)
+                            <option value="{{ $marca->id }}">{{ $marca->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.select label="Modelo (opcional)" name="form.modelo_id" wire:model="form.modelo_id">
+                        <option value="">Sin asignar</option>
+                        @foreach ($modeloOptions as $modelo)
+                            <option value="{{ $modelo->id }}">{{ $modelo->marca?->nombre }} — {{ $modelo->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <x-ui.input label="Procesador (opcional)" name="form.procesador" wire:model="form.procesador" />
+                    <x-ui.input label="RAM (opcional)" name="form.ram" wire:model="form.ram" hint="Ej. 16GB." />
+                    <x-ui.input label="Almacenamiento (opcional)" name="form.almacenamiento" wire:model="form.almacenamiento" hint="Ej. 512GB SSD." />
+                </div>
+
+                <x-ui.toggle label="Es inventariable (se puede dar de alta como Activo real)" name="form.es_inventariable" wire:model="form.es_inventariable" />
             @endif
 
             <div class="flex justify-end gap-2">

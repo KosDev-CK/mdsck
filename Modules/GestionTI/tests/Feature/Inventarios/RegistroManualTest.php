@@ -7,10 +7,13 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Inventarios\RegistroManual;
+use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\AssetAssignment;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\EstatusActivo;
+use Modules\GestionTI\Models\Marca;
+use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Models\Ubicacion;
 use Modules\GestionTI\Models\Validador;
@@ -252,6 +255,88 @@ class RegistroManualTest extends TestCase
         $this->assertTrue($records->contains($manual));
         $this->assertFalse($records->contains($otraCompra));
         $this->assertFalse($records->contains($historico));
+    }
+
+    /**
+     * Catálogo unificado de Artículos (ver docs/gestionti-progreso.md) —
+     * elegir un artículo inventariable precarga tipo/marca/modelo desde su
+     * ficha técnica, y el Asset creado persiste `articulo_id`.
+     */
+    public function test_choosing_an_articulo_prefills_tipo_marca_modelo_and_the_asset_persists_articulo_id(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatus('en_stock', 'En stock');
+        $tipoEquipo = $this->tipoEquipo();
+        $otroTipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Monitor']);
+        $marca = Marca::create(['nombre' => 'Dell']);
+        $modelo = Modelo::create(['nombre' => 'Latitude 5440', 'marca_id' => $marca->id]);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-INV-001',
+            'descripcion' => 'Laptop Core i7 16GB 512GB SSD',
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'marca_id' => $marca->id,
+            'modelo_id' => $modelo->id,
+            'es_inventariable' => true,
+        ]);
+
+        $component = Livewire::test(RegistroManual::class)
+            ->call('create')
+            // Precarga con un tipo de equipo distinto al del artículo para
+            // confirmar que elegir el artículo sí lo sobreescribe.
+            ->set('form.tipo_equipo_id', $otroTipoEquipo->id)
+            ->set('form.articulo_id', $articulo->id)
+            ->assertSet('form.tipo_equipo_id', $tipoEquipo->id)
+            ->assertSet('form.marca_id', $marca->id)
+            ->assertSet('form.modelo_id', $modelo->id);
+
+        $component->set($this->baseForm())
+            ->set('form.destino', 'stock')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = Asset::firstOrFail();
+        $this->assertSame($articulo->id, $asset->articulo_id);
+    }
+
+    /**
+     * El listado de opciones de artículo solo trae activos e inventariables
+     * — mismo criterio ya usado en Solicitud de SIC/Recepción de Proveedor.
+     */
+    public function test_articulo_options_only_include_active_and_inventariable_articulos(): void
+    {
+        $this->actingAs($this->actingUser());
+        $tipoEquipo = $this->tipoEquipo();
+
+        $inventariable = ArticuloSolicitud::create([
+            'codigo' => 'ART-OK',
+            'descripcion' => 'Inventariable activo',
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'es_inventariable' => true,
+        ]);
+
+        $noInventariable = ArticuloSolicitud::create([
+            'codigo' => 'ART-NO-INV',
+            'descripcion' => 'No inventariable',
+            'unidad_medida' => 'pieza',
+            'es_inventariable' => false,
+        ]);
+
+        $inactivo = ArticuloSolicitud::create([
+            'codigo' => 'ART-INACTIVO',
+            'descripcion' => 'Inventariable pero inactivo',
+            'unidad_medida' => 'pieza',
+            'es_inventariable' => true,
+            'activo' => false,
+        ]);
+
+        $ids = Livewire::test(RegistroManual::class)->viewData('articuloOptions')->pluck('id')->all();
+
+        $this->assertContains($inventariable->id, $ids);
+        $this->assertNotContains($noInventariable->id, $ids);
+        $this->assertNotContains($inactivo->id, $ids);
     }
 
     public function test_screen_is_seeded_and_visible_to_administrador(): void

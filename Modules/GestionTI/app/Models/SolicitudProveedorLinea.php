@@ -17,6 +17,7 @@ class SolicitudProveedorLinea extends Model
         'precio_unitario_cotizado',
         'es_activo_inventariable',
         'detalle_adicional',
+        'observaciones_especificaciones',
     ];
 
     protected $casts = [

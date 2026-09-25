@@ -3,6 +3,7 @@
 namespace Modules\GestionTI\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Modules\GestionTI\Support\Catalogos\CategoriaArticulo;
 
 class ProyectoPresupuestoArticulo extends Model
 {
@@ -11,37 +12,15 @@ class ProyectoPresupuestoArticulo extends Model
     public const ESTATUS_CAPTURA_CAPTURADO = 'capturado';
 
     /**
-     * Lista fija validada en la capa de aplicación (no es un catálogo con
-     * tabla propia) — mismo patrón que `tipo_solicitud`/`urgencia` en otras
-     * pantallas de este módulo.
+     * Alias de `CategoriaArticulo::OPTIONS`/`LABELS` — las 11 categorías se
+     * extrajeron a esa clase compartida para que `ArticuloSolicitud`
+     * (Catálogo de Compras) las reutilice sin duplicar la lista. Cero
+     * cambio de comportamiento aquí, ver docs/gestionti-progreso.md, entrada
+     * "Catálogo unificado de Artículos".
      */
-    public const CATEGORIAS = [
-        'celulares',
-        'telefonia_fija',
-        'laptops_desktops',
-        'multifuncionales',
-        'redes',
-        'comunicacion',
-        'internet',
-        'infraestructura',
-        'vpn',
-        'ciberseguridad',
-        'antivirus',
-    ];
+    public const CATEGORIAS = CategoriaArticulo::OPTIONS;
 
-    public const CATEGORIA_LABELS = [
-        'celulares' => 'Celulares',
-        'telefonia_fija' => 'Telefonía fija',
-        'laptops_desktops' => 'Laptops/Desktops',
-        'multifuncionales' => 'Multifuncionales',
-        'redes' => 'Redes',
-        'comunicacion' => 'Comunicación',
-        'internet' => 'Internet',
-        'infraestructura' => 'Infraestructura',
-        'vpn' => 'VPN',
-        'ciberseguridad' => 'Ciberseguridad',
-        'antivirus' => 'Antivirus',
-    ];
+    public const CATEGORIA_LABELS = CategoriaArticulo::LABELS;
 
     /**
      * Agrupación contable de 5 valores fijos que exige el Excel corporativo

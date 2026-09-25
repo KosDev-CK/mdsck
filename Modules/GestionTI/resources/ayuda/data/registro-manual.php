@@ -6,6 +6,7 @@ return [
     'resuelve' => 'Sin esta pantalla, un equipo que llegó al inventario por una vía distinta a una compra formal simplemente no existiría en el sistema, o tendría que forzarse artificialmente por el flujo de Recepción de Proveedor (pensado para compras reales, con Solicitud a Proveedor y remisión). Aquí se captura directamente el equipo con todos sus datos relevantes y, si ya se sabe que va destinado a un empleado en particular, se puede entregar de una vez sin crear una SIC ni un ticket — quedando disponible de inmediato en el listado de "Asignación de Activo" para generar su carta responsiva.',
     'proceso' => [
         'Da clic en "Nuevo".',
+        'Opcionalmente, elige primero un Artículo del catálogo (Catálogo de Compras → Artículos, solo se listan los marcados como "inventariable") — precarga automáticamente tipo de equipo, marca y modelo desde su ficha técnica; puedes seguir ajustándolos después si el equipo real difiere un poco.',
         'Captura el tipo de equipo y la ubicación actual (obligatorios), y opcionalmente marca/modelo, número de serie, service tag, costo de adquisición y proveedor.',
         'Captura la fecha de alta a stock (obligatoria) y, si aplica, las fechas de inicio y fin de garantía.',
         'Elige la propiedad del equipo si aplica, y quién da de alta el registro ("Dado de alta por").',
@@ -14,6 +15,7 @@ return [
         'Guarda. El sistema genera automáticamente el código único del activo, igual que en el flujo de Recepción.',
     ],
     'campos' => [
+        ['nombre' => 'Artículo (opcional)', 'explicacion' => 'Selección opcional del catálogo de Artículos (Catálogo de Compras — solo se listan los activos y marcados como "inventariable"). Al elegirlo, precarga tipo de equipo/marca/modelo desde su ficha técnica; puedes seguir ajustándolos manualmente después. El Activo creado queda vinculado a este artículo.'],
         ['nombre' => 'Tipo de equipo', 'explicacion' => 'Obligatorio — determina, entre otras cosas, el prefijo del código único que se generará para el activo.'],
         ['nombre' => 'Ubicación actual', 'explicacion' => 'Dónde queda físicamente el equipo. Obligatoria.'],
         ['nombre' => 'Marca / Modelo', 'explicacion' => 'Opcionales, del catálogo correspondiente.'],

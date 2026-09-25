@@ -18,6 +18,7 @@ use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Marca;
+use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\Recepcion;
 use Modules\GestionTI\Models\SolicitudProveedor;
@@ -426,6 +427,198 @@ class RecepcionesTest extends TestCase
 
         $asset = Asset::firstOrFail();
         $this->assertSame($tipoEquipo->id, $asset->tipo_equipo_id);
+    }
+
+    /**
+     * Catálogo unificado de Artículos (ver docs/gestionti-progreso.md) —
+     * cuando el artículo de la línea SÍ trae marca/modelo/specs, el Asset se
+     * crea con esos datos heredados sin pedir los selects manuales (que ni
+     * siquiera se renderizan, ver la vista).
+     */
+    public function test_line_whose_articulo_has_marca_modelo_and_specs_inherits_them_without_manual_selects(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+        $marca = Marca::create(['nombre' => 'Dell']);
+        $modelo = Modelo::create(['nombre' => 'Latitude 5440', 'marca_id' => $marca->id]);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-FICHA-COMPLETA',
+            'descripcion' => 'Laptop Core i7 16GB 512GB SSD',
+            'unidad_medida' => 'Pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'marca_id' => $marca->id,
+            'modelo_id' => $modelo->id,
+            'procesador' => 'Core i7',
+            'ram' => '16GB',
+            'almacenamiento' => '512GB SSD',
+            'es_inventariable' => true,
+        ]);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-REC-FICHA',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-08-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create([
+            'articulo_id' => $articulo->id,
+            'cantidad_solicitada' => 1,
+            'cantidad_recibida' => 0,
+            'precio_unitario_cotizado' => 20000,
+            'es_activo_inventariable' => true,
+        ]);
+
+        // Sin capturar marca_id/modelo_id/tipo_equipo_id manuales — el
+        // artículo ya los trae todos.
+        Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->set('form.folio_remision', 'REM-FICHA-001')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-FICHA-001')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = Asset::firstOrFail();
+        $this->assertSame($articulo->id, $asset->articulo_id);
+        $this->assertSame($marca->id, $asset->marca_id);
+        $this->assertSame($modelo->id, $asset->modelo_id);
+        $this->assertSame($tipoEquipo->id, $asset->tipo_equipo_id);
+        $this->assertSame([
+            'procesador' => 'Core i7',
+            'ram' => '16GB',
+            'almacenamiento' => '512GB SSD',
+        ], $asset->especificaciones);
+
+        $this->assertDatabaseHas('recepcion_lineas', [
+            'asset_id' => $asset->id,
+            'articulo_id' => $articulo->id,
+        ]);
+    }
+
+    /**
+     * Caso hermano: el artículo no trae marca/modelo — el fallback manual
+     * (ya probado también por `test_line_whose_articulo_has_no_tipo_equipo_requires_the_extra_select`
+     * para tipo de equipo) sigue funcionando para marca/modelo.
+     */
+    public function test_line_whose_articulo_has_no_marca_falls_back_to_the_manual_select(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $marca = Marca::create(['nombre' => 'Genérica']);
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        // Sin capturar marca_id manual — debe fallar la validación.
+        Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->set('form.folio_remision', 'REM-SIN-MARCA')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-SIN-MARCA-1')
+            ->set('lineas.0.unidades.1.numero_serie', 'SN-SIN-MARCA-2')
+            ->call('save')
+            ->assertHasErrors(['lineas.0.marca_id']);
+
+        $this->assertDatabaseCount('assets', 0);
+
+        // Capturando la marca manualmente, ahora sí guarda.
+        Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->set('form.folio_remision', 'REM-SIN-MARCA')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.marca_id', $marca->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-SIN-MARCA-1')
+            ->set('lineas.0.unidades.1.numero_serie', 'SN-SIN-MARCA-2')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = Asset::firstOrFail();
+        $this->assertSame($marca->id, $asset->marca_id);
+    }
+
+    /**
+     * Cambiar el artículo recibido (distinto al de la solicitud) deja el
+     * Asset/RecepcionLinea con el artículo REALMENTE recibido, no el
+     * solicitado — sustitución del proveedor, etc.
+     */
+    public function test_changing_the_articulo_on_reception_keeps_the_actually_received_one(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+        $marcaSolicitada = Marca::create(['nombre' => 'Dell']);
+        $marcaRecibida = Marca::create(['nombre' => 'HP']);
+
+        $articuloSolicitado = ArticuloSolicitud::create([
+            'codigo' => 'ART-SOLICITADO',
+            'descripcion' => 'Laptop Dell solicitada',
+            'unidad_medida' => 'Pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'marca_id' => $marcaSolicitada->id,
+            'es_inventariable' => true,
+        ]);
+
+        $articuloRecibido = ArticuloSolicitud::create([
+            'codigo' => 'ART-RECIBIDO',
+            'descripcion' => 'Laptop HP realmente entregada',
+            'unidad_medida' => 'Pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'marca_id' => $marcaRecibida->id,
+            'es_inventariable' => true,
+        ]);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-REC-SUSTITUCION',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-08-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create([
+            'articulo_id' => $articuloSolicitado->id,
+            'cantidad_solicitada' => 1,
+            'cantidad_recibida' => 0,
+            'precio_unitario_cotizado' => 18000,
+            'es_activo_inventariable' => true,
+        ]);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->assertSet('lineas.0.articulo_id', $articuloSolicitado->id)
+            ->set('lineas.0.articulo_id', $articuloRecibido->id)
+            ->assertSet('lineas.0.articulo_marca_id', $marcaRecibida->id);
+
+        $component->set('form.folio_remision', 'REM-SUSTITUCION-001')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-SUSTITUCION-001')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = Asset::firstOrFail();
+        $this->assertSame($articuloRecibido->id, $asset->articulo_id);
+        $this->assertSame($marcaRecibida->id, $asset->marca_id);
+
+        $this->assertDatabaseHas('recepcion_lineas', [
+            'asset_id' => $asset->id,
+            'articulo_id' => $articuloRecibido->id,
+        ]);
     }
 
     public function test_export_acta_pdf_generates_without_exception_with_mixed_inventariable_and_non_inventariable_lines(): void

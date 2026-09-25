@@ -62,6 +62,13 @@
 
     <x-ui.modal model="showModal" title="Nuevo registro manual de activo" max-width="max-w-2xl">
         <form wire:submit="save" class="space-y-4">
+            <x-ui.select label="Artículo (opcional)" name="form.articulo_id" wire:model.live="form.articulo_id" hint="Elegir un artículo del catálogo precarga tipo/marca/modelo — puedes ajustarlos después.">
+                <option value="">Sin asignar</option>
+                @foreach ($articuloOptions as $articulo)
+                    <option value="{{ $articulo->id }}">{{ $articulo->codigo }} — {{ $articulo->descripcion }}</option>
+                @endforeach
+            </x-ui.select>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <x-ui.select label="Tipo de equipo" name="form.tipo_equipo_id" wire:model="form.tipo_equipo_id">
                     <option value="">Selecciona...</option>

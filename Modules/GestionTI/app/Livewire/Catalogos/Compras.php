@@ -2,6 +2,7 @@
 
 namespace Modules\GestionTI\Livewire\Catalogos;
 
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -9,8 +10,11 @@ use Modules\GestionTI\Concerns\MergesCatalogDuplicates;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\Mantenimiento;
+use Modules\GestionTI\Models\Marca;
+use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\TipoEquipo;
+use Modules\GestionTI\Support\Catalogos\CategoriaArticulo;
 
 #[Layout('layouts.app')]
 class Compras extends Component
@@ -60,13 +64,22 @@ class Compras extends Component
             'articulos_solicitud' => [
                 'label' => 'Artículo de Solicitud',
                 'model' => ArticuloSolicitud::class,
-                'fields' => ['codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id'],
+                'fields' => [
+                    'codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id',
+                    'marca_id', 'modelo_id', 'procesador', 'ram', 'almacenamiento', 'es_inventariable',
+                ],
                 'rules' => [
                     'form.codigo' => 'required|string|max:100',
                     'form.descripcion' => 'required|string|max:255',
                     'form.unidad_medida' => 'required|string|max:50',
-                    'form.categoria' => 'nullable|string|max:255',
+                    'form.categoria' => ['nullable', Rule::in(CategoriaArticulo::OPTIONS)],
                     'form.tipo_equipo_id' => 'nullable|exists:tipos_equipo,id',
+                    'form.marca_id' => 'nullable|exists:marcas,id',
+                    'form.modelo_id' => 'nullable|exists:modelos,id',
+                    'form.procesador' => 'nullable|string|max:255',
+                    'form.ram' => 'nullable|string|max:255',
+                    'form.almacenamiento' => 'nullable|string|max:255',
+                    'form.es_inventariable' => 'boolean',
                 ],
                 'orderBy' => 'codigo',
                 'searchColumns' => ['codigo', 'descripcion', 'categoria'],
@@ -111,15 +124,34 @@ class Compras extends Component
         $this->showModal = true;
     }
 
+    /**
+     * Los selects opcionales mandan '' para la opción "Sin asignar" —
+     * normalizarlos a null antes de validar/guardar para que la FK nullable
+     * (o `Rule::in(...)` de categoría) no reciba una cadena vacía.
+     * Generalizado desde solo `tipo_equipo_id` para cubrir también
+     * `marca_id`/`modelo_id`/`categoria` del tab de Artículos.
+     */
+    private function nullifyEmptyForeignKeys(): void
+    {
+        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'categoria'] as $field) {
+            if (array_key_exists($field, $this->form) && $this->form[$field] === '') {
+                $this->form[$field] = null;
+            }
+        }
+    }
+
     public function save(): void
     {
         $config = $this->catalogos()[$this->tab];
 
-        // El select de "Tipo de equipo" manda '' para la opción "Sin
-        // asignar" — normalizarlo a null antes de validar/guardar para que
-        // la FK nullable no reciba una cadena vacía.
-        if (array_key_exists('tipo_equipo_id', $this->form) && $this->form['tipo_equipo_id'] === '') {
-            $this->form['tipo_equipo_id'] = null;
+        $this->nullifyEmptyForeignKeys();
+
+        // El toggle "Es inventariable" no se toca por default en `create()`
+        // (arranca en null, mismo `array_fill_keys(...)` genérico que usan
+        // todos los campos) — normalizarlo a un booleano real antes de
+        // validar, para que la regla `boolean` no lo rechace.
+        if (array_key_exists('es_inventariable', $this->form)) {
+            $this->form['es_inventariable'] = (bool) $this->form['es_inventariable'];
         }
 
         $this->validate($config['rules']);
@@ -194,7 +226,7 @@ class Compras extends Component
         $config = $catalogos[$this->tab];
 
         $records = $config['model']::query()
-            ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with('tipoEquipo'))
+            ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'marca', 'modelo']))
             ->when($this->search !== '', function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -211,6 +243,12 @@ class Compras extends Component
             'records' => $records,
             'tipoEquipoOptions' => $this->tab === 'articulos_solicitud'
                 ? TipoEquipo::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'marcaOptions' => $this->tab === 'articulos_solicitud'
+                ? Marca::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'modeloOptions' => $this->tab === 'articulos_solicitud'
+                ? Modelo::where('activo', true)->with('marca')->orderBy('nombre')->get()
                 : null,
             'mergeOptions' => array_key_exists('mergeReferences', $config)
                 ? $config['model']::orderBy($config['orderBy'])->get()

@@ -9,6 +9,7 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\EbsRequisition;
@@ -76,6 +77,7 @@ class SolicitudesSic extends Component
             'form.especificaciones_requeridas' => 'nullable|string',
             'form.centro_costo_id' => 'required|exists:centros_costo,id',
             'form.unidad_negocio_id' => 'nullable|exists:unidades_negocio,id',
+            'form.articulo_id' => 'nullable|exists:articulos_solicitud,id',
             'form.urgencia' => ['required', Rule::in(SolicitudSicBorrador::URGENCIAS)],
             'form.fecha_solicitud' => 'required|date',
             'adjunto' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
@@ -99,8 +101,10 @@ class SolicitudesSic extends Component
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        if (($this->form['unidad_negocio_id'] ?? null) === '') {
-            $this->form['unidad_negocio_id'] = null;
+        foreach (['unidad_negocio_id', 'articulo_id'] as $field) {
+            if (($this->form[$field] ?? null) === '') {
+                $this->form[$field] = null;
+            }
         }
     }
 
@@ -115,6 +119,7 @@ class SolicitudesSic extends Component
             'especificaciones_requeridas' => null,
             'centro_costo_id' => null,
             'unidad_negocio_id' => null,
+            'articulo_id' => null,
             'urgencia' => null,
             'fecha_solicitud' => now()->format('Y-m-d'),
         ];
@@ -137,6 +142,7 @@ class SolicitudesSic extends Component
             'especificaciones_requeridas' => $record->especificaciones_requeridas,
             'centro_costo_id' => $record->centro_costo_id,
             'unidad_negocio_id' => $record->unidad_negocio_id,
+            'articulo_id' => $record->articulo_id,
             'urgencia' => $record->urgencia,
             'fecha_solicitud' => optional($record->fecha_solicitud)->format('Y-m-d'),
         ];
@@ -380,6 +386,7 @@ class SolicitudesSic extends Component
             'tipoEquipoOptions' => TipoEquipo::where('activo', true)->orderBy('nombre')->get(),
             'centroCostoOptions' => CentroCosto::where('activo', true)->orderBy('nombre')->get(),
             'unidadNegocioOptions' => UnidadNegocio::where('activo', true)->orderBy('nombre')->get(),
+            'articuloOptions' => ArticuloSolicitud::where('activo', true)->where('es_inventariable', true)->orderBy('codigo')->get(),
             'ebsRequisicionOptions' => $ebsRequisicionOptions,
         ]);
     }

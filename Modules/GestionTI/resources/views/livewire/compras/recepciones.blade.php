@@ -170,20 +170,31 @@
 
                                 @if ($linea['es_activo_inventariable'] && (int) $linea['cantidad_a_recibir'] > 0)
                                     <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2">
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <x-ui.select label="Marca" name="lineas.{{ $i }}.marca_id" wire:model="lineas.{{ $i }}.marca_id">
-                                                <option value="">Selecciona...</option>
-                                                @foreach ($marcaOptions as $marca)
-                                                    <option value="{{ $marca->id }}">{{ $marca->nombre }}</option>
-                                                @endforeach
-                                            </x-ui.select>
+                                        <x-ui.select label="Artículo recibido (opcional)" name="lineas.{{ $i }}.articulo_id" wire:model.live="lineas.{{ $i }}.articulo_id" hint="Lo realmente recibido puede diferir de lo solicitado — cambia esta selección si el proveedor sustituyó el artículo. Al elegir uno se precargan marca/modelo/tipo de equipo abajo.">
+                                            <option value="">Sin asignar</option>
+                                            @foreach ($articuloOptions as $articuloOption)
+                                                <option value="{{ $articuloOption->id }}">{{ $articuloOption->codigo }} — {{ $articuloOption->descripcion }}</option>
+                                            @endforeach
+                                        </x-ui.select>
 
-                                            <x-ui.select label="Modelo (opcional)" name="lineas.{{ $i }}.modelo_id" wire:model="lineas.{{ $i }}.modelo_id">
-                                                <option value="">Sin asignar</option>
-                                                @foreach ($modeloOptions as $modelo)
-                                                    <option value="{{ $modelo->id }}">{{ $modelo->nombre }}</option>
-                                                @endforeach
-                                            </x-ui.select>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            @if (! $linea['articulo_marca_id'])
+                                                <x-ui.select label="Marca" name="lineas.{{ $i }}.marca_id" wire:model="lineas.{{ $i }}.marca_id" hint="El artículo no tiene marca definida — captúrala aquí.">
+                                                    <option value="">Selecciona...</option>
+                                                    @foreach ($marcaOptions as $marca)
+                                                        <option value="{{ $marca->id }}">{{ $marca->nombre }}</option>
+                                                    @endforeach
+                                                </x-ui.select>
+                                            @endif
+
+                                            @if (! $linea['articulo_modelo_id'])
+                                                <x-ui.select label="Modelo (opcional)" name="lineas.{{ $i }}.modelo_id" wire:model="lineas.{{ $i }}.modelo_id">
+                                                    <option value="">Sin asignar</option>
+                                                    @foreach ($modeloOptions as $modelo)
+                                                        <option value="{{ $modelo->id }}">{{ $modelo->nombre }}</option>
+                                                    @endforeach
+                                                </x-ui.select>
+                                            @endif
                                         </div>
 
                                         @if (! $linea['articulo_tipo_equipo_id'])

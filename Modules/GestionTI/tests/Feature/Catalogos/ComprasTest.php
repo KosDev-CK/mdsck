@@ -8,6 +8,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Catalogos\Compras;
 use Modules\GestionTI\Models\ArticuloSolicitud;
+use Modules\GestionTI\Models\Marca;
+use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
@@ -137,7 +139,7 @@ class ComprasTest extends TestCase
             ->set('form.codigo', 'ART-002')
             ->set('form.descripcion', 'Laptop Dell Latitude')
             ->set('form.unidad_medida', 'pieza')
-            ->set('form.categoria', 'Cómputo')
+            ->set('form.categoria', 'laptops_desktops')
             ->set('form.tipo_equipo_id', $tipoEquipo->id)
             ->call('save')
             ->assertHasNoErrors();
@@ -145,7 +147,87 @@ class ComprasTest extends TestCase
         $this->assertDatabaseHas('articulos_solicitud', [
             'codigo' => 'ART-002',
             'tipo_equipo_id' => $tipoEquipo->id,
-            'categoria' => 'Cómputo',
+            'categoria' => 'laptops_desktops',
+        ]);
+    }
+
+    public function test_articulo_de_solicitud_rejects_a_categoria_not_in_the_allowed_list(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->call('create')
+            ->set('form.codigo', 'ART-CAT-INVALIDA')
+            ->set('form.descripcion', 'Artículo con categoría inválida')
+            ->set('form.unidad_medida', 'pieza')
+            ->set('form.categoria', 'no-es-una-categoria-valida')
+            ->call('save')
+            ->assertHasErrors(['form.categoria']);
+    }
+
+    public function test_can_create_an_articulo_de_solicitud_with_ficha_tecnica_completa(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $marca = Marca::create(['nombre' => 'Dell']);
+        $modelo = Modelo::create(['nombre' => 'Latitude 5440', 'marca_id' => $marca->id]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->call('create')
+            ->set('form.codigo', 'ART-FICHA-001')
+            ->set('form.descripcion', 'Laptop Core i7 16GB 512GB SSD')
+            ->set('form.unidad_medida', 'pieza')
+            ->set('form.categoria', 'laptops_desktops')
+            ->set('form.marca_id', $marca->id)
+            ->set('form.modelo_id', $modelo->id)
+            ->set('form.procesador', 'Core i7')
+            ->set('form.ram', '16GB')
+            ->set('form.almacenamiento', '512GB SSD')
+            ->set('form.es_inventariable', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('articulos_solicitud', [
+            'codigo' => 'ART-FICHA-001',
+            'marca_id' => $marca->id,
+            'modelo_id' => $modelo->id,
+            'procesador' => 'Core i7',
+            'ram' => '16GB',
+            'almacenamiento' => '512GB SSD',
+            'es_inventariable' => 1,
+        ]);
+    }
+
+    public function test_can_edit_an_articulo_de_solicitud_ficha_tecnica(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $marcaUno = Marca::create(['nombre' => 'Dell']);
+        $marcaDos = Marca::create(['nombre' => 'HP']);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-FICHA-002',
+            'descripcion' => 'Laptop genérica',
+            'unidad_medida' => 'pieza',
+            'marca_id' => $marcaUno->id,
+            'es_inventariable' => false,
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->call('edit', $articulo->id)
+            ->assertSet('form.marca_id', $marcaUno->id)
+            ->set('form.marca_id', $marcaDos->id)
+            ->set('form.es_inventariable', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('articulos_solicitud', [
+            'id' => $articulo->id,
+            'marca_id' => $marcaDos->id,
+            'es_inventariable' => 1,
         ]);
     }
 

@@ -9,6 +9,7 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use Livewire\WithPagination;
+use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\EstatusActivo;
@@ -132,6 +133,37 @@ class Recepciones extends Component
         if (preg_match('/^lineas\.(\d+)\.cantidad_a_recibir$/', $name, $m)) {
             $this->clampAndResizeLinea((int) $m[1]);
         }
+
+        if (preg_match('/^lineas\.(\d+)\.articulo_id$/', $name, $m)) {
+            $this->recalcArticuloDerivedFields((int) $m[1]);
+        }
+    }
+
+    /**
+     * Recalcula los campos de solo-lectura derivados del artículo elegido en
+     * una línea — se dispara cuando el usuario cambia el "Artículo recibido"
+     * de la línea (puede diferir del que traía la Solicitud a Proveedor, ver
+     * docs/gestionti-progreso.md, entrada "Catálogo unificado de
+     * Artículos"). Vacío si no hay artículo elegido — en ese caso los
+     * selects manuales de marca/modelo/tipo de equipo vuelven a ser el
+     * fallback, igual que cuando el artículo original no traía esos datos.
+     */
+    private function recalcArticuloDerivedFields(int $index): void
+    {
+        if (! isset($this->lineas[$index])) {
+            return;
+        }
+
+        $articulo = ! empty($this->lineas[$index]['articulo_id'])
+            ? ArticuloSolicitud::find($this->lineas[$index]['articulo_id'])
+            : null;
+
+        $this->lineas[$index]['articulo_tipo_equipo_id'] = $articulo?->tipo_equipo_id;
+        $this->lineas[$index]['articulo_marca_id'] = $articulo?->marca_id;
+        $this->lineas[$index]['articulo_modelo_id'] = $articulo?->modelo_id;
+        $this->lineas[$index]['articulo_procesador'] = $articulo?->procesador;
+        $this->lineas[$index]['articulo_ram'] = $articulo?->ram;
+        $this->lineas[$index]['articulo_almacenamiento'] = $articulo?->almacenamiento;
     }
 
     private function clampAndResizeLinea(int $index): void
@@ -345,16 +377,29 @@ class Recepciones extends Component
 
         foreach ($solicitud->lineas as $linea) {
             $pendiente = max(0, $linea->cantidad_solicitada - $linea->cantidad_recibida);
+            $articulo = $linea->articulo;
 
             $lineaForm = [
                 'solicitud_proveedor_linea_id' => $linea->id,
-                'descripcion' => $linea->articulo?->descripcion ?? $linea->descripcion_libre,
+                'descripcion' => $articulo?->descripcion ?? $linea->descripcion_libre,
                 'cantidad_solicitada' => $linea->cantidad_solicitada,
                 'cantidad_ya_recibida' => $linea->cantidad_recibida,
                 'cantidad_pendiente' => $pendiente,
                 'cantidad_a_recibir' => $pendiente,
                 'es_activo_inventariable' => (bool) $linea->es_activo_inventariable,
-                'articulo_tipo_equipo_id' => $linea->articulo?->tipo_equipo_id,
+                // "Artículo recibido" — precargado del que traía la
+                // Solicitud a Proveedor, pero editable: lo realmente
+                // recibido puede diferir de lo solicitado (sustitución del
+                // proveedor, etc.). Los `articulo_*` de abajo son los
+                // derivados de solo-lectura de ESTE valor, recalculados por
+                // `recalcArticuloDerivedFields()` si el usuario lo cambia.
+                'articulo_id' => $linea->articulo_id,
+                'articulo_tipo_equipo_id' => $articulo?->tipo_equipo_id,
+                'articulo_marca_id' => $articulo?->marca_id,
+                'articulo_modelo_id' => $articulo?->modelo_id,
+                'articulo_procesador' => $articulo?->procesador,
+                'articulo_ram' => $articulo?->ram,
+                'articulo_almacenamiento' => $articulo?->almacenamiento,
                 'tipo_equipo_id' => null,
                 'marca_id' => null,
                 'modelo_id' => null,
@@ -402,8 +447,8 @@ class Recepciones extends Component
                 continue;
             }
 
-            if (empty($linea['marca_id'])) {
-                $this->addError("lineas.$i.marca_id", 'La marca es requerida para un activo inventariable.');
+            if (empty($linea['articulo_marca_id']) && empty($linea['marca_id'])) {
+                $this->addError("lineas.$i.marca_id", 'La marca es requerida para un activo inventariable — no se pudo determinar automáticamente del artículo.');
             }
 
             if (empty($linea['articulo_tipo_equipo_id']) && empty($linea['tipo_equipo_id'])) {
@@ -506,19 +551,34 @@ class Recepciones extends Component
                         'solicitud_proveedor_linea_id' => $solicitudLinea->id,
                         'cantidad_recibida' => $cantidad,
                         'asset_id' => null,
+                        'articulo_id' => $linea['articulo_id'] ?: null,
                     ]);
                 } else {
                     $tipoEquipoId = $linea['articulo_tipo_equipo_id'] ?: $linea['tipo_equipo_id'];
                     $tipoEquipo = TipoEquipo::findOrFail($tipoEquipoId);
 
+                    // El artículo REALMENTE recibido (editable en esta
+                    // pantalla) es el que se hereda hacia el Asset — no el
+                    // que traía originalmente la SolicitudProveedorLinea.
+                    $articuloId = $linea['articulo_id'] ?: null;
+                    $marcaId = $linea['articulo_marca_id'] ?: ($linea['marca_id'] ?: null);
+                    $modeloId = $linea['articulo_modelo_id'] ?: ($linea['modelo_id'] ?: null);
+                    $especificaciones = array_filter([
+                        'procesador' => $linea['articulo_procesador'] ?? null,
+                        'ram' => $linea['articulo_ram'] ?? null,
+                        'almacenamiento' => $linea['articulo_almacenamiento'] ?? null,
+                    ]) ?: null;
+
                     foreach ($linea['unidades'] as $unidad) {
                         $asset = Asset::create([
                             'codigo' => Asset::generateCodigo($tipoEquipo),
+                            'articulo_id' => $articuloId,
                             'tipo_equipo_id' => $tipoEquipo->id,
-                            'marca_id' => $linea['marca_id'] ?: null,
-                            'modelo_id' => $linea['modelo_id'] ?: null,
+                            'marca_id' => $marcaId,
+                            'modelo_id' => $modeloId,
                             'numero_serie' => $unidad['numero_serie'],
                             'service_tag' => $unidad['service_tag'] !== '' ? $unidad['service_tag'] : null,
+                            'especificaciones' => $especificaciones,
                             'costo_adquisicion' => $solicitudLinea->precio_unitario_cotizado,
                             'origen_tipo' => 'compra',
                             'vendor_id' => $solicitud->vendor_id,
@@ -537,6 +597,7 @@ class Recepciones extends Component
                             'solicitud_proveedor_linea_id' => $solicitudLinea->id,
                             'cantidad_recibida' => 1,
                             'asset_id' => $asset->id,
+                            'articulo_id' => $articuloId,
                         ]);
 
                         $asset->update(['recepcion_linea_id' => $recepcionLinea->id]);
@@ -611,6 +672,7 @@ class Recepciones extends Component
             ])->with('vendor')->orderByDesc('fecha_solicitud')->get(),
             'validadorOptions' => Validador::where('activo', true)->orderBy('nombre')->get(),
             'ubicacionOptions' => Ubicacion::where('activo', true)->orderBy('nombre')->get(),
+            'articuloOptions' => ArticuloSolicitud::where('activo', true)->where('es_inventariable', true)->orderBy('codigo')->get(),
             'marcaOptions' => Marca::where('activo', true)->orderBy('nombre')->get(),
             'modeloOptions' => Modelo::where('activo', true)->orderBy('nombre')->get(),
             'tipoEquipoOptions' => TipoEquipo::where('activo', true)->orderBy('nombre')->get(),

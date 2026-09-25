@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\MesaServicio\SolicitudesSic;
+use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\AvisoEnviado;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\EbsRequisition;
@@ -442,6 +443,68 @@ class SolicitudesSicTest extends TestCase
         Livewire::test(SolicitudesSic::class)->call('marcarAutorizada', $solicitud->id);
 
         $this->assertSame(SolicitudSicBorrador::ESTATUS_CAPTURADO, $solicitud->fresh()->estatus);
+    }
+
+    /**
+     * Catálogo unificado de Artículos (ver docs/gestionti-progreso.md) —
+     * capturar/editar una SIC con `articulo_id` opcional; el select solo
+     * ofrece artículos activos e inventariables.
+     */
+    public function test_can_capture_and_edit_a_solicitud_with_an_optional_articulo(): void
+    {
+        $this->actingAs($this->actingUser());
+        $c = $this->baseCatalogos();
+
+        $inventariable = ArticuloSolicitud::create([
+            'codigo' => 'ART-SIC-001',
+            'descripcion' => 'Laptop Core i7 16GB 512GB SSD',
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $c['tipoEquipo']->id,
+            'es_inventariable' => true,
+        ]);
+
+        $noInventariable = ArticuloSolicitud::create([
+            'codigo' => 'ART-SIC-NO-INV',
+            'descripcion' => 'Licencia (no inventariable)',
+            'unidad_medida' => 'pieza',
+            'es_inventariable' => false,
+        ]);
+
+        $ids = Livewire::test(SolicitudesSic::class)->viewData('articuloOptions')->pluck('id')->all();
+        $this->assertContains($inventariable->id, $ids);
+        $this->assertNotContains($noInventariable->id, $ids);
+
+        Livewire::test(SolicitudesSic::class)
+            ->call('create')
+            ->set('form.ticket_id', $c['ticket']->id)
+            ->set('form.empleado_id', $c['empleado']->id)
+            ->set('form.tipo_equipo_id', $c['tipoEquipo']->id)
+            ->set('form.motivo', 'Equipo nuevo con artículo definido')
+            ->set('form.centro_costo_id', $c['centroCosto']->id)
+            ->set('form.urgencia', 'media')
+            ->set('form.fecha_solicitud', '2026-08-31')
+            ->set('form.articulo_id', $inventariable->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('solicitudes_sic_borrador', [
+            'empleado_id' => $c['empleado']->id,
+            'articulo_id' => $inventariable->id,
+        ]);
+
+        $solicitud = SolicitudSicBorrador::where('articulo_id', $inventariable->id)->firstOrFail();
+
+        Livewire::test(SolicitudesSic::class)
+            ->call('edit', $solicitud->id)
+            ->assertSet('form.articulo_id', $inventariable->id)
+            ->set('form.articulo_id', '')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('solicitudes_sic_borrador', [
+            'id' => $solicitud->id,
+            'articulo_id' => null,
+        ]);
     }
 
     public function test_can_edit_an_existing_solicitud(): void

@@ -33,6 +33,7 @@ class SolicitudSicBorrador extends Model
         'estatus',
         'folio_sic',
         'ebs_requisition_id',
+        'articulo_id',
     ];
 
     protected $casts = [
@@ -52,6 +53,17 @@ class SolicitudSicBorrador extends Model
     public function tipoEquipo()
     {
         return $this->belongsTo(TipoEquipo::class);
+    }
+
+    /**
+     * Artículo inventariable elegido en la captura local — opcional, no lo
+     * traen las SIC sincronizadas de Oracle EBS (esa clasificación no existe
+     * del lado de EBS). Ver docs/gestionti-progreso.md, entrada "Catálogo
+     * unificado de Artículos".
+     */
+    public function articulo()
+    {
+        return $this->belongsTo(ArticuloSolicitud::class, 'articulo_id');
     }
 
     public function centroCosto()

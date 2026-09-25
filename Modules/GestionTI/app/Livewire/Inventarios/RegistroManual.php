@@ -7,6 +7,7 @@ use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\AssetAssignment;
 use Modules\GestionTI\Models\Empleado;
@@ -58,6 +59,7 @@ class RegistroManual extends Component
         // `validateDestino()`, mismo patrón `validateLineas()` ya usado en
         // `Recepciones`/`SolicitudesProveedor`.
         return [
+            'form.articulo_id' => 'nullable|exists:articulos_solicitud,id',
             'form.tipo_equipo_id' => 'required|exists:tipos_equipo,id',
             'form.marca_id' => 'nullable|exists:marcas,id',
             'form.modelo_id' => 'nullable|exists:modelos,id',
@@ -95,10 +97,43 @@ class RegistroManual extends Component
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        foreach (['marca_id', 'modelo_id', 'vendor_id', 'propiedad_id', 'empleado_id', 'responsable_entrega_id'] as $field) {
+        foreach (['articulo_id', 'marca_id', 'modelo_id', 'vendor_id', 'propiedad_id', 'empleado_id', 'responsable_entrega_id'] as $field) {
             if (($this->form[$field] ?? null) === '') {
                 $this->form[$field] = null;
             }
+        }
+    }
+
+    /**
+     * Al elegir un Artículo (catálogo de Compras), precarga tipo/marca/
+     * modelo desde su ficha técnica — el usuario puede seguir ajustándolos
+     * después si el equipo real difiere un poco. Solo se ofrecen artículos
+     * activos e inventariables (ver `render()`), así que si el catálogo no
+     * trae tipo/marca/modelo definidos, esos campos simplemente se quedan
+     * como estaban (el usuario los captura a mano, igual que hoy).
+     */
+    public function updatedFormArticuloId($value): void
+    {
+        if ($value === '' || $value === null) {
+            return;
+        }
+
+        $articulo = ArticuloSolicitud::find($value);
+
+        if (! $articulo) {
+            return;
+        }
+
+        if ($articulo->tipo_equipo_id) {
+            $this->form['tipo_equipo_id'] = $articulo->tipo_equipo_id;
+        }
+
+        if ($articulo->marca_id) {
+            $this->form['marca_id'] = $articulo->marca_id;
+        }
+
+        if ($articulo->modelo_id) {
+            $this->form['modelo_id'] = $articulo->modelo_id;
         }
     }
 
@@ -130,6 +165,7 @@ class RegistroManual extends Component
     public function create(): void
     {
         $this->form = [
+            'articulo_id' => null,
             'tipo_equipo_id' => null,
             'marca_id' => null,
             'modelo_id' => null,
@@ -183,6 +219,7 @@ class RegistroManual extends Component
 
             $asset = Asset::create([
                 'codigo' => Asset::generateCodigo($tipoEquipo),
+                'articulo_id' => $this->form['articulo_id'],
                 'tipo_equipo_id' => $this->form['tipo_equipo_id'],
                 'marca_id' => $this->form['marca_id'],
                 'modelo_id' => $this->form['modelo_id'],
@@ -261,6 +298,7 @@ class RegistroManual extends Component
 
         return view('gestionti::livewire.inventarios.registro-manual', [
             'records' => $records,
+            'articuloOptions' => ArticuloSolicitud::where('activo', true)->where('es_inventariable', true)->orderBy('codigo')->get(),
             'tipoEquipoOptions' => TipoEquipo::where('activo', true)->orderBy('nombre')->get(),
             'marcaOptions' => Marca::where('activo', true)->orderBy('nombre')->get(),
             'modeloOptions' => Modelo::where('activo', true)->orderBy('nombre')->get(),

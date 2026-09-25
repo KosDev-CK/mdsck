@@ -153,6 +153,13 @@
                 </x-ui.select>
             </div>
 
+            <x-ui.select label="Artículo (opcional)" name="form.articulo_id" wire:model="form.articulo_id" hint="Solo disponible para SIC capturadas aquí localmente — las que llegan sincronizadas de Oracle EBS no traen esta clasificación.">
+                <option value="">Sin asignar</option>
+                @foreach ($articuloOptions as $articulo)
+                    <option value="{{ $articulo->id }}">{{ $articulo->codigo }} — {{ $articulo->descripcion }}</option>
+                @endforeach
+            </x-ui.select>
+
             <x-ui.input label="Fecha de solicitud" name="form.fecha_solicitud" type="date" wire:model="form.fecha_solicitud" />
 
             <div>
