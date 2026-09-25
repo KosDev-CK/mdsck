@@ -7,6 +7,7 @@ use Modules\GestionTI\Console\Commands\EbsBackfillCommand;
 use Modules\GestionTI\Console\Commands\EbsReintentarFallidosCommand;
 use Modules\GestionTI\Console\Commands\EbsSincronizarAprobadasCommand;
 use Modules\GestionTI\Console\Commands\EbsSincronizarCreadasCommand;
+use Modules\GestionTI\Console\Commands\GenerarArticulosDesdeHistoricoCommand;
 use Modules\GestionTI\Console\Commands\ImportarHistoricoCommand;
 use Modules\GestionTI\Console\Commands\RevisarAvisosProgramadosCommand;
 use Modules\GestionTI\Livewire\Avisos\Historial as AvisosHistorial;
@@ -56,6 +57,7 @@ class GestionTIServiceProvider extends ModuleServiceProvider
      */
     protected array $commands = [
         ImportarHistoricoCommand::class,
+        GenerarArticulosDesdeHistoricoCommand::class,
         RevisarAvisosProgramadosCommand::class,
         EbsSincronizarCreadasCommand::class,
         EbsSincronizarAprobadasCommand::class,
