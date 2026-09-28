@@ -12,6 +12,7 @@ use Modules\GestionTI\Livewire\Catalogos\Empleados;
 use Modules\GestionTI\Livewire\Catalogos\Inventario;
 use Modules\GestionTI\Livewire\Catalogos\Nucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
+use Modules\GestionTI\Livewire\Configuracion\CategoriasCompra;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
@@ -66,6 +67,7 @@ class ComponentRegistrationTest extends TestCase
             ['gestionti.avisos.tipos-aviso', TiposAviso::class],
             ['gestionti.avisos.historial', AvisosHistorial::class],
             ['gestionti.configuracion.almacenamiento-documentos', AlmacenamientoDocumentos::class],
+            ['gestionti.configuracion.categorias-compra', CategoriasCompra::class],
         ];
     }
 

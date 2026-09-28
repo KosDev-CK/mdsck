@@ -147,13 +147,13 @@ class ShowTest extends TestCase
             'vendor_id' => $vendor->id,
             'fecha_solicitud' => '2026-08-03',
             'ticket_id' => $ticket->id,
-            'sic_id' => $sic->id,
             'tipo_solicitud' => 'regular',
             'estatus' => SolicitudProveedor::ESTATUS_RECIBIDA,
         ]);
 
         $linea = $solicitud->lineas()->create([
             'descripcion_libre' => 'Laptop especial',
+            'sic_id' => $sic->id,
             'cantidad_solicitada' => 1,
             'cantidad_recibida' => 1,
             'precio_unitario_cotizado' => 20000,

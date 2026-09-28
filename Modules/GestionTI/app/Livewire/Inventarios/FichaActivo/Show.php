@@ -39,7 +39,7 @@ class Show extends Component
             'dadoDeAltaPor',
             'recepcionLinea.recepcion.recibidoPor',
             'recepcionLinea.recepcion.solicitudProveedor.ticket.empleado',
-            'recepcionLinea.recepcion.solicitudProveedor.sic.empleado',
+            'recepcionLinea.solicitudProveedorLinea.sic.empleado',
             'recepcionLinea.recepcion.solicitudProveedor.proyectoPresupuestoArticulo.proyecto',
             'recepcionLinea.recepcion.solicitudProveedor.vendor',
             'sicReservationLogs',
@@ -238,9 +238,15 @@ class Show extends Component
             );
         }
 
-        if ($solicitud?->sic) {
-            $sic = $solicitud->sic;
+        // La SIC ahora vive en la línea (`SolicitudProveedorLinea::sic()`,
+        // de 1 a N por solicitud, ver el rediseño de "Solicitud a
+        // Proveedores"), no en la cabecera — se lee la de la línea concreta
+        // que originó este Asset, vía el camino DELIBERADO documentado
+        // arriba (`recepcionLinea->solicitudProveedorLinea`, nunca
+        // `recepcionLinea->recepcion->solicitudProveedor`).
+        $sic = $this->asset->recepcionLinea?->solicitudProveedorLinea?->sic;
 
+        if ($sic) {
             $events[] = $this->event(
                 fecha: $sic->fecha_solicitud,
                 fallback: $sic->created_at,

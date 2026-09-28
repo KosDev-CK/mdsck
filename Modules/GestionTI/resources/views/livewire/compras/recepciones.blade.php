@@ -91,9 +91,9 @@
             </x-ui.select>
 
             @if ($solicitudSeleccionada)
-                @if ($solicitudSeleccionada->sic_id)
+                @if (collect($lineas)->pluck('sic_id')->filter()->isNotEmpty())
                     <x-ui.alert variant="info">
-                        Esta solicitud tiene una SIC asociada — los activos inventariables que reciba aquí quedarán <strong>reservados</strong> contra esa SIC en vez de libres en stock.
+                        Una o más líneas de esta solicitud tienen una SIC asociada — los activos inventariables de esas líneas quedarán <strong>reservados</strong> contra su SIC correspondiente, en vez de libres en stock (ver el detalle en cada línea abajo).
                     </x-ui.alert>
                 @endif
 
@@ -157,6 +157,12 @@
                                         Pendiente: {{ $linea['cantidad_pendiente'] }}
                                     </p>
                                 </div>
+
+                                @if (! empty($linea['sic_id']))
+                                    <p class="text-xs text-info">
+                                        Quedará reservada contra {{ $linea['sic_folio'] ? "SIC {$linea['sic_folio']}" : "SIC #{$linea['sic_id']}" }} al recibirse.
+                                    </p>
+                                @endif
 
                                 <x-ui.input
                                     label="Cantidad a recibir ahora"

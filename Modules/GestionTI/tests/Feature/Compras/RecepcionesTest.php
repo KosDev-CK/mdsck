@@ -226,7 +226,7 @@ class RecepcionesTest extends TestCase
             'folio_sic' => 'SIC-1',
         ]);
 
-        $solicitud = $this->solicitudConLineaInventariable(['sic_id' => $sic->id], ['cantidad_solicitada' => 1]);
+        $solicitud = $this->solicitudConLineaInventariable([], ['sic_id' => $sic->id, 'cantidad_solicitada' => 1]);
 
         Livewire::test(Recepciones::class)
             ->call('create')
@@ -271,6 +271,92 @@ class RecepcionesTest extends TestCase
         $asset = Asset::firstOrFail();
         $this->assertSame($this->estatusEnStock()->id, $asset->estatus_id);
         $this->assertNull($asset->sic_reservada_id);
+    }
+
+    /**
+     * Rediseño de Solicitud a Proveedores (de 1 a N SICs, `sic_id` movido de
+     * la cabecera a la línea): 2 líneas inventariables de la MISMA
+     * solicitud, una con SIC y otra sin ella, deben producir Assets con
+     * reservación independiente — antes de este cambio la decisión era una
+     * sola por recepción completa a partir de la cabecera.
+     */
+    public function test_lines_with_different_sic_reserve_independently_within_the_same_solicitud(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusReservado();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $marca = Marca::create(['nombre' => 'Lenovo']);
+        $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+
+        $empresa = Empresa::create(['razon_social' => 'Kosmos Mix', 'nombre_comercial' => 'Kosmos Mix']);
+        $centroCosto = CentroCosto::create(['codigo' => 'CC-MIX', 'nombre' => 'Corporativo', 'empresa_id' => $empresa->id]);
+        $empleado = Empleado::create(['numero_empleado' => 'EMP-MIX', 'nombre' => 'Solicitante Mix']);
+        $ticket = Ticket::create(['fecha' => '2026-08-01', 'empleado_id' => $empleado->id]);
+
+        $sic = SolicitudSicBorrador::create([
+            'ticket_id' => $ticket->id,
+            'empleado_id' => $empleado->id,
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => $centroCosto->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => 'autorizada',
+            'folio_sic' => 'SIC-MIX',
+        ]);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-MIX',
+            'descripcion' => 'Laptop mixta',
+            'unidad_medida' => 'Pieza',
+            'tipo_equipo_id' => $tipoEquipo->id,
+        ]);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-REC-MIX',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-08-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create([
+            'articulo_id' => $articulo->id,
+            'sic_id' => $sic->id,
+            'cantidad_solicitada' => 1,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => true,
+        ]);
+        $solicitud->lineas()->create([
+            'articulo_id' => $articulo->id,
+            'cantidad_solicitada' => 1,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => true,
+        ]);
+
+        Livewire::test(Recepciones::class)
+            ->call('create')
+            ->set('selectedSolicitudId', $solicitud->id)
+            ->set('form.folio_remision', 'REM-MIX-001')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.marca_id', $marca->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-MIX-CON-SIC')
+            ->set('lineas.1.marca_id', $marca->id)
+            ->set('lineas.1.unidades.0.numero_serie', 'SN-MIX-SIN-SIC')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseCount('assets', 2);
+
+        $assetConSic = Asset::where('numero_serie', 'SN-MIX-CON-SIC')->firstOrFail();
+        $this->assertSame($this->estatusReservado()->id, $assetConSic->estatus_id);
+        $this->assertSame($sic->id, $assetConSic->sic_reservada_id);
+
+        $assetSinSic = Asset::where('numero_serie', 'SN-MIX-SIN-SIC')->firstOrFail();
+        $this->assertSame($this->estatusEnStock()->id, $assetSinSic->estatus_id);
+        $this->assertNull($assetSinSic->sic_reservada_id);
     }
 
     public function test_non_inventariable_line_does_not_create_assets(): void

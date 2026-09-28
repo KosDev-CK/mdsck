@@ -16,6 +16,7 @@ use Modules\GestionTI\Livewire\Catalogos\Empleados as CatalogosEmpleados;
 use Modules\GestionTI\Livewire\Catalogos\Inventario as CatalogosInventario;
 use Modules\GestionTI\Livewire\Catalogos\Nucleo as CatalogosNucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
+use Modules\GestionTI\Livewire\Configuracion\CategoriasCompra;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
@@ -138,4 +139,8 @@ Route::middleware(['auth', 'permission:screens.gestionti-avisos-historial.manage
 
 Route::middleware(['auth', 'permission:screens.gestionti-almacenamiento-documentos.manage'])->group(function () {
     Route::get('/almacenamiento-documentos', AlmacenamientoDocumentos::class)->name('gestionti.almacenamiento-documentos.index');
+});
+
+Route::middleware(['auth', 'permission:screens.gestionti-categorias-compra.manage'])->group(function () {
+    Route::get('/categorias-compra', CategoriasCompra::class)->name('gestionti.categorias-compra.index');
 });

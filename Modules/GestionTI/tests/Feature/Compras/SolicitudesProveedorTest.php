@@ -10,12 +10,16 @@ use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
 use Modules\GestionTI\Models\Area;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\CentroCosto;
+use Modules\GestionTI\Models\ConfiguracionCategorias;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Models\SolicitudSicBorrador;
+use Modules\GestionTI\Models\Ticket;
+use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -64,7 +68,7 @@ class SolicitudesProveedorTest extends TestCase
 
     /**
      * Arma un ProyectoPresupuesto (+1 artículo `laptops_desktops`) en el
-     * estatus indicado — usado por los tests del select nuevo "Artículo de
+     * estatus indicado — usado por los tests del select "Artículo de
      * Proyecto de Presupuesto".
      */
     private function proyectoPresupuestoArticulo(string $estatusProyecto = ProyectoPresupuesto::ESTATUS_AUTORIZADO): ProyectoPresupuestoArticulo
@@ -90,6 +94,45 @@ class SolicitudesProveedorTest extends TestCase
             'cantidad' => 2,
             'responsable_costo_id' => $empleado->id,
         ]);
+    }
+
+    /**
+     * Arma una SIC local autorizada con un Artículo de la categoría dada
+     * (siempre inventariable) — mismo criterio del picker de "SICs
+     * autorizadas y disponibles" (`SolicitudesProveedor::sicPickerOptions()`):
+     * solo aparecen SICs con `articulo_id` resuelto.
+     */
+    private function crearSicAutorizada(string $categoria = 'laptops_desktops', array $overrides = []): SolicitudSicBorrador
+    {
+        static $n = 0;
+        $n++;
+
+        $empresa = Empresa::create(['razon_social' => "Kosmos SIC $n", 'nombre_comercial' => "Kosmos SIC $n"]);
+        $centroCosto = CentroCosto::create(['codigo' => "CC-SIC-$n", 'nombre' => 'Corporativo', 'empresa_id' => $empresa->id]);
+        $empleado = Empleado::create(['numero_empleado' => "EMP-SIC-$n", 'nombre' => "Solicitante SIC $n"]);
+        $ticket = Ticket::create(['fecha' => '2026-08-01', 'empleado_id' => $empleado->id]);
+        $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => "ART-SIC-$n",
+            'descripcion' => "Laptop SIC $n",
+            'unidad_medida' => 'Pieza',
+            'categoria' => $categoria,
+            'es_inventariable' => true,
+        ]);
+
+        return SolicitudSicBorrador::create(array_merge([
+            'ticket_id' => $ticket->id,
+            'empleado_id' => $empleado->id,
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => $centroCosto->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => SolicitudSicBorrador::ESTATUS_AUTORIZADA,
+            'folio_sic' => "SIC-$n",
+            'articulo_id' => $articulo->id,
+        ], $overrides));
     }
 
     public function test_route_requires_the_screen_permission(): void
@@ -213,20 +256,20 @@ class SolicitudesProveedorTest extends TestCase
         $vendor = $this->proveedor();
         $articulo = $this->articulo();
 
-        $ticket = \Modules\GestionTI\Models\Ticket::create([
+        $ticket = Ticket::create([
             'fecha' => '2026-08-01',
-            'empleado_id' => \Modules\GestionTI\Models\Empleado::create(['numero_empleado' => 'EMP-1', 'nombre' => 'Solicitante'])->id,
+            'empleado_id' => Empleado::create(['numero_empleado' => 'EMP-1', 'nombre' => 'Solicitante'])->id,
         ]);
 
-        $sic = \Modules\GestionTI\Models\SolicitudSicBorrador::create([
+        $sic = SolicitudSicBorrador::create([
             'ticket_id' => $ticket->id,
             'empleado_id' => $ticket->empleado_id,
-            'tipo_equipo_id' => \Modules\GestionTI\Models\TipoEquipo::create(['nombre' => 'Laptop'])->id,
+            'tipo_equipo_id' => TipoEquipo::create(['nombre' => 'Laptop'])->id,
             'motivo' => 'Equipo nuevo',
-            'centro_costo_id' => \Modules\GestionTI\Models\CentroCosto::create([
+            'centro_costo_id' => CentroCosto::create([
                 'codigo' => 'CC-1',
                 'nombre' => 'Corporativo',
-                'empresa_id' => \Modules\GestionTI\Models\Empresa::create(['razon_social' => 'Kosmos', 'nombre_comercial' => 'Kosmos'])->id,
+                'empresa_id' => Empresa::create(['razon_social' => 'Kosmos', 'nombre_comercial' => 'Kosmos'])->id,
             ])->id,
             'urgencia' => 'media',
             'fecha_solicitud' => '2026-08-01',
@@ -242,12 +285,12 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('form.sic_id', $sic->id)
+            ->set('lineas.0.sic_id', $sic->id)
             ->set('lineas.0.articulo_id', $articulo->id)
             ->set('lineas.0.cantidad_solicitada', 1)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id);
 
-        $component->call('save')->assertHasErrors(['form.sic_id', 'form.proyecto_presupuesto_articulo_id']);
+        $component->call('save')->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
     }
 
     public function test_can_edit_an_existing_solicitud_and_its_lines(): void
@@ -403,15 +446,15 @@ class SolicitudesProveedorTest extends TestCase
         $vendor = $this->proveedor();
         $proyectoArticulo = $this->proyectoPresupuestoArticulo();
 
-        $ticket = \Modules\GestionTI\Models\Ticket::create([
+        $ticket = Ticket::create([
             'fecha' => '2026-08-01',
             'empleado_id' => Empleado::create(['numero_empleado' => 'EMP-2', 'nombre' => 'Solicitante 2'])->id,
         ]);
 
-        $sic = \Modules\GestionTI\Models\SolicitudSicBorrador::create([
+        $sic = SolicitudSicBorrador::create([
             'ticket_id' => $ticket->id,
             'empleado_id' => $ticket->empleado_id,
-            'tipo_equipo_id' => \Modules\GestionTI\Models\TipoEquipo::create(['nombre' => 'Laptop'])->id,
+            'tipo_equipo_id' => TipoEquipo::create(['nombre' => 'Laptop'])->id,
             'motivo' => 'Equipo nuevo',
             'centro_costo_id' => CentroCosto::create([
                 'codigo' => 'CC-2',
@@ -430,14 +473,180 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('form.sic_id', $sic->id)
+            ->set('lineas.0.sic_id', $sic->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
             ->set('lineas.0.descripcion_libre', 'Laptop para gerente de centro')
             ->set('lineas.0.cantidad_solicitada', 2)
             ->call('save')
-            ->assertHasErrors(['form.sic_id', 'form.proyecto_presupuesto_articulo_id']);
+            ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-PROYECTO-003']);
+    }
+
+    public function test_sic_autorizada_with_categoria_marked_as_compra_appears_in_the_picker(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertTrue($component->viewData('sicPickerOptions')->pluck('id')->contains($sic->id));
+    }
+
+    public function test_sic_with_category_not_marked_as_compra_does_not_appear_in_the_picker(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $sic = $this->crearSicAutorizada('telefonia_fija');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertFalse($component->viewData('sicPickerOptions')->pluck('id')->contains($sic->id));
+    }
+
+    public function test_sic_without_articulo_does_not_appear_in_the_picker(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+
+        $empresa = Empresa::create(['razon_social' => 'Kosmos Sin Art', 'nombre_comercial' => 'Kosmos Sin Art']);
+        $empleado = Empleado::create(['numero_empleado' => 'EMP-SINART', 'nombre' => 'Sin Artículo']);
+        $ticket = Ticket::create(['fecha' => '2026-08-01', 'empleado_id' => $empleado->id]);
+
+        $sic = SolicitudSicBorrador::create([
+            'ticket_id' => $ticket->id,
+            'empleado_id' => $empleado->id,
+            'tipo_equipo_id' => TipoEquipo::create(['nombre' => 'Laptop Sin Art'])->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => CentroCosto::create(['codigo' => 'CC-SINART', 'nombre' => 'Corporativo', 'empresa_id' => $empresa->id])->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => SolicitudSicBorrador::ESTATUS_AUTORIZADA,
+            'folio_sic' => 'SIC-SINART',
+            // sin articulo_id — nunca clasificada, típico de una SIC recién
+            // sincronizada de EBS.
+        ]);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertFalse($component->viewData('sicPickerOptions')->pluck('id')->contains($sic->id));
+    }
+
+    public function test_sic_already_used_by_another_solicitud_does_not_appear_again(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-SIC-001')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('sicIdsSeleccionados', [$sic->id])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->assertFalse($component->viewData('sicPickerOptions')->pluck('id')->contains($sic->id));
+    }
+
+    public function test_selecting_sics_creates_lines_and_unchecking_removes_them(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $sicUno = $this->crearSicAutorizada('laptops_desktops');
+        $sicDos = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('sicIdsSeleccionados', [$sicUno->id, $sicDos->id]);
+
+        $sicIdsEnLineas = collect($component->get('lineas'))->pluck('sic_id')->filter()->values()->all();
+        $this->assertEqualsCanonicalizing([$sicUno->id, $sicDos->id], $sicIdsEnLineas);
+
+        $component->set('sicIdsSeleccionados', [$sicUno->id]);
+
+        $sicIdsEnLineasDespues = collect($component->get('lineas'))->pluck('sic_id')->filter()->values()->all();
+        $this->assertSame([$sicUno->id], $sicIdsEnLineasDespues);
+    }
+
+    public function test_saving_with_multiple_selected_sics_creates_one_line_per_sic(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $vendor = $this->proveedor();
+        $sicUno = $this->crearSicAutorizada('laptops_desktops');
+        $sicDos = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-SIC-MULTI')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('sicIdsSeleccionados', [$sicUno->id, $sicDos->id])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-MULTI')->firstOrFail();
+        $this->assertCount(2, $solicitud->lineas);
+        $this->assertDatabaseHas('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'sic_id' => $sicUno->id]);
+        $this->assertDatabaseHas('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'sic_id' => $sicDos->id]);
+    }
+
+    public function test_manual_line_with_folio_sic_manual_works_without_a_real_sic(): void
+    {
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-SIC-MANUAL')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('lineas.0.folio_sic_manual', 'SIC-A-MANO-001')
+            ->set('lineas.0.descripcion_libre', 'Laptop capturada a mano, SIC aún sin registro')
+            ->set('lineas.0.cantidad_solicitada', 1)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-MANUAL')->firstOrFail();
+        $this->assertDatabaseHas('solicitud_proveedor_lineas', [
+            'solicitud_id' => $solicitud->id,
+            'folio_sic_manual' => 'SIC-A-MANO-001',
+            'sic_id' => null,
+            'descripcion_libre' => 'Laptop capturada a mano, SIC aún sin registro',
+        ]);
+    }
+
+    public function test_editing_keeps_its_own_already_linked_sic_visible_and_checked_in_the_picker(): void
+    {
+        $this->actingAs($this->actingUser());
+        ConfiguracionCategorias::current()->update(['categorias_compra' => ['laptops_desktops']]);
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-SIC-EDIT')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('sicIdsSeleccionados', [$sic->id])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-EDIT')->firstOrFail();
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+
+        $this->assertTrue($component->viewData('sicPickerOptions')->pluck('id')->contains($sic->id));
+        $this->assertContains($sic->id, $component->get('sicIdsSeleccionados'));
     }
 
     public function test_screen_is_seeded_and_visible_to_administrador(): void

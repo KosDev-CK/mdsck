@@ -11,6 +11,8 @@ class SolicitudProveedorLinea extends Model
     protected $fillable = [
         'solicitud_id',
         'articulo_id',
+        'sic_id',
+        'folio_sic_manual',
         'descripcion_libre',
         'cantidad_solicitada',
         'cantidad_recibida',
@@ -34,6 +36,17 @@ class SolicitudProveedorLinea extends Model
     public function articulo()
     {
         return $this->belongsTo(ArticuloSolicitud::class, 'articulo_id');
+    }
+
+    /**
+     * La SIC real que originó esta línea (una entre 1 a N por solicitud,
+     * ver `Compras\SolicitudesProveedor`) — opcional, `null` cuando la línea
+     * viene de un artículo de Proyecto de Presupuesto o de una captura
+     * manual (`folio_sic_manual`, sin registro real de SIC).
+     */
+    public function sic()
+    {
+        return $this->belongsTo(SolicitudSicBorrador::class, 'sic_id');
     }
 
     public function recepcionLineas()

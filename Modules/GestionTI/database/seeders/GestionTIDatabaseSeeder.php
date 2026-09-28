@@ -4,6 +4,7 @@ namespace Modules\GestionTI\Database\Seeders;
 
 use App\Models\Screen;
 use Illuminate\Database\Seeder;
+use Modules\GestionTI\Models\ConfiguracionCategorias;
 use Modules\GestionTI\Models\ConfiguracionDocumentos;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\TipoAviso;
@@ -252,6 +253,16 @@ class GestionTIDatabaseSeeder extends Seeder
                 'icon' => 'cloud-arrow-up',
                 'order' => 5,
             ],
+            [
+                'slug' => 'gestionti-categorias-compra',
+                'module' => 'GestionTI',
+                'group_label' => 'General',
+                'name' => 'Categorías que van a Compra',
+                'route_name' => 'gestionti.categorias-compra.index',
+                'permission_name' => 'screens.gestionti-categorias-compra.manage',
+                'icon' => 'tag',
+                'order' => 6,
+            ],
         ];
 
         foreach ($screens as $screen) {
@@ -285,6 +296,13 @@ class GestionTIDatabaseSeeder extends Seeder
         // `current()`); si ya existe (alguien ya lo configuró desde la
         // pantalla), este seeder NUNCA lo pisa.
         ConfiguracionDocumentos::current();
+
+        // Rediseño de Solicitud a Proveedores (selección de 1 a N SICs) —
+        // crea el singleton de configuración con su default vacío SOLO si
+        // no existe todavía (`firstOrCreate` dentro de `current()`); si ya
+        // existe (alguien ya lo configuró desde la pantalla), este seeder
+        // NUNCA lo pisa.
+        ConfiguracionCategorias::current();
     }
 
     /**

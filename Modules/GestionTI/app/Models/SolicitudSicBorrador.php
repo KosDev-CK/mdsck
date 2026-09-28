@@ -105,6 +105,19 @@ class SolicitudSicBorrador extends Model
     }
 
     /**
+     * Líneas de Solicitud a Proveedor que ya recogieron esta SIC (de 1 a N
+     * por solicitud, nunca más de una solicitud a la vez en la práctica —
+     * ver `Compras\SolicitudesProveedor::sicPickerOptions()`) — usada para
+     * calcular qué SICs autorizadas siguen "disponibles" en el picker
+     * (`whereDoesntHave('solicitudProveedorLineas')`), mismo criterio ya
+     * usado por `assetAssignments()` de abajo.
+     */
+    public function solicitudProveedorLineas()
+    {
+        return $this->hasMany(SolicitudProveedorLinea::class, 'sic_id');
+    }
+
+    /**
      * Documento adjunto más reciente (`tipo_documento = 'sic'`). No es una
      * relación morph real de Eloquent — `DocumentoDigitalizado` usa una
      * llave genérica (`entidad_relacionada`/`entidad_id`) por diseño, ver

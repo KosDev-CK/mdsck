@@ -29,7 +29,6 @@ class SolicitudProveedor extends Model
         'vendor_id',
         'fecha_solicitud',
         'ticket_id',
-        'sic_id',
         'proyecto_presupuesto_articulo_id',
         'tipo_solicitud',
         'estatus',
@@ -49,10 +48,10 @@ class SolicitudProveedor extends Model
         return $this->belongsTo(Ticket::class);
     }
 
-    public function sic()
-    {
-        return $this->belongsTo(SolicitudSicBorrador::class, 'sic_id');
-    }
+    // `sic()` (header) se eliminó — la SIC ahora vive en la línea
+    // (`SolicitudProveedorLinea::sic()`), porque una solicitud puede traer
+    // de 1 a N SICs. Ver docs/gestionti-progreso.md, rediseño de "Solicitud
+    // a Proveedores: selección de 1 a N SICs autorizadas".
 
     public function lineas()
     {

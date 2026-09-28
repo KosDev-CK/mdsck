@@ -341,12 +341,15 @@ class EndToEndFlowTest extends TestCase
         // artículo de presupuesto viene, y NO trae SIC (origen distinto al
         // camino 2).
         $this->assertSame($articuloPresupuesto->id, $solicitudProveedor->proyecto_presupuesto_articulo_id);
-        $this->assertNull($solicitudProveedor->sic_id);
         $this->assertSame(SolicitudProveedor::ESTATUS_SOLICITADA, $solicitudProveedor->estatus);
 
         $solicitudLinea = $solicitudProveedor->lineas()->firstOrFail();
         $this->assertSame($articuloCatalogo->id, $solicitudLinea->articulo_id);
         $this->assertSame(2, $solicitudLinea->cantidad_solicitada);
+        // Origen distinto al camino 2 (SIC) — la línea no trae SIC alguna,
+        // `sic_id` ahora vive en la línea (ver rediseño de "Solicitud a
+        // Proveedores"), no en la cabecera de `SolicitudProveedor`.
+        $this->assertNull($solicitudLinea->sic_id);
 
         $this->assertSame(1, Livewire::test(Dashboard::class)->viewData('solicitudesProveedorPendientes'));
 

@@ -16,7 +16,7 @@ class AyudaPdfControllerTest extends TestCase
     }
 
     /**
-     * Las 21 pantallas del módulo con contenido de ayuda — un archivo por
+     * Las 22 pantallas del módulo con contenido de ayuda — un archivo por
      * slug en Modules/GestionTI/resources/ayuda/data/. Si se agrega una
      * pantalla nueva, agregar su slug aquí también.
      */
@@ -30,7 +30,7 @@ class AyudaPdfControllerTest extends TestCase
             'ebs-requisiciones', 'solicitudes-proveedor', 'recepciones', 'asignaciones',
             'presupuestos-proyecto', 'facturas', 'stock', 'registro-manual',
             'mantenimientos', 'ficha-activo', 'tipos-aviso', 'avisos-historial',
-            'almacenamiento-documentos',
+            'almacenamiento-documentos', 'categorias-compra',
         ];
 
         foreach ($slugs as $slug) {

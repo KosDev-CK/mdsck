@@ -373,6 +373,7 @@ class Recepciones extends Component
             'lineas.articulo.procesador',
             'lineas.articulo.ram',
             'lineas.articulo.almacenamiento',
+            'lineas.sic',
         ])->find($this->selectedSolicitudId);
 
         if (! $solicitud) {
@@ -385,6 +386,13 @@ class Recepciones extends Component
 
             $lineaForm = [
                 'solicitud_proveedor_linea_id' => $linea->id,
+                // De cabecera a línea (rediseño de "Solicitud a
+                // Proveedores": de 1 a N SICs) — cada línea puede traer su
+                // propia SIC, usada abajo para decidir "reservado" vs.
+                // "en_stock" y `sic_reservada_id` por línea, no por
+                // solicitud completa.
+                'sic_id' => $linea->sic_id,
+                'sic_folio' => $linea->sic?->folio_sic,
                 'descripcion' => $articulo?->descripcion ?? $linea->descripcion_libre,
                 'cantidad_solicitada' => $linea->cantidad_solicitada,
                 'cantidad_ya_recibida' => $linea->cantidad_recibida,
@@ -523,14 +531,6 @@ class Recepciones extends Component
                 $recepcion->update(['documento_remision_id' => $documento->id]);
             }
 
-            // Reservación: si la SolicitudProveedor viene de una SIC, el
-            // Asset nuevo se reserva contra esa SIC (apartado, no la
-            // asignación formal); si no, queda libre en_stock. Se resuelve
-            // una sola vez fuera del loop de líneas/unidades.
-            $estatusInventariableId = $solicitud->sic_id
-                ? $this->estatusIdPorCodigo('reservado')
-                : $this->estatusIdPorCodigo('en_stock');
-
             // Propaga el proyecto de origen (si la SolicitudProveedor viene
             // de un artículo de Presupuesto por Proyecto) al Asset nuevo —
             // `assets.proyecto_presupuesto_id` tiene FK real desde Fase 3
@@ -573,6 +573,18 @@ class Recepciones extends Component
                         'almacenamiento' => $linea['articulo_almacenamiento'] ?? null,
                     ]) ?: null;
 
+                    // Reservación por línea (de 1 a N SICs por solicitud,
+                    // ver el rediseño de "Solicitud a Proveedores"): si ESTA
+                    // línea trae una SIC, los Asset que genera se reservan
+                    // contra ella (apartado, no la asignación formal); si
+                    // no, quedan libres en_stock. Antes se resolvía una sola
+                    // vez por recepción completa a partir de la cabecera —
+                    // ahora puede variar línea por línea.
+                    $sicIdLinea = $linea['sic_id'] ?? null;
+                    $estatusInventariableId = $sicIdLinea
+                        ? $this->estatusIdPorCodigo('reservado')
+                        : $this->estatusIdPorCodigo('en_stock');
+
                     foreach ($linea['unidades'] as $unidad) {
                         $asset = Asset::create([
                             'codigo' => Asset::generateCodigo($tipoEquipo),
@@ -590,7 +602,7 @@ class Recepciones extends Component
                             'fecha_inicio_garantia' => $linea['fecha_inicio_garantia'] ?: null,
                             'fecha_fin_garantia' => $linea['fecha_fin_garantia'] ?: null,
                             'ubicacion_actual_id' => $this->form['ubicacion_id'],
-                            'sic_reservada_id' => $solicitud->sic_id,
+                            'sic_reservada_id' => $sicIdLinea,
                             'proyecto_presupuesto_id' => $proyectoPresupuestoId,
                             'estatus_id' => $estatusInventariableId,
                             'nota_adquisicion_original' => null,

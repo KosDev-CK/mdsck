@@ -108,33 +108,71 @@
                 </x-ui.select>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <x-ui.select label="Ticket (opcional)" name="form.ticket_id" wire:model="form.ticket_id">
-                    <option value="">Sin asignar</option>
-                    @foreach ($ticketOptions as $ticket)
-                        <option value="{{ $ticket->id }}">{{ $ticket->sdp_display_id ?? $ticket->sdp_id ?? ('Ticket #'.$ticket->id) }} — {{ $ticket->fecha?->format('d/m/Y') }}</option>
-                    @endforeach
-                </x-ui.select>
-
-                <x-ui.select label="Solicitud de SIC (opcional)" name="form.sic_id" wire:model="form.sic_id" hint="El origen es una SIC o un artículo de proyecto, no ambos.">
-                    <option value="">Sin asignar</option>
-                    @foreach ($sicOptions as $sic)
-                        <option value="{{ $sic->id }}">{{ $sic->folio_sic ? "SIC {$sic->folio_sic}" : "SIC #{$sic->id} (sin folio)" }} — {{ $sic->ticket?->sdp_display_id ?? $sic->ticket?->sdp_id ?? ('Ticket #'.$sic->ticket_id) }}</option>
-                    @endforeach
-                </x-ui.select>
-            </div>
-
-            <x-ui.select label="Artículo de Proyecto de Presupuesto (opcional)" name="form.proyecto_presupuesto_articulo_id" wire:model="form.proyecto_presupuesto_articulo_id" hint="Solo artículos Laptops/Desktops de proyectos ya autorizados. El origen es una SIC o un artículo de proyecto, no ambos.">
+            <x-ui.select label="Ticket (opcional)" name="form.ticket_id" wire:model="form.ticket_id">
                 <option value="">Sin asignar</option>
-                @foreach ($proyectoArticuloOptions as $proyectoArticulo)
-                    <option value="{{ $proyectoArticulo->id }}">{{ $proyectoArticulo->proyecto?->nombre_proyecto }} — {{ $proyectoArticulo->descripcion }} (x{{ $proyectoArticulo->cantidad }})</option>
+                @foreach ($ticketOptions as $ticket)
+                    <option value="{{ $ticket->id }}">{{ $ticket->sdp_display_id ?? $ticket->sdp_id ?? ('Ticket #'.$ticket->id) }} — {{ $ticket->fecha?->format('d/m/Y') }}</option>
                 @endforeach
             </x-ui.select>
 
             <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Origen</label>
+                <div class="flex items-center gap-4">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="radio" wire:model.live="origen" value="sic" class="border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                        Una o más SICs
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="radio" wire:model.live="origen" value="proyecto" class="border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                        Artículo de Proyecto de Presupuesto
+                    </label>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">El origen es una o más SICs o un artículo de proyecto, no ambos. También es válido dejar la solicitud sin ningún origen vinculado.</p>
+
+                @error('origen')
+                    <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+            </div>
+
+            @if ($origen === 'sic')
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SICs autorizadas y disponibles</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        Solo aparecen SICs autorizadas, de una categoría marcada como "va a Compra" (pantalla "Categorías que van a Compra") y que ninguna otra solicitud haya recogido todavía. Marca una o más — cada una se agrega como línea nueva.
+                    </p>
+
+                    @if ($sicPickerOptions->isEmpty())
+                        <p class="text-sm text-gray-500 dark:text-gray-400">No hay SICs disponibles con la configuración actual.</p>
+                    @else
+                        <div class="space-y-1 max-h-56 overflow-y-auto rounded-md border border-gray-100 dark:border-gray-800 p-3">
+                            @foreach ($sicPickerOptions as $sic)
+                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" value="{{ $sic->id }}" wire:model.live="sicIdsSeleccionados" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                                    {{ $this->sicPickerLabel($sic) }}
+                                </label>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @else
+                <x-ui.select label="Artículo de Proyecto de Presupuesto" name="form.proyecto_presupuesto_articulo_id" wire:model="form.proyecto_presupuesto_articulo_id" hint="Solo artículos Laptops/Desktops de proyectos ya autorizados.">
+                    <option value="">Sin asignar</option>
+                    @foreach ($proyectoArticuloOptions as $proyectoArticulo)
+                        <option value="{{ $proyectoArticulo->id }}">{{ $proyectoArticulo->proyecto?->nombre_proyecto }} — {{ $proyectoArticulo->descripcion }} (x{{ $proyectoArticulo->cantidad }})</option>
+                    @endforeach
+                </x-ui.select>
+
+                @error('form.proyecto_presupuesto_articulo_id')
+                    <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+            @endif
+
+            <div>
                 <div class="flex items-center justify-between mb-2">
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Líneas del pedido</label>
-                    <button type="button" wire:click="addLinea" class="text-sm text-primary hover:underline">+ Agregar línea</button>
+                    <button type="button" wire:click="addLinea" class="text-sm text-primary hover:underline">
+                        + Agregar línea{{ $origen === 'sic' ? ' manual (sin SIC real)' : '' }}
+                    </button>
                 </div>
 
                 @error('lineas')
@@ -144,6 +182,14 @@
                 <div class="space-y-3">
                     @foreach ($lineas as $i => $linea)
                         <div wire:key="linea-{{ $i }}" class="rounded-md border border-gray-100 dark:border-gray-800 p-3 space-y-2">
+                            @if (! empty($linea['sic_id']))
+                                <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 px-2 py-1 text-xs text-gray-600 dark:text-gray-400">
+                                    Línea generada desde una SIC marcada en el picker de arriba — desmárcala ahí (o usa "Quitar línea") para eliminarla.
+                                </div>
+                            @elseif ($origen === 'sic')
+                                <x-ui.input label="Folio de SIC (manual, opcional)" name="lineas.{{ $i }}.folio_sic_manual" wire:model="lineas.{{ $i }}.folio_sic_manual" hint="Solo si la SIC todavía no existe como registro real — captura el folio a mano." />
+                            @endif
+
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <x-ui.select label="Artículo del catálogo" name="lineas.{{ $i }}.articulo_id" wire:model="lineas.{{ $i }}.articulo_id">
                                     <option value="">Sin catálogo (descripción libre)</option>
