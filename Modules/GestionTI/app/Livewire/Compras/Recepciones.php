@@ -161,9 +161,9 @@ class Recepciones extends Component
         $this->lineas[$index]['articulo_tipo_equipo_id'] = $articulo?->tipo_equipo_id;
         $this->lineas[$index]['articulo_marca_id'] = $articulo?->marca_id;
         $this->lineas[$index]['articulo_modelo_id'] = $articulo?->modelo_id;
-        $this->lineas[$index]['articulo_procesador'] = $articulo?->procesador;
-        $this->lineas[$index]['articulo_ram'] = $articulo?->ram;
-        $this->lineas[$index]['articulo_almacenamiento'] = $articulo?->almacenamiento;
+        $this->lineas[$index]['articulo_procesador'] = $articulo?->procesador?->nombre;
+        $this->lineas[$index]['articulo_ram'] = $articulo?->ram?->nombre;
+        $this->lineas[$index]['articulo_almacenamiento'] = $articulo?->almacenamiento?->nombre;
     }
 
     private function clampAndResizeLinea(int $index): void
@@ -369,7 +369,11 @@ class Recepciones extends Component
             return;
         }
 
-        $solicitud = SolicitudProveedor::with('lineas.articulo')->find($this->selectedSolicitudId);
+        $solicitud = SolicitudProveedor::with([
+            'lineas.articulo.procesador',
+            'lineas.articulo.ram',
+            'lineas.articulo.almacenamiento',
+        ])->find($this->selectedSolicitudId);
 
         if (! $solicitud) {
             return;
@@ -397,9 +401,9 @@ class Recepciones extends Component
                 'articulo_tipo_equipo_id' => $articulo?->tipo_equipo_id,
                 'articulo_marca_id' => $articulo?->marca_id,
                 'articulo_modelo_id' => $articulo?->modelo_id,
-                'articulo_procesador' => $articulo?->procesador,
-                'articulo_ram' => $articulo?->ram,
-                'articulo_almacenamiento' => $articulo?->almacenamiento,
+                'articulo_procesador' => $articulo?->procesador?->nombre,
+                'articulo_ram' => $articulo?->ram?->nombre,
+                'articulo_almacenamiento' => $articulo?->almacenamiento?->nombre,
                 'tipo_equipo_id' => null,
                 'marca_id' => null,
                 'modelo_id' => null,

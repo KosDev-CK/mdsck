@@ -4,12 +4,15 @@ namespace Modules\GestionTI\Http\Controllers\Catalogos;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Licencia;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\PeriodicidadMantenimiento;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Propiedad;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\SistemaOperativo;
 use Modules\GestionTI\Models\StockMinimo;
 use Modules\GestionTI\Models\TipoEquipo;
@@ -30,6 +33,9 @@ class InventarioExportController extends Controller
         'tipo_equipo' => ['model' => TipoEquipo::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre', 'nombre_conocido']],
         'marcas' => ['model' => Marca::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
         'modelos' => ['model' => Modelo::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
+        'procesadores' => ['model' => Procesador::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
+        'rams' => ['model' => Ram::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
+        'almacenamientos' => ['model' => Almacenamiento::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
         'sistemas_operativos' => ['model' => SistemaOperativo::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
         'licencias' => ['model' => Licencia::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
         'propiedades' => ['model' => Propiedad::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],

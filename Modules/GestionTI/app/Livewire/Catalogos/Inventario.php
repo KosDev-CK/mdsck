@@ -14,10 +14,13 @@ use Modules\GestionTI\Models\AssetCompliance;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Licencia;
 use Modules\GestionTI\Models\Mantenimiento;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\PeriodicidadMantenimiento;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Propiedad;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\SistemaOperativo;
 use Modules\GestionTI\Models\StockMinimo;
 use Modules\GestionTI\Models\TipoEquipo;
@@ -99,6 +102,45 @@ class Inventario extends Component
                 'searchColumns' => ['nombre'],
                 'mergeReferences' => [
                     ['model' => Asset::class, 'column' => 'modelo_id'],
+                ],
+            ],
+            'procesadores' => [
+                'label' => 'Procesador',
+                'model' => Procesador::class,
+                'fields' => ['nombre'],
+                'rules' => [
+                    'form.nombre' => 'required|string|max:255',
+                ],
+                'orderBy' => 'nombre',
+                'searchColumns' => ['nombre'],
+                'mergeReferences' => [
+                    ['model' => ArticuloSolicitud::class, 'column' => 'procesador_id'],
+                ],
+            ],
+            'rams' => [
+                'label' => 'RAM',
+                'model' => Ram::class,
+                'fields' => ['nombre'],
+                'rules' => [
+                    'form.nombre' => 'required|string|max:255',
+                ],
+                'orderBy' => 'nombre',
+                'searchColumns' => ['nombre'],
+                'mergeReferences' => [
+                    ['model' => ArticuloSolicitud::class, 'column' => 'ram_id'],
+                ],
+            ],
+            'almacenamientos' => [
+                'label' => 'Almacenamiento',
+                'model' => Almacenamiento::class,
+                'fields' => ['nombre'],
+                'rules' => [
+                    'form.nombre' => 'required|string|max:255',
+                ],
+                'orderBy' => 'nombre',
+                'searchColumns' => ['nombre'],
+                'mergeReferences' => [
+                    ['model' => ArticuloSolicitud::class, 'column' => 'almacenamiento_id'],
                 ],
             ],
             'sistemas_operativos' => [

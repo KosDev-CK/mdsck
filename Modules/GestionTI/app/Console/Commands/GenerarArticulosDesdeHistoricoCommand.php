@@ -6,10 +6,13 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
+use Modules\GestionTI\Models\Procesador;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
 
 /**
@@ -26,7 +29,12 @@ use Modules\GestionTI\Models\TipoEquipo;
  * cómputo físico real), usando como ficha técnica "representativa" la
  * combinación (procesador, ram, almacenamiento) MÁS FRECUENTE entre los
  * Asset del grupo (tomada de `especificaciones->disco_duro` para
- * `almacenamiento` — el Asset no tiene columna propia). El Artículo es una
+ * `almacenamiento` — el Asset no tiene columna propia). Desde que
+ * `procesador`/`ram`/`almacenamiento` son catálogos reales en
+ * `ArticuloSolicitud` (ver docs/gestionti-progreso.md, entrada "Catálogos de
+ * Procesador/RAM/Almacenamiento"), el valor representativo se resuelve con
+ * `firstOrCreate(['nombre' => $valor])` contra `Procesador`/`Ram`/
+ * `Almacenamiento` y se guarda el `_id` resultante. El Artículo es una
  * plantilla, no una copia exacta por unidad: no importa que un Asset
  * individual no calce con la combinación elegida.
  *
@@ -107,9 +115,9 @@ class GenerarArticulosDesdeHistoricoCommand extends Command
                         'categoria' => 'laptops_desktops',
                         'es_inventariable' => true,
                         'activo' => true,
-                        'procesador' => $procesador,
-                        'ram' => $ram,
-                        'almacenamiento' => $almacenamiento,
+                        'procesador_id' => $procesador !== null ? Procesador::firstOrCreate(['nombre' => $procesador])->id : null,
+                        'ram_id' => $ram !== null ? Ram::firstOrCreate(['nombre' => $ram])->id : null,
+                        'almacenamiento_id' => $almacenamiento !== null ? Almacenamiento::firstOrCreate(['nombre' => $almacenamiento])->id : null,
                     ]
                 );
 

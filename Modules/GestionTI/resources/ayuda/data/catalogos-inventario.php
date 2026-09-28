@@ -2,7 +2,7 @@
 
 return [
     'titulo' => 'Catálogos de Inventario',
-    'concepto' => 'Agrupa, en pestañas, todos los catálogos de apoyo que usa el módulo de Inventarios: Tipo de Equipo, Marca, Modelo, Sistema Operativo, Licencia, Propiedad, Validador y Estatus de Activo, más dos catálogos de "regla" — Periodicidad de Mantenimiento y Stock Mínimo — que no describen un activo, sino una política (cada cuánto se le da mantenimiento a un tipo de equipo, o cuántas unidades mínimas debe haber de un tipo de equipo en una ubicación).',
+    'concepto' => 'Agrupa, en pestañas, todos los catálogos de apoyo que usa el módulo de Inventarios: Tipo de Equipo, Marca, Modelo, Procesador, RAM, Almacenamiento, Sistema Operativo, Licencia, Propiedad, Validador y Estatus de Activo, más dos catálogos de "regla" — Periodicidad de Mantenimiento y Stock Mínimo — que no describen un activo, sino una política (cada cuánto se le da mantenimiento a un tipo de equipo, o cuántas unidades mínimas debe haber de un tipo de equipo en una ubicación).',
     'resuelve' => 'Normaliza la forma en que se describe cada activo del inventario. Sin estos catálogos, la Ficha de Activo tendría que capturar marca, modelo o sistema operativo como texto libre, lo que dificulta los reportes y genera duplicados con nombres ligeramente distintos (por ejemplo "HP" y "Hewlett-Packard" como si fueran marcas distintas). Periodicidad de Mantenimiento y Stock Mínimo, además, son la base de dos alertas automáticas del módulo: "Mantenimientos próximos" y "Alertas de stock bajo mínimo" en el Dashboard de TI.',
     'proceso' => [
         'Elige la pestaña del catálogo que quieres administrar.',
@@ -13,9 +13,10 @@ return [
         'Usa "Exportar a Excel" en cualquier momento para descargar el catálogo de la pestaña activa.',
     ],
     'campos' => [
-        ['nombre' => 'Nombre (todas las pestañas) / Nombre conocido (solo Tipo de Equipo)', 'explicacion' => 'El nombre formal es obligatorio en todas las pestañas. "Nombre conocido" (cómo se le llama internamente si es distinto del nombre formal) solo existe en Tipo de Equipo, y ahí es opcional — las demás pestañas (Marca, Sistema Operativo, Licencia, Propiedad, Validador) solo tienen "Nombre".'],
+        ['nombre' => 'Nombre (todas las pestañas) / Nombre conocido (solo Tipo de Equipo)', 'explicacion' => 'El nombre formal es obligatorio en todas las pestañas. "Nombre conocido" (cómo se le llama internamente si es distinto del nombre formal) solo existe en Tipo de Equipo, y ahí es opcional — las demás pestañas (Marca, Procesador, RAM, Almacenamiento, Sistema Operativo, Licencia, Propiedad, Validador) solo tienen "Nombre".'],
         ['nombre' => 'En alcance del inventario activo (Tipo de Equipo)', 'explicacion' => 'Indica si ese tipo de equipo (por ejemplo Laptop, PC o Monitor) se considera parte del inventario activo que se controla de cerca. Es una decisión de negocio, no un estatus de activo/inactivo del catálogo — arranca marcado por default al crear uno nuevo.'],
         ['nombre' => 'Marca (Modelo)', 'explicacion' => 'A qué marca pertenece el modelo. Obligatoria — primero debe existir la marca.'],
+        ['nombre' => 'Procesador / RAM / Almacenamiento', 'explicacion' => 'Catálogos de solo "Nombre" (ej. "Core i7", "16GB", "512GB SSD") que alimentan los selects de ficha técnica del Artículo de Solicitud, en Catálogos de Compras — dejaron de ser texto libre para evitar duplicados con variantes de captura (ej. "16GB" vs "16 GB").'],
         ['nombre' => 'Código (Estatus de Activo)', 'explicacion' => 'Clave estable usada internamente por el sistema (por ejemplo "en_stock" o "asignado"), distinta del nombre visible. Obligatoria y única.'],
         ['nombre' => 'Tipo de equipo (Periodicidad de Mantenimiento y Stock Mínimo)', 'explicacion' => 'A qué tipo de equipo aplica la regla. Obligatorio.'],
         ['nombre' => 'Meses sugeridos (Periodicidad de Mantenimiento)', 'explicacion' => 'Cada cuántos meses se recomienda dar mantenimiento a ese tipo de equipo. Solo puede existir una periodicidad por tipo de equipo — si ya existe una, hay que editarla en vez de crear otra.'],

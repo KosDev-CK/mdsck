@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\CentroCosto;
@@ -19,7 +20,9 @@ use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\Recepcion;
 use Modules\GestionTI\Models\SolicitudProveedor;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
@@ -444,6 +447,9 @@ class RecepcionesTest extends TestCase
         $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
         $marca = Marca::create(['nombre' => 'Dell']);
         $modelo = Modelo::create(['nombre' => 'Latitude 5440', 'marca_id' => $marca->id]);
+        $procesador = Procesador::create(['nombre' => 'Core i7']);
+        $ram = Ram::create(['nombre' => '16GB']);
+        $almacenamiento = Almacenamiento::create(['nombre' => '512GB SSD']);
 
         $articulo = ArticuloSolicitud::create([
             'codigo' => 'ART-FICHA-COMPLETA',
@@ -452,9 +458,9 @@ class RecepcionesTest extends TestCase
             'tipo_equipo_id' => $tipoEquipo->id,
             'marca_id' => $marca->id,
             'modelo_id' => $modelo->id,
-            'procesador' => 'Core i7',
-            'ram' => '16GB',
-            'almacenamiento' => '512GB SSD',
+            'procesador_id' => $procesador->id,
+            'ram_id' => $ram->id,
+            'almacenamiento_id' => $almacenamiento->id,
             'es_inventariable' => true,
         ]);
 

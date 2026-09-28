@@ -82,6 +82,61 @@ class InventarioTest extends TestCase
         $this->assertDatabaseHas('marcas', ['nombre' => 'Dell']);
     }
 
+    public function test_can_create_a_procesador(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'procesadores')
+            ->call('create')
+            ->set('form.nombre', 'Core i7')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('procesadores', ['nombre' => 'Core i7']);
+    }
+
+    public function test_can_create_a_ram(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'rams')
+            ->call('create')
+            ->set('form.nombre', '16GB')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('rams', ['nombre' => '16GB']);
+    }
+
+    public function test_can_create_an_almacenamiento(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'almacenamientos')
+            ->call('create')
+            ->set('form.nombre', '512GB SSD')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('almacenamientos', ['nombre' => '512GB SSD']);
+    }
+
+    public function test_can_toggle_activo_on_a_procesador(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $procesador = \Modules\GestionTI\Models\Procesador::create(['nombre' => 'Core i5']);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'procesadores')
+            ->call('toggleActivo', $procesador->id);
+
+        $this->assertFalse($procesador->fresh()->activo);
+    }
+
     public function test_modelo_requires_a_valid_marca_id(): void
     {
         $this->actingAs($this->actingUser());

@@ -5,11 +5,14 @@ namespace Modules\GestionTI\Tests\Feature\Console;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
+use Modules\GestionTI\Models\Procesador;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
 use Tests\TestCase;
 
@@ -82,9 +85,9 @@ class GenerarArticulosDesdeHistoricoCommandTest extends TestCase
         $this->assertSame($this->tipoEquipo->id, $articulo->tipo_equipo_id);
         $this->assertSame($this->marca->id, $articulo->marca_id);
         $this->assertSame($this->modelo->id, $articulo->modelo_id);
-        $this->assertSame('i5', $articulo->procesador);
-        $this->assertSame('8GB', $articulo->ram);
-        $this->assertSame('1TB', $articulo->almacenamiento);
+        $this->assertSame('i5', $articulo->procesador?->nombre);
+        $this->assertSame('8GB', $articulo->ram?->nombre);
+        $this->assertSame('1TB', $articulo->almacenamiento?->nombre);
         $this->assertSame('laptops_desktops', $articulo->categoria);
         $this->assertTrue($articulo->es_inventariable);
         $this->assertTrue($articulo->activo);
@@ -95,6 +98,12 @@ class GenerarArticulosDesdeHistoricoCommandTest extends TestCase
         // Los 3 Assets del grupo quedan vinculados al mismo Artículo, sin
         // importar si calzan exacto con la combinación "representativa".
         $this->assertSame(3, Asset::where('articulo_id', $articulo->id)->count());
+
+        // El valor representativo se reutiliza vía firstOrCreate — no se
+        // crea un duplicado de catálogo por cada corrida.
+        $this->assertSame(1, Procesador::count());
+        $this->assertSame(1, Ram::count());
+        $this->assertSame(1, Almacenamiento::count());
     }
 
     public function test_creates_a_separate_articulo_per_distinct_tipo_marca_modelo_combination(): void

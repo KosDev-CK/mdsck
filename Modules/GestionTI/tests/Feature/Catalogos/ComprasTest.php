@@ -7,10 +7,13 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Catalogos\Compras;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -172,6 +175,9 @@ class ComprasTest extends TestCase
 
         $marca = Marca::create(['nombre' => 'Dell']);
         $modelo = Modelo::create(['nombre' => 'Latitude 5440', 'marca_id' => $marca->id]);
+        $procesador = Procesador::create(['nombre' => 'Core i7']);
+        $ram = Ram::create(['nombre' => '16GB']);
+        $almacenamiento = Almacenamiento::create(['nombre' => '512GB SSD']);
 
         Livewire::test(Compras::class)
             ->call('setTab', 'articulos_solicitud')
@@ -182,9 +188,9 @@ class ComprasTest extends TestCase
             ->set('form.categoria', 'laptops_desktops')
             ->set('form.marca_id', $marca->id)
             ->set('form.modelo_id', $modelo->id)
-            ->set('form.procesador', 'Core i7')
-            ->set('form.ram', '16GB')
-            ->set('form.almacenamiento', '512GB SSD')
+            ->set('form.procesador_id', $procesador->id)
+            ->set('form.ram_id', $ram->id)
+            ->set('form.almacenamiento_id', $almacenamiento->id)
             ->set('form.es_inventariable', true)
             ->call('save')
             ->assertHasNoErrors();
@@ -193,9 +199,9 @@ class ComprasTest extends TestCase
             'codigo' => 'ART-FICHA-001',
             'marca_id' => $marca->id,
             'modelo_id' => $modelo->id,
-            'procesador' => 'Core i7',
-            'ram' => '16GB',
-            'almacenamiento' => '512GB SSD',
+            'procesador_id' => $procesador->id,
+            'ram_id' => $ram->id,
+            'almacenamiento_id' => $almacenamiento->id,
             'es_inventariable' => 1,
         ]);
     }

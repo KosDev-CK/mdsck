@@ -20,7 +20,7 @@ class ArticuloSolicitud extends Model
 
     protected $fillable = [
         'codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id', 'activo',
-        'marca_id', 'modelo_id', 'procesador', 'ram', 'almacenamiento', 'es_inventariable',
+        'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'es_inventariable',
     ];
 
     protected $casts = [
@@ -41,5 +41,20 @@ class ArticuloSolicitud extends Model
     public function modelo()
     {
         return $this->belongsTo(Modelo::class);
+    }
+
+    public function procesador()
+    {
+        return $this->belongsTo(Procesador::class);
+    }
+
+    public function ram()
+    {
+        return $this->belongsTo(Ram::class);
+    }
+
+    public function almacenamiento()
+    {
+        return $this->belongsTo(Almacenamiento::class);
     }
 }

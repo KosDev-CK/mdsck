@@ -11,6 +11,7 @@ use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\PeriodicidadMantenimiento;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\StockMinimo;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Models\Ubicacion;
@@ -111,6 +112,33 @@ class InventarioMergeTest extends TestCase
         $this->assertSame($keep->id, $periodicidad->fresh()->tipo_equipo_id);
         $this->assertSame($keep->id, $stock->fresh()->tipo_equipo_id);
         $this->assertSame($keep->id, $asset->fresh()->tipo_equipo_id);
+    }
+
+    public function test_merging_two_procesadores_reassigns_the_articulo_and_deletes_the_duplicate(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $duplicate = Procesador::create(['nombre' => 'core i7']);
+        $keep = Procesador::create(['nombre' => 'Core i7']);
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-PROC-100',
+            'descripcion' => 'Laptop genérica',
+            'unidad_medida' => 'pieza',
+            'procesador_id' => $duplicate->id,
+        ]);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'procesadores')
+            ->call('openMerge')
+            ->set('mergeDeleteId', $duplicate->id)
+            ->set('mergeKeepId', $keep->id)
+            ->call('confirmMerge')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseMissing('procesadores', ['id' => $duplicate->id]);
+        $this->assertDatabaseHas('procesadores', ['id' => $keep->id]);
+        $this->assertSame($keep->id, $articulo->fresh()->procesador_id);
     }
 
     public function test_merging_a_record_into_itself_is_rejected(): void

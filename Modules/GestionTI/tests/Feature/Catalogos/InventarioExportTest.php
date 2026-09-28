@@ -5,6 +5,7 @@ namespace Modules\GestionTI\Tests\Feature\Catalogos;
 use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -51,6 +52,18 @@ class InventarioExportTest extends TestCase
         TipoEquipo::create(['nombre' => 'Laptop']);
 
         $response = $this->get('/catalogos/inventario/exportar?tab=tipo_equipo');
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_export_returns_an_xlsx_file_for_procesadores(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Procesador::create(['nombre' => 'Core i7']);
+
+        $response = $this->get('/catalogos/inventario/exportar?tab=procesadores');
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

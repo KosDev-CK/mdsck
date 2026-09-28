@@ -153,9 +153,24 @@
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <x-ui.input label="Procesador (opcional)" name="form.procesador" wire:model="form.procesador" />
-                    <x-ui.input label="RAM (opcional)" name="form.ram" wire:model="form.ram" hint="Ej. 16GB." />
-                    <x-ui.input label="Almacenamiento (opcional)" name="form.almacenamiento" wire:model="form.almacenamiento" hint="Ej. 512GB SSD." />
+                    <x-ui.select label="Procesador (opcional)" name="form.procesador_id" wire:model="form.procesador_id">
+                        <option value="">Sin asignar</option>
+                        @foreach ($procesadorOptions as $procesador)
+                            <option value="{{ $procesador->id }}">{{ $procesador->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.select label="RAM (opcional)" name="form.ram_id" wire:model="form.ram_id">
+                        <option value="">Sin asignar</option>
+                        @foreach ($ramOptions as $ram)
+                            <option value="{{ $ram->id }}">{{ $ram->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
+                    <x-ui.select label="Almacenamiento (opcional)" name="form.almacenamiento_id" wire:model="form.almacenamiento_id">
+                        <option value="">Sin asignar</option>
+                        @foreach ($almacenamientoOptions as $almacenamiento)
+                            <option value="{{ $almacenamiento->id }}">{{ $almacenamiento->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
                 </div>
 
                 <x-ui.toggle label="Es inventariable (se puede dar de alta como Activo real)" name="form.es_inventariable" wire:model="form.es_inventariable" />

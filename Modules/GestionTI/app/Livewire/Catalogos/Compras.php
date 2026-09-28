@@ -7,12 +7,15 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
 use Modules\GestionTI\Concerns\MergesCatalogDuplicates;
+use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\Mantenimiento;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
+use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
+use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Support\Catalogos\CategoriaArticulo;
 
@@ -66,7 +69,7 @@ class Compras extends Component
                 'model' => ArticuloSolicitud::class,
                 'fields' => [
                     'codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id',
-                    'marca_id', 'modelo_id', 'procesador', 'ram', 'almacenamiento', 'es_inventariable',
+                    'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'es_inventariable',
                 ],
                 'rules' => [
                     'form.codigo' => 'required|string|max:100',
@@ -76,9 +79,9 @@ class Compras extends Component
                     'form.tipo_equipo_id' => 'nullable|exists:tipos_equipo,id',
                     'form.marca_id' => 'nullable|exists:marcas,id',
                     'form.modelo_id' => 'nullable|exists:modelos,id',
-                    'form.procesador' => 'nullable|string|max:255',
-                    'form.ram' => 'nullable|string|max:255',
-                    'form.almacenamiento' => 'nullable|string|max:255',
+                    'form.procesador_id' => 'nullable|exists:procesadores,id',
+                    'form.ram_id' => 'nullable|exists:rams,id',
+                    'form.almacenamiento_id' => 'nullable|exists:almacenamientos,id',
                     'form.es_inventariable' => 'boolean',
                 ],
                 'orderBy' => 'codigo',
@@ -129,11 +132,12 @@ class Compras extends Component
      * normalizarlos a null antes de validar/guardar para que la FK nullable
      * (o `Rule::in(...)` de categoría) no reciba una cadena vacía.
      * Generalizado desde solo `tipo_equipo_id` para cubrir también
-     * `marca_id`/`modelo_id`/`categoria` del tab de Artículos.
+     * `marca_id`/`modelo_id`/`procesador_id`/`ram_id`/`almacenamiento_id`/
+     * `categoria` del tab de Artículos.
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'categoria'] as $field) {
+        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'categoria'] as $field) {
             if (array_key_exists($field, $this->form) && $this->form[$field] === '') {
                 $this->form[$field] = null;
             }
@@ -249,6 +253,15 @@ class Compras extends Component
                 : null,
             'modeloOptions' => $this->tab === 'articulos_solicitud'
                 ? Modelo::where('activo', true)->with('marca')->orderBy('nombre')->get()
+                : null,
+            'procesadorOptions' => $this->tab === 'articulos_solicitud'
+                ? Procesador::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'ramOptions' => $this->tab === 'articulos_solicitud'
+                ? Ram::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'almacenamientoOptions' => $this->tab === 'articulos_solicitud'
+                ? Almacenamiento::where('activo', true)->orderBy('nombre')->get()
                 : null,
             'mergeOptions' => array_key_exists('mergeReferences', $config)
                 ? $config['model']::orderBy($config['orderBy'])->get()
