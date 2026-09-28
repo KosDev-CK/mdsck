@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\TipoEquipo;
+use Modules\GestionTI\Models\Validador;
+use Modules\MesaServicio\Models\SdpTechnician;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -74,6 +76,19 @@ class InventarioExportTest extends TestCase
         $this->actingAs($this->actingUser());
 
         $response = $this->get('/catalogos/inventario/exportar?tab=periodicidad_mantenimiento');
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_export_returns_technician_and_iniciales_columns_for_validadores(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $tecnico = SdpTechnician::create(['sdp_id' => 'SDP-1', 'nombre' => 'Juan Pérez']);
+        Validador::create(['nombre' => 'Juan Pérez', 'tecnico_id' => $tecnico->id, 'iniciales' => 'JP']);
+
+        $response = $this->get('/catalogos/inventario/exportar?tab=validadores');
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

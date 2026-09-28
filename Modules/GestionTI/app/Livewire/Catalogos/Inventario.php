@@ -26,6 +26,7 @@ use Modules\GestionTI\Models\StockMinimo;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Models\Ubicacion;
 use Modules\GestionTI\Models\Validador;
+use Modules\MesaServicio\Models\SdpTechnician;
 
 #[Layout('layouts.app')]
 class Inventario extends Component
@@ -188,9 +189,11 @@ class Inventario extends Component
             'validadores' => [
                 'label' => 'Validador',
                 'model' => Validador::class,
-                'fields' => ['nombre'],
+                'fields' => ['nombre', 'tecnico_id', 'iniciales'],
                 'rules' => [
                     'form.nombre' => 'required|string|max:255',
+                    'form.tecnico_id' => 'nullable|exists:sdp_technicians,id',
+                    'form.iniciales' => 'nullable|string|max:20',
                 ],
                 'orderBy' => 'nombre',
                 'searchColumns' => ['nombre'],
@@ -298,6 +301,45 @@ class Inventario extends Component
         $this->resetPage();
     }
 
+    /**
+     * `tecnico_id` es la única FK verdaderamente opcional de este archivo
+     * hasta ahora (el resto — `marca_id` en Modelo, `tipo_equipo_id`/
+     * `ubicacion_id` en los tabs "regla" — son `required`, así que un select
+     * vacío ya falla por `required` antes de llegar a `exists`) — sin esto,
+     * un `''` de "Sin asignar" revienta la FK nullable al guardar. Mismo
+     * patrón `nullifyEmptyForeignKeys()` ya usado en `RegistroManual.php`/
+     * `Compras.php`/`Empleados.php`.
+     */
+    private function nullifyEmptyForeignKeys(): void
+    {
+        if (($this->form['tecnico_id'] ?? null) === '') {
+            $this->form['tecnico_id'] = null;
+        }
+    }
+
+    /**
+     * Al elegir un técnico real, `nombre` (el campo que ya leen las 5
+     * pantallas/6 FKs existentes de este catálogo — Recepciones,
+     * Asignaciones, Mantenimientos, RegistroManual, el PDF de responsiva) se
+     * auto-sincroniza con su nombre real, así ninguna de esas pantallas
+     * necesita tocarse. Si se des-asigna el técnico (vuelve a "Sin
+     * asignar"), `nombre` se queda como está — vuelve a ser editable a mano,
+     * igual que el comportamiento de siempre para los registros legacy/
+     * "No aplica" que nunca tienen técnico real asociado.
+     */
+    public function updatedFormTecnicoId($value): void
+    {
+        if ($value === '' || $value === null) {
+            return;
+        }
+
+        $tecnico = SdpTechnician::find($value);
+
+        if ($tecnico) {
+            $this->form['nombre'] = $tecnico->nombre;
+        }
+    }
+
     public function create(): void
     {
         $this->editingId = null;
@@ -329,6 +371,7 @@ class Inventario extends Component
     public function save(): void
     {
         $config = $this->catalogos()[$this->tab];
+        $this->nullifyEmptyForeignKeys();
         $this->validate($this->rules());
 
         if ($this->editingId) {
@@ -406,6 +449,7 @@ class Inventario extends Component
             ->when($this->tab === 'modelos', fn ($q) => $q->with('marca'))
             ->when($this->tab === 'periodicidad_mantenimiento', fn ($q) => $q->with('tipoEquipo'))
             ->when($this->tab === 'stock_minimo', fn ($q) => $q->with(['tipoEquipo', 'ubicacion']))
+            ->when($this->tab === 'validadores', fn ($q) => $q->with('tecnico'))
             ->when($this->search !== '' && ! empty($config['searchColumns']), function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -428,6 +472,9 @@ class Inventario extends Component
                 : null,
             'ubicacionOptions' => $this->tab === 'stock_minimo'
                 ? Ubicacion::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'tecnicoOptions' => $this->tab === 'validadores'
+                ? SdpTechnician::activos()->orderBy('nombre')->get()
                 : null,
             'mergeOptions' => array_key_exists('mergeReferences', $config)
                 ? $config['model']::orderBy($config['orderBy'])->get()

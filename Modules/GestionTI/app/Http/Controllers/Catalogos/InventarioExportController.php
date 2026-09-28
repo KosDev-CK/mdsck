@@ -57,6 +57,7 @@ class InventarioExportController extends Controller
             ->when($tab === 'modelos', fn ($q) => $q->with('marca'))
             ->when($tab === 'periodicidad_mantenimiento', fn ($q) => $q->with('tipoEquipo'))
             ->when($tab === 'stock_minimo', fn ($q) => $q->with(['tipoEquipo', 'ubicacion']))
+            ->when($tab === 'validadores', fn ($q) => $q->with('tecnico'))
             ->when($search !== '' && ! empty($config['searchColumns']), function ($q) use ($config, $search) {
                 $q->where(function ($q) use ($config, $search) {
                     foreach ($config['searchColumns'] as $column) {
@@ -87,6 +88,10 @@ class InventarioExportController extends Controller
             'stock_minimo' => [
                 ['Tipo de equipo', 'Ubicación', 'Cantidad mínima', 'Estatus'],
                 $records->map(fn ($r) => [$r->tipoEquipo?->nombre, $r->ubicacion?->nombre, $r->cantidad_minima, $r->activo ? 'Activo' : 'Inactivo']),
+            ],
+            'validadores' => [
+                ['Nombre', 'Técnico', 'Iniciales', 'Estatus'],
+                $records->map(fn ($r) => [$r->nombre, $r->tecnico?->nombre, $r->iniciales, $r->activo ? 'Activo' : 'Inactivo']),
             ],
             default => [
                 ['Nombre', 'Estatus'],

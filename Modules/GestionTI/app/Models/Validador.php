@@ -4,12 +4,13 @@ namespace Modules\GestionTI\Models;
 
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Modules\MesaServicio\Models\SdpTechnician;
 
 class Validador extends Model
 {
     protected $table = 'validadores';
 
-    protected $fillable = ['nombre', 'activo', 'user_id'];
+    protected $fillable = ['nombre', 'activo', 'user_id', 'tecnico_id', 'iniciales'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -25,5 +26,20 @@ class Validador extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Primera referencia de `GestionTI` a un modelo de `Modules\MesaServicio`
+     * — decisión deliberada, no una filtración de capas: los 14 registros
+     * reales de este catálogo son, en el fondo, técnicos de TI (hoy
+     * capturados como códigos sueltos con datos sucios). Ese catálogo de
+     * técnicos ya existe como fuente de verdad en `Modules\MesaServicio`
+     * (`sdp_technicians`, pantalla "Técnicos", ya en producción) — enlazar
+     * en vez de duplicarlo. `nullable` porque casos como "No aplica" o
+     * registros legacy aún sin enlazar a mano se quedan sin técnico real.
+     */
+    public function tecnico()
+    {
+        return $this->belongsTo(SdpTechnician::class, 'tecnico_id');
     }
 }

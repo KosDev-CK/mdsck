@@ -12,6 +12,8 @@ use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\PeriodicidadMantenimiento;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Models\Ubicacion;
+use Modules\GestionTI\Models\Validador;
+use Modules\MesaServicio\Models\SdpTechnician;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -383,6 +385,77 @@ class InventarioTest extends TestCase
             ->assertSee('No se puede eliminar');
 
         $this->assertDatabaseHas('tipos_equipo', ['id' => $tipoEquipo->id]);
+    }
+
+    public function test_can_create_a_validador_linked_to_a_real_tecnico_and_nombre_syncs(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $tecnico = SdpTechnician::create([
+            'sdp_id' => 'SDP-001',
+            'nombre' => 'Norma Karina Sánchez Martínez',
+            'activo' => true,
+        ]);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('create')
+            ->set('form.tecnico_id', $tecnico->id)
+            ->assertSet('form.nombre', 'Norma Karina Sánchez Martínez')
+            ->set('form.iniciales', 'NKSM')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('validadores', [
+            'nombre' => 'Norma Karina Sánchez Martínez',
+            'tecnico_id' => $tecnico->id,
+            'iniciales' => 'NKSM',
+        ]);
+    }
+
+    public function test_can_create_a_validador_without_a_tecnico_using_free_text_nombre(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('create')
+            ->set('form.nombre', 'No aplica')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('validadores', [
+            'nombre' => 'No aplica',
+            'tecnico_id' => null,
+        ]);
+    }
+
+    public function test_can_edit_an_existing_validador_to_assign_tecnico_and_iniciales(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $validador = Validador::create(['nombre' => 'AEHM']);
+        $tecnico = SdpTechnician::create([
+            'sdp_id' => 'SDP-002',
+            'nombre' => 'Ana Elena Hernández Morales',
+            'activo' => true,
+        ]);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('edit', $validador->id)
+            ->set('form.tecnico_id', $tecnico->id)
+            ->assertSet('form.nombre', 'Ana Elena Hernández Morales')
+            ->set('form.iniciales', 'AEHM')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('validadores', [
+            'id' => $validador->id,
+            'nombre' => 'Ana Elena Hernández Morales',
+            'tecnico_id' => $tecnico->id,
+            'iniciales' => 'AEHM',
+        ]);
     }
 
     public function test_screen_is_seeded_and_visible_to_administrador(): void

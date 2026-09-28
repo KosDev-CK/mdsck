@@ -63,6 +63,7 @@
                 'estatus_activo' => ['Código', 'Nombre', 'Estatus', ''],
                 'periodicidad_mantenimiento' => ['Tipo de equipo', 'Meses sugeridos', 'Estatus', ''],
                 'stock_minimo' => ['Tipo de equipo', 'Ubicación', 'Cantidad mínima', 'Estatus', ''],
+                'validadores' => ['Nombre', 'Técnico', 'Iniciales', 'Estatus', ''],
                 default => ['Nombre', 'Estatus', ''],
             };
         @endphp
@@ -89,6 +90,10 @@
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->tipoEquipo?->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->ubicacion?->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->cantidad_minima }}</td>
+                    @elseif ($tab === 'validadores')
+                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->tecnico?->nombre ?? '—' }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->iniciales }}</td>
                     @else
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                     @endif
@@ -167,6 +172,25 @@
                     </x-ui.select>
                 </div>
                 <x-ui.input label="Cantidad mínima" name="form.cantidad_minima" type="number" wire:model="form.cantidad_minima" />
+            @elseif ($tab === 'validadores')
+                <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
+                <x-ui.select
+                    label="Técnico (opcional)"
+                    name="form.tecnico_id"
+                    wire:model.live="form.tecnico_id"
+                    hint="Si el validador es un técnico de TI real, enlázalo aquí — el nombre se sincroniza automáticamente con el catálogo de Técnicos."
+                >
+                    <option value="">Sin técnico asociado</option>
+                    @foreach ($tecnicoOptions as $tecnico)
+                        <option value="{{ $tecnico->id }}">{{ $tecnico->nombre }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input
+                    label="Iniciales (opcional)"
+                    name="form.iniciales"
+                    wire:model="form.iniciales"
+                    hint="Código corto original, ej. NKSM — solo referencia, no tiene que coincidir con nada del catálogo de Técnicos."
+                />
             @else
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
             @endif
