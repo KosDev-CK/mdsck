@@ -5,7 +5,10 @@ namespace Modules\GestionTI\Tests\Feature\Ebs;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Modules\GestionTI\Models\ArticuloSolicitud;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\CentroCosto;
+use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\EbsRequisition;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
@@ -420,6 +423,84 @@ class EbsRequisitionSyncServiceTest extends TestCase
         $solicitud->refresh();
         $this->assertSame($ebsRequisicion->id, $solicitud->ebs_requisition_id);
         $this->assertSame(SolicitudSicBorrador::ESTATUS_AUTORIZADA, $solicitud->estatus);
+    }
+
+    // --- mapeo EBS -> artículo estándar (EbsArticulo) -----------------------
+
+    public function test_sincronizar_creadas_creates_an_unmapped_ebs_articulo_for_a_new_item_id(): void
+    {
+        $client = $this->mockClient();
+        $client->method('obtenerCreadas')->willReturn([$this->requisicionCreada()]);
+
+        $this->service($client)->sincronizarCreadas(1);
+
+        $this->assertDatabaseHas('ebs_articulos', [
+            'ebs_item_id' => 6962,
+            'ebs_item_description' => 'LAPTOP EQUIPO PORTATIL PERFIL EJECUTIVO CI7',
+            'articulo_id' => null,
+        ]);
+    }
+
+    public function test_sincronizar_creadas_never_overwrites_an_already_mapped_ebs_articulo(): void
+    {
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-EBS-MAP',
+            'descripcion' => 'Laptop Ejecutiva',
+            'unidad_medida' => 'Pieza',
+        ]);
+        EbsArticulo::create(['ebs_item_id' => 6962, 'articulo_id' => $articulo->id]);
+
+        $client = $this->mockClient();
+        $client->method('obtenerCreadas')->willReturn([$this->requisicionCreada()]);
+
+        $this->service($client)->sincronizarCreadas(1);
+
+        $this->assertSame(1, EbsArticulo::where('ebs_item_id', 6962)->count());
+        $this->assertDatabaseHas('ebs_articulos', [
+            'ebs_item_id' => 6962,
+            'articulo_id' => $articulo->id,
+        ]);
+    }
+
+    /**
+     * El rediseño de "SIC en EBS -> Solicitud a Proveedor" (ver
+     * docs/gestionti-progreso.md) eliminó la auto-creación de una
+     * `SolicitudSicBorrador` "esqueleto" cuando no hay match por folio — el
+     * mapeo `EbsArticulo` (que sí se queda) ya no crea ninguna SIC local
+     * sintética, por eso este test confirma el comportamiento NEGATIVO: sin
+     * match por folio, aunque el item esté mapeado a una categoría de
+     * compra, el sync no crea absolutamente nada en `solicitudes_sic_borrador`.
+     * El camino de asignación directa (sin SIC local) ahora vive en
+     * `EbsRequisition::scopeElegibleDirectoSinSic()`/`articuloMapeadoDeCompra()`,
+     * cubierto en `MesaServicio/EbsRequisicionesTest.php` y
+     * `Compras/SolicitudesProveedorTest.php`.
+     */
+    public function test_sincronizar_creadas_never_creates_a_local_sic_when_there_is_no_folio_match(): void
+    {
+        $categoria = CategoriaArticulo::create([
+            'nombre' => 'Laptops/Desktops',
+            'slug' => 'laptops_desktops_test',
+            'es_compra' => true,
+        ]);
+        $tipoEquipo = TipoEquipo::create(['nombre' => 'Laptop EBS']);
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-EBS-6962',
+            'descripcion' => 'Laptop Ejecutiva EBS',
+            'unidad_medida' => 'Pieza',
+            'categoria_id' => $categoria->id,
+            'tipo_equipo_id' => $tipoEquipo->id,
+        ]);
+        EbsArticulo::create(['ebs_item_id' => 6962, 'articulo_id' => $articulo->id]);
+
+        $client = $this->mockClient();
+        $client->method('obtenerCreadas')->willReturn([$this->requisicionCreada()]);
+
+        $this->service($client)->sincronizarCreadas(1);
+
+        $this->assertSame(0, SolicitudSicBorrador::count());
+        $ebsRequisicion = EbsRequisition::where('requisition_header_id', 2293693)->first();
+        $this->assertNotNull($ebsRequisicion);
+        $this->assertNull($ebsRequisicion->solicitudSicBorrador);
     }
 
     // --- excepciones del cliente se propagan (decisión de quien llama) -----

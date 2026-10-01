@@ -3,23 +3,13 @@
 namespace Modules\GestionTI\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Modules\GestionTI\Support\Catalogos\CategoriaArticulo;
 
 class ArticuloSolicitud extends Model
 {
     protected $table = 'articulos_solicitud';
 
-    /**
-     * Alias de `CategoriaArticulo::OPTIONS`/`LABELS` — mismas 11 categorías
-     * que `ProyectoPresupuestoArticulo`, ver docs/gestionti-progreso.md,
-     * entrada "Catálogo unificado de Artículos".
-     */
-    public const CATEGORIAS = CategoriaArticulo::OPTIONS;
-
-    public const CATEGORIA_LABELS = CategoriaArticulo::LABELS;
-
     protected $fillable = [
-        'codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id', 'activo',
+        'codigo', 'descripcion', 'unidad_medida', 'categoria_id', 'tipo_equipo_id', 'activo',
         'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'es_inventariable',
     ];
 
@@ -31,6 +21,11 @@ class ArticuloSolicitud extends Model
     public function tipoEquipo()
     {
         return $this->belongsTo(TipoEquipo::class);
+    }
+
+    public function categoria()
+    {
+        return $this->belongsTo(CategoriaArticulo::class, 'categoria_id');
     }
 
     public function marca()

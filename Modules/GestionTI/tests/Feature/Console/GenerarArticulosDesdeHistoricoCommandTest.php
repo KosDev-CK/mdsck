@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Artisan;
 use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
@@ -88,7 +89,7 @@ class GenerarArticulosDesdeHistoricoCommandTest extends TestCase
         $this->assertSame('i5', $articulo->procesador?->nombre);
         $this->assertSame('8GB', $articulo->ram?->nombre);
         $this->assertSame('1TB', $articulo->almacenamiento?->nombre);
-        $this->assertSame('laptops_desktops', $articulo->categoria);
+        $this->assertSame('laptops_desktops', $articulo->categoria?->slug);
         $this->assertTrue($articulo->es_inventariable);
         $this->assertTrue($articulo->activo);
         $this->assertSame('pieza', $articulo->unidad_medida);
@@ -137,7 +138,7 @@ class GenerarArticulosDesdeHistoricoCommandTest extends TestCase
             'codigo' => 'ART-PRECREADO',
             'descripcion' => 'Preexistente',
             'unidad_medida' => 'pieza',
-            'categoria' => 'laptops_desktops',
+            'categoria_id' => CategoriaArticulo::where('slug', 'laptops_desktops')->value('id'),
             'tipo_equipo_id' => $this->tipoEquipo->id,
             'marca_id' => $this->marca->id,
             'modelo_id' => $this->modelo->id,

@@ -118,6 +118,37 @@ class SolicitudSicBorrador extends Model
     }
 
     /**
+     * "Autorizada y seleccionable para Solicitud a Proveedor" — mismo
+     * criterio usado tanto por `Compras\SolicitudesProveedor::sicPickerOptions()`
+     * (picker de checkboxes al armar una solicitud) como por "SIC en EBS"
+     * (`MesaServicio\EbsRequisiciones`, filtro "Solo SICs autorizadas y
+     * seleccionables" + checkbox por fila): autorizada + artículo de una
+     * categoría marcada "Va a Compras" + sin asignar todavía a ninguna
+     * línea de Solicitud a Proveedor. Extraído a un scope compartido para no
+     * duplicar la consulta entre ambas pantallas.
+     *
+     * `$exceptSolicitudId` reabre el hueco para el modo edición de
+     * `SolicitudesProveedor`: una SIC ya recogida por ESA MISMA solicitud
+     * sigue contando como "disponible" (de lo contrario desaparecería del
+     * picker al reabrir la solicitud para editarla). "SIC en EBS" nunca pasa
+     * este parámetro — no tiene noción de "solicitud en edición".
+     */
+    public function scopeAutorizadaYSeleccionable($query, ?int $exceptSolicitudId = null)
+    {
+        $categoriaIdsCompra = CategoriaArticulo::where('es_compra', true)->pluck('id');
+
+        return $query->where('estatus', self::ESTATUS_AUTORIZADA)
+            ->whereHas('articulo', fn ($q) => $q->whereIn('categoria_id', $categoriaIdsCompra))
+            ->where(function ($q) use ($exceptSolicitudId) {
+                $q->whereDoesntHave('solicitudProveedorLineas')
+                    ->when($exceptSolicitudId, fn ($q2) => $q2->orWhereHas(
+                        'solicitudProveedorLineas',
+                        fn ($q3) => $q3->where('solicitud_id', $exceptSolicitudId)
+                    ));
+            });
+    }
+
+    /**
      * Documento adjunto más reciente (`tipo_documento = 'sic'`). No es una
      * relación morph real de Eloquent — `DocumentoDigitalizado` usa una
      * llave genérica (`entidad_relacionada`/`entidad_id`) por diseño, ver

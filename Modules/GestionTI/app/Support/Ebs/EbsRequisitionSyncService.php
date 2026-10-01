@@ -4,6 +4,7 @@ namespace Modules\GestionTI\Support\Ebs;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\EbsRequisition;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\TipoAviso;
@@ -163,6 +164,19 @@ class EbsRequisitionSyncService
                     'quantity' => $line['quantity'] ?? null,
                     'currency_code' => $line['currencyCode'] ?? null,
                 ]);
+
+                // Mapeo EBS -> artículo estándar (Fase 5) — la primera vez
+                // que se ve este `item_id`, se crea sin mapear
+                // (`articulo_id = null`); un humano lo completa después desde
+                // el tab "Artículos EBS" de Catalogos\Compras. No se
+                // actualiza en corridas posteriores (`firstOrCreate`, no
+                // `updateOrCreate`) — el mapeo ya hecho nunca se pisa.
+                if (! empty($line['itemId'])) {
+                    EbsArticulo::firstOrCreate(
+                        ['ebs_item_id' => $line['itemId']],
+                        ['ebs_item_description' => $line['itemDescription'] ?? null]
+                    );
+                }
             }
 
             // Nunca dispara avisos, aunque el mapeo resultante avance el

@@ -30,7 +30,6 @@
             'autorizado' => 'emerald',
             'rechazado' => 'red',
         ];
-        $categoriaLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_LABELS;
         $categoriaContableLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_CONTABLE_LABELS;
         $tipoServicioLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::TIPO_SERVICIO_LABELS;
         $cashflowLabels = \Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CASHFLOW_LABELS;
@@ -119,7 +118,7 @@
         <x-ui.table :headers="['Categoría', 'Categoría contable', 'Descripción', 'Cantidad', 'Responsable de costo', 'Costo / proveedor', 'Estatus de captura', '']" :empty="$proyectoPresupuesto->articulos->isEmpty()" empty-description="Agrega el primero con el botón Agregar artículo.">
             @foreach ($proyectoPresupuesto->articulos as $articulo)
                 <tr wire:key="articulo-{{ $articulo->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaLabels[$articulo->categoria] ?? $articulo->categoria }}</td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $articulo->categoria?->nombre ?? '—' }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $categoriaContableLabels[$articulo->categoria_contable] ?? $articulo->categoria_contable ?? '—' }}</td>
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $articulo->descripcion }}</td>
                     <td class="py-2">{{ $articulo->cantidad }}</td>
@@ -205,10 +204,10 @@
     <x-ui.modal model="showArticuloModal" :title="($editingArticuloId ? 'Editar' : 'Nuevo') . ' — Artículo'">
         <form wire:submit="saveArticulo" class="space-y-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <x-ui.select label="Categoría" name="articuloForm.categoria" wire:model="articuloForm.categoria">
+                <x-ui.select label="Categoría" name="articuloForm.categoria_id" wire:model="articuloForm.categoria_id">
                     <option value="">Selecciona...</option>
-                    @foreach (\Modules\GestionTI\Models\ProyectoPresupuestoArticulo::CATEGORIA_LABELS as $value => $label)
-                        <option value="{{ $value }}">{{ $label }}</option>
+                    @foreach ($categoriaOptions as $categoria)
+                        <option value="{{ $categoria->id }}">{{ $categoria->nombre }}</option>
                     @endforeach
                 </x-ui.select>
 

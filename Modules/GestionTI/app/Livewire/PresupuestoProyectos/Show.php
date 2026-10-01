@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
@@ -97,7 +98,7 @@ class Show extends Component
 
         $this->editingArticuloId = null;
         $this->articuloForm = [
-            'categoria' => '',
+            'categoria_id' => '',
             'categoria_contable' => '',
             'descripcion' => '',
             'cantidad' => 1,
@@ -117,7 +118,7 @@ class Show extends Component
 
         $this->editingArticuloId = $id;
         $this->articuloForm = [
-            'categoria' => $articulo->categoria,
+            'categoria_id' => $articulo->categoria_id,
             'categoria_contable' => $articulo->categoria_contable,
             'descripcion' => $articulo->descripcion,
             'cantidad' => $articulo->cantidad,
@@ -142,7 +143,7 @@ class Show extends Component
         }
 
         $this->validate([
-            'articuloForm.categoria' => ['required', Rule::in(ProyectoPresupuestoArticulo::CATEGORIAS)],
+            'articuloForm.categoria_id' => ['required', Rule::exists('categorias_articulo', 'id')],
             'articuloForm.categoria_contable' => ['required', Rule::in(ProyectoPresupuestoArticulo::CATEGORIAS_CONTABLES)],
             'articuloForm.descripcion' => 'required|string|max:255',
             'articuloForm.cantidad' => 'required|integer|min:1',
@@ -474,7 +475,7 @@ class Show extends Component
     {
         $this->proyectoPresupuesto->load([
             'empresa', 'centroCosto', 'areaOperativa', 'pmResponsable',
-            'articulos.responsableCosto',
+            'articulos.responsableCosto', 'articulos.categoria',
             'autorizaciones.aprobador',
         ]);
 
@@ -490,6 +491,7 @@ class Show extends Component
 
         return view('gestionti::livewire.presupuesto-proyectos.show', [
             'empleadoOptions' => Empleado::where('activo', true)->orderBy('nombre')->get(),
+            'categoriaOptions' => CategoriaArticulo::where('activo', true)->orderBy('nombre')->get(),
             'nivelAccionableId' => $nivelAccionable?->id,
         ]);
     }

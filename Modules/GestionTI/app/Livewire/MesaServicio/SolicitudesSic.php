@@ -278,11 +278,20 @@ class SolicitudesSic extends Component
         $this->resetValidation();
     }
 
+    /**
+     * Guard adicional (más allá del estatus): una vez que esta SIC quedó
+     * vinculada a una requisición de EBS (`ebs_requisition_id` no nulo), el
+     * estatus le pertenece solo al sync automático
+     * (`EbsRequisitionSyncService`) — captura manual ya no puede
+     * autorizar/rechazar, para no pelearse con lo que reporte EBS en la
+     * siguiente corrida. Los botones ya se ocultan en el blade para este
+     * caso; esto es la segunda capa de defensa del lado del servidor.
+     */
     public function marcarAutorizada(int $id): void
     {
         $record = SolicitudSicBorrador::with('empleado')->findOrFail($id);
 
-        if ($record->estatus !== SolicitudSicBorrador::ESTATUS_SIC_CREADA) {
+        if ($record->estatus !== SolicitudSicBorrador::ESTATUS_SIC_CREADA || $record->ebs_requisition_id !== null) {
             return;
         }
 
@@ -301,11 +310,12 @@ class SolicitudesSic extends Component
         session()->flash('status', 'Solicitud marcada como autorizada.');
     }
 
+    /** Mismo guard adicional que `marcarAutorizada()` — ver ahí. */
     public function marcarRechazada(int $id): void
     {
         $record = SolicitudSicBorrador::with('empleado')->findOrFail($id);
 
-        if ($record->estatus !== SolicitudSicBorrador::ESTATUS_SIC_CREADA) {
+        if ($record->estatus !== SolicitudSicBorrador::ESTATUS_SIC_CREADA || $record->ebs_requisition_id !== null) {
             return;
         }
 

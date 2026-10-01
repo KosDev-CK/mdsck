@@ -8,11 +8,19 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Catalogos\Compras;
 use Modules\GestionTI\Models\Almacenamiento;
+use Modules\GestionTI\Models\Area;
 use Modules\GestionTI\Models\ArticuloSolicitud;
+use Modules\GestionTI\Models\CategoriaArticulo;
+use Modules\GestionTI\Models\CentroCosto;
+use Modules\GestionTI\Models\EbsArticulo;
+use Modules\GestionTI\Models\Empleado;
+use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
+use Modules\GestionTI\Models\ProyectoPresupuesto;
+use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
@@ -134,6 +142,7 @@ class ComprasTest extends TestCase
         $this->actingAs($this->actingUser());
 
         $tipoEquipo = TipoEquipo::create(['nombre' => 'Laptop']);
+        $categoriaId = CategoriaArticulo::where('slug', 'laptops_desktops')->value('id');
 
         Livewire::test(Compras::class)
             ->call('setTab', 'articulos_solicitud')
@@ -142,7 +151,7 @@ class ComprasTest extends TestCase
             ->set('form.codigo', 'ART-002')
             ->set('form.descripcion', 'Laptop Dell Latitude')
             ->set('form.unidad_medida', 'pieza')
-            ->set('form.categoria', 'laptops_desktops')
+            ->set('form.categoria_id', $categoriaId)
             ->set('form.tipo_equipo_id', $tipoEquipo->id)
             ->call('save')
             ->assertHasNoErrors();
@@ -150,11 +159,11 @@ class ComprasTest extends TestCase
         $this->assertDatabaseHas('articulos_solicitud', [
             'codigo' => 'ART-002',
             'tipo_equipo_id' => $tipoEquipo->id,
-            'categoria' => 'laptops_desktops',
+            'categoria_id' => $categoriaId,
         ]);
     }
 
-    public function test_articulo_de_solicitud_rejects_a_categoria_not_in_the_allowed_list(): void
+    public function test_articulo_de_solicitud_rejects_a_categoria_id_that_does_not_exist(): void
     {
         $this->actingAs($this->actingUser());
 
@@ -164,9 +173,9 @@ class ComprasTest extends TestCase
             ->set('form.codigo', 'ART-CAT-INVALIDA')
             ->set('form.descripcion', 'Artículo con categoría inválida')
             ->set('form.unidad_medida', 'pieza')
-            ->set('form.categoria', 'no-es-una-categoria-valida')
+            ->set('form.categoria_id', 999999)
             ->call('save')
-            ->assertHasErrors(['form.categoria']);
+            ->assertHasErrors(['form.categoria_id']);
     }
 
     public function test_can_create_an_articulo_de_solicitud_with_ficha_tecnica_completa(): void
@@ -185,7 +194,7 @@ class ComprasTest extends TestCase
             ->set('form.codigo', 'ART-FICHA-001')
             ->set('form.descripcion', 'Laptop Core i7 16GB 512GB SSD')
             ->set('form.unidad_medida', 'pieza')
-            ->set('form.categoria', 'laptops_desktops')
+            ->set('form.categoria_id', CategoriaArticulo::where('slug', 'laptops_desktops')->value('id'))
             ->set('form.marca_id', $marca->id)
             ->set('form.modelo_id', $modelo->id)
             ->set('form.procesador_id', $procesador->id)
@@ -372,5 +381,273 @@ class ComprasTest extends TestCase
 
         $screen = Screen::where('slug', 'gestionti-catalogos-compras')->first();
         $this->assertNotNull($screen);
+    }
+
+    // ==================================================================
+    // Tab "Categoría" — reemplaza la pantalla standalone "Categorías que
+    // van a Compra"/`ConfiguracionCategorias` (retiradas). `slug` nunca es
+    // un campo del formulario — se genera solo, ver
+    // `Modules\GestionTI\Models\CategoriaArticulo`.
+    // ==================================================================
+
+    private function proyectoPresupuestoArticuloParaCategoria(int $categoriaId): ProyectoPresupuestoArticulo
+    {
+        $empresa = Empresa::create(['razon_social' => 'Kosmos', 'nombre_comercial' => 'Kosmos']);
+        $empleado = Empleado::create(['numero_empleado' => 'EMP-CAT-'.random_int(1000, 9999), 'nombre' => 'PM de Prueba']);
+
+        $proyecto = ProyectoPresupuesto::create([
+            'nombre_proyecto' => 'Proyecto para categoría en uso',
+            'empresa_id' => $empresa->id,
+            'centro_costo_id' => CentroCosto::create(['codigo' => 'CC-CAT-'.random_int(1000, 9999), 'nombre' => 'Corporativo', 'empresa_id' => $empresa->id])->id,
+            'direccion_centro' => 'Av. Siempre Viva 123',
+            'area_operativa_solicitante_id' => Area::create(['nombre' => 'Operaciones '.random_int(1000, 9999)])->id,
+            'pm_responsable_id' => $empleado->id,
+            'fecha_solicitud' => '2026-08-01',
+            'fecha_limite_captura' => '2026-08-15',
+        ]);
+
+        return $proyecto->articulos()->create([
+            'categoria_id' => $categoriaId,
+            'descripcion' => 'Artículo para prueba de categoría en uso',
+            'cantidad' => 1,
+            'responsable_costo_id' => $empleado->id,
+        ]);
+    }
+
+    public function test_can_create_a_categoria_auto_generating_a_unique_slug_from_nombre(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->assertSet('tab', 'categorias')
+            ->call('create')
+            ->set('form.nombre', 'Monitores Externos')
+            ->set('form.es_compra', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('categorias_articulo', [
+            'nombre' => 'Monitores Externos',
+            'slug' => 'monitores_externos',
+            'es_compra' => 1,
+        ]);
+    }
+
+    public function test_creating_a_categoria_whose_slug_would_collide_gets_a_numeric_suffix(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        // La migración ya sembró 'Multifuncionales' con slug
+        // 'multifuncionales' — crear otra con el mismo nombre debe generar
+        // un slug distinto, nunca chocar.
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('create')
+            ->set('form.nombre', 'Multifuncionales')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('categorias_articulo', [
+            'nombre' => 'Multifuncionales',
+            'slug' => 'multifuncionales_2',
+        ]);
+    }
+
+    public function test_categoria_requires_nombre(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('create')
+            ->call('save')
+            ->assertHasErrors(['form.nombre']);
+    }
+
+    public function test_can_edit_a_categoria_name_without_touching_its_slug(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::where('slug', 'laptops_desktops')->firstOrFail();
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('edit', $categoria->id)
+            ->assertSet('form.nombre', 'Laptops/Desktops')
+            ->set('form.nombre', 'Laptops y Desktops')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $categoria->refresh();
+        $this->assertSame('Laptops y Desktops', $categoria->nombre);
+        // El slug protegido nunca se toca al editar, aunque el nombre
+        // cambie por completo.
+        $this->assertSame('laptops_desktops', $categoria->slug);
+    }
+
+    public function test_can_toggle_es_compra_on_a_categoria(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::where('slug', 'telefonia_fija')->firstOrFail();
+        $this->assertFalse($categoria->es_compra);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('edit', $categoria->id)
+            ->set('form.es_compra', true)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertTrue($categoria->fresh()->es_compra);
+    }
+
+    public function test_can_toggle_activo_on_a_categoria(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::where('slug', 'antivirus')->firstOrFail();
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('toggleActivo', $categoria->id);
+
+        $this->assertFalse($categoria->fresh()->activo);
+    }
+
+    public function test_cannot_delete_a_categoria_referenced_by_an_articulo_de_solicitud(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::where('slug', 'redes')->firstOrFail();
+
+        ArticuloSolicitud::create([
+            'codigo' => 'ART-CAT-USO',
+            'descripcion' => 'Switch de red',
+            'unidad_medida' => 'pieza',
+            'categoria_id' => $categoria->id,
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('delete', $categoria->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('categorias_articulo', ['id' => $categoria->id]);
+    }
+
+    public function test_cannot_delete_a_categoria_referenced_by_a_proyecto_presupuesto_articulo(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::where('slug', 'vpn')->firstOrFail();
+        $this->proyectoPresupuestoArticuloParaCategoria($categoria->id);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('delete', $categoria->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('categorias_articulo', ['id' => $categoria->id]);
+    }
+
+    public function test_can_delete_a_categoria_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $categoria = CategoriaArticulo::create(['nombre' => 'Temporal', 'slug' => 'temporal']);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->call('delete', $categoria->id);
+
+        $this->assertDatabaseMissing('categorias_articulo', ['id' => $categoria->id]);
+    }
+
+    public function test_categorias_tab_search_filters_by_nombre(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $component = Livewire::test(Compras::class)
+            ->call('setTab', 'categorias')
+            ->set('search', 'Antivirus');
+
+        $nombres = $component->viewData('records')->pluck('nombre')->all();
+        $this->assertContains('Antivirus', $nombres);
+        $this->assertNotContains('Redes', $nombres);
+    }
+
+    // --- tab "Artículos EBS" (mapeo EBS -> artículo estándar) ---------------
+
+    public function test_ebs_articulos_tab_lists_seeded_rows_including_unmapped_ones(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        EbsArticulo::create(['ebs_item_id' => 6962, 'ebs_item_description' => 'LAPTOP EJECUTIVO CI7']);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'ebs_articulos')
+            ->assertSee('6962')
+            ->assertSee('LAPTOP EJECUTIVO CI7')
+            ->assertSee('Sin mapear');
+    }
+
+    public function test_can_edit_the_mapped_articulo_of_an_ebs_articulo(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebsArticulo = EbsArticulo::create(['ebs_item_id' => 7001, 'ebs_item_description' => 'ITEM SIN MAPEAR']);
+        $articulo = ArticuloSolicitud::create(['codigo' => 'ART-MAP-1', 'descripcion' => 'Laptop Ejecutiva', 'unidad_medida' => 'Pieza']);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'ebs_articulos')
+            ->call('edit', $ebsArticulo->id)
+            ->set('form.articulo_id', $articulo->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('ebs_articulos', [
+            'id' => $ebsArticulo->id,
+            'articulo_id' => $articulo->id,
+        ]);
+    }
+
+    public function test_create_does_nothing_for_the_ebs_articulos_tab(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'ebs_articulos')
+            ->call('create')
+            ->assertSet('showModal', false);
+
+        $this->assertSame(0, EbsArticulo::count());
+    }
+
+    public function test_delete_does_nothing_for_the_ebs_articulos_tab(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebsArticulo = EbsArticulo::create(['ebs_item_id' => 7002]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'ebs_articulos')
+            ->call('delete', $ebsArticulo->id);
+
+        $this->assertDatabaseHas('ebs_articulos', ['id' => $ebsArticulo->id]);
+    }
+
+    public function test_ebs_articulos_tab_search_filters_by_item_id_or_description(): void
+    {
+        $this->actingAs($this->actingUser());
+        EbsArticulo::create(['ebs_item_id' => 8001, 'ebs_item_description' => 'MONITOR 24 PULGADAS']);
+        EbsArticulo::create(['ebs_item_id' => 8002, 'ebs_item_description' => 'TECLADO INALAMBRICO']);
+
+        $component = Livewire::test(Compras::class)
+            ->call('setTab', 'ebs_articulos')
+            ->set('search', 'MONITOR');
+
+        $descripciones = $component->viewData('records')->pluck('ebs_item_description')->all();
+        $this->assertContains('MONITOR 24 PULGADAS', $descripciones);
+        $this->assertNotContains('TECLADO INALAMBRICO', $descripciones);
     }
 }

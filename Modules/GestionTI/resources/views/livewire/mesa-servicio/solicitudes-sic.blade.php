@@ -61,7 +61,7 @@
                     <td class="py-2">{{ $record->empleado?->nombre }}</td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->tipoEquipo?->nombre }}</td>
                     <td class="py-2">
-                        <x-ui.badge :color="$urgenciaColors[$record->urgencia] ?? 'gray'">{{ ucfirst($record->urgencia) }}</x-ui.badge>
+                        <x-ui.badge :color="$urgenciaColors[$record->urgencia] ?? 'gray'">{{ $record->urgencia ? ucfirst($record->urgencia) : '—' }}</x-ui.badge>
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->centroCosto?->nombre }}</td>
                     <td class="py-2">
@@ -76,7 +76,7 @@
 
                             @if ($record->estatus === 'capturado')
                                 <x-ui.icon-button wire:click="openAdvance({{ $record->id }})" icon="heroicon-o-clipboard-document-check" title="Marcar SIC creada" />
-                            @elseif ($record->estatus === 'sic_creada')
+                            @elseif ($record->estatus === 'sic_creada' && ! $record->ebs_requisition_id)
                                 <x-ui.icon-button
                                     wire:click="marcarAutorizada({{ $record->id }})"
                                     wire:confirm="¿Marcar esta solicitud como autorizada?"

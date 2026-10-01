@@ -73,7 +73,6 @@ class ExportControllerTest extends TestCase
         $responsable = Empleado::create(['numero_empleado' => 'EMP-R-'.random_int(1000, 9999), 'nombre' => 'Responsable']);
 
         return $proyecto->articulos()->create(array_merge([
-            'categoria' => 'laptops_desktops',
             'categoria_contable' => 'infraestructura',
             'descripcion' => 'Artículo de prueba',
             'cantidad' => 1,

@@ -2,6 +2,7 @@
 
 namespace Modules\GestionTI\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 
 class SolicitudProveedor extends Model
@@ -32,15 +33,31 @@ class SolicitudProveedor extends Model
         'proyecto_presupuesto_articulo_id',
         'tipo_solicitud',
         'estatus',
+        'enviada_at',
+        'ultimo_envio_at',
+        'creado_por_user_id',
     ];
 
     protected $casts = [
         'fecha_solicitud' => 'date',
+        'enviada_at' => 'datetime',
+        'ultimo_envio_at' => 'datetime',
     ];
 
     public function vendor()
     {
         return $this->belongsTo(Proveedor::class, 'vendor_id');
+    }
+
+    /**
+     * Usuario que creó esta Solicitud a Proveedor en el sistema — escrito
+     * una sola vez en `Compras\SolicitudesProveedor::save()` (rama de
+     * creación, cuando `editingId` es null), usado por el correo de
+     * envío/reenvío (`SolicitudProveedorMail`) como "solicitante".
+     */
+    public function creadoPor()
+    {
+        return $this->belongsTo(User::class, 'creado_por_user_id');
     }
 
     public function ticket()

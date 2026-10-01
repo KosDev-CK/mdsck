@@ -20,6 +20,7 @@ use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\AssetAssignment;
 use Modules\GestionTI\Models\AvisoEnviado;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
@@ -232,9 +233,11 @@ class EndToEndFlowTest extends TestCase
         $proyecto = ProyectoPresupuesto::where('nombre_proyecto', 'Proyecto E2E')->firstOrFail();
         $this->assertSame(ProyectoPresupuesto::ESTATUS_ARMADO, $proyecto->estatus);
 
+        $categoriaLaptopsDesktopsId = CategoriaArticulo::where('slug', 'laptops_desktops')->value('id');
+
         Livewire::test(PresupuestoShow::class, ['proyectoPresupuesto' => $proyecto])
             ->call('openArticuloModal')
-            ->set('articuloForm.categoria', 'laptops_desktops')
+            ->set('articuloForm.categoria_id', $categoriaLaptopsDesktopsId)
             ->set('articuloForm.categoria_contable', 'infraestructura')
             ->set('articuloForm.descripcion', 'Laptop para gerente E2E')
             ->set('articuloForm.cantidad', 2)
@@ -243,7 +246,7 @@ class EndToEndFlowTest extends TestCase
             ->assertHasNoErrors();
 
         $articuloPresupuesto = $proyecto->articulos()->firstOrFail();
-        $this->assertSame('laptops_desktops', $articuloPresupuesto->categoria);
+        $this->assertSame($categoriaLaptopsDesktopsId, $articuloPresupuesto->categoria_id);
 
         Livewire::test(PresupuestoShow::class, ['proyectoPresupuesto' => $proyecto->fresh()])
             ->call('enviarACapturaCostos')

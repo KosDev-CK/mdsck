@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Procesador;
@@ -23,8 +24,8 @@ use Modules\GestionTI\Models\TipoEquipo;
  *
  * Agrupa los Asset sin `articulo_id` por combinación exacta de
  * Tipo+Marca+Modelo. Por cada combinación única, crea (o reutiliza, si ya
- * existe de una corrida anterior) un `ArticuloSolicitud` con
- * `categoria = 'laptops_desktops'` y `es_inventariable = true` (decisión
+ * existe de una corrida anterior) un `ArticuloSolicitud` con `categoria_id`
+ * apuntando a la categoría real `'laptops_desktops'` y `es_inventariable = true` (decisión
  * confirmada con el usuario — todo lo que sale de este backfill es equipo de
  * cómputo físico real), usando como ficha técnica "representativa" la
  * combinación (procesador, ram, almacenamiento) MÁS FRECUENTE entre los
@@ -79,11 +80,17 @@ class GenerarArticulosDesdeHistoricoCommand extends Command
         $articulosReutilizados = 0;
         $assetsVinculados = 0;
 
+        // Resuelto una sola vez fuera del loop — mismo `id` estable para
+        // todo el comando, el slug `'laptops_desktops'` es la clave interna
+        // protegida de `CategoriaArticulo` (ver su docblock).
+        $categoriaLaptopsDesktopsId = CategoriaArticulo::where('slug', 'laptops_desktops')->value('id');
+
         DB::transaction(function () use (
             $grupos,
             $nombresTipoEquipo,
             $nombresMarca,
             $nombresModelo,
+            $categoriaLaptopsDesktopsId,
             &$articulosCreados,
             &$articulosReutilizados,
             &$assetsVinculados
@@ -112,7 +119,7 @@ class GenerarArticulosDesdeHistoricoCommand extends Command
                         'codigo' => $this->generarCodigo($nombreTipo, $nombreMarca, $nombreModelo),
                         'descripcion' => trim("{$nombreTipo} {$nombreMarca} {$nombreModelo}"),
                         'unidad_medida' => 'pieza',
-                        'categoria' => 'laptops_desktops',
+                        'categoria_id' => $categoriaLaptopsDesktopsId,
                         'es_inventariable' => true,
                         'activo' => true,
                         'procesador_id' => $procesador !== null ? Procesador::firstOrCreate(['nombre' => $procesador])->id : null,

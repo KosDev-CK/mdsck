@@ -6,6 +6,7 @@ use Modules\GestionTI\Http\Controllers\Catalogos\ComprasExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\EmpleadosExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\InventarioExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\NucleoExportController;
+use Modules\GestionTI\Http\Controllers\Compras\SolicitudProveedorPdfController;
 use Modules\GestionTI\Http\Controllers\MesaServicio\EbsRequisicionesExportController;
 use Modules\GestionTI\Http\Controllers\PresupuestoProyectos\ExportController as PresupuestoProyectosExportController;
 use Modules\GestionTI\Livewire\Avisos\Historial as AvisosHistorial;
@@ -16,7 +17,6 @@ use Modules\GestionTI\Livewire\Catalogos\Empleados as CatalogosEmpleados;
 use Modules\GestionTI\Livewire\Catalogos\Inventario as CatalogosInventario;
 use Modules\GestionTI\Livewire\Catalogos\Nucleo as CatalogosNucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
-use Modules\GestionTI\Livewire\Configuracion\CategoriasCompra;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
@@ -92,6 +92,7 @@ Route::middleware(['auth', 'permission:screens.gestionti-ebs-requisiciones.manag
 
 Route::middleware(['auth', 'permission:screens.gestionti-solicitudes-proveedor.manage'])->group(function () {
     Route::get('/solicitudes-proveedor', SolicitudesProveedor::class)->name('gestionti.solicitudes-proveedor.index');
+    Route::get('/solicitudes-proveedor/{solicitudProveedor}/pdf', SolicitudProveedorPdfController::class)->name('gestionti.solicitudes-proveedor.pdf');
 });
 
 Route::middleware(['auth', 'permission:screens.gestionti-recepciones.manage'])->group(function () {
@@ -141,6 +142,3 @@ Route::middleware(['auth', 'permission:screens.gestionti-almacenamiento-document
     Route::get('/almacenamiento-documentos', AlmacenamientoDocumentos::class)->name('gestionti.almacenamiento-documentos.index');
 });
 
-Route::middleware(['auth', 'permission:screens.gestionti-categorias-compra.manage'])->group(function () {
-    Route::get('/categorias-compra', CategoriasCompra::class)->name('gestionti.categorias-compra.index');
-});

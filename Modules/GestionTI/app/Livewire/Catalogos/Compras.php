@@ -2,7 +2,7 @@
 
 namespace Modules\GestionTI\Livewire\Catalogos;
 
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -10,14 +10,16 @@ use Modules\GestionTI\Concerns\MergesCatalogDuplicates;
 use Modules\GestionTI\Models\Almacenamiento;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
+use Modules\GestionTI\Models\CategoriaArticulo;
+use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\Mantenimiento;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
+use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\TipoEquipo;
-use Modules\GestionTI\Support\Catalogos\CategoriaArticulo;
 
 #[Layout('layouts.app')]
 class Compras extends Component
@@ -68,14 +70,14 @@ class Compras extends Component
                 'label' => 'Artículo de Solicitud',
                 'model' => ArticuloSolicitud::class,
                 'fields' => [
-                    'codigo', 'descripcion', 'unidad_medida', 'categoria', 'tipo_equipo_id',
+                    'codigo', 'descripcion', 'unidad_medida', 'categoria_id', 'tipo_equipo_id',
                     'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'es_inventariable',
                 ],
                 'rules' => [
                     'form.codigo' => 'required|string|max:100',
                     'form.descripcion' => 'required|string|max:255',
                     'form.unidad_medida' => 'required|string|max:50',
-                    'form.categoria' => ['nullable', Rule::in(CategoriaArticulo::OPTIONS)],
+                    'form.categoria_id' => 'nullable|exists:categorias_articulo,id',
                     'form.tipo_equipo_id' => 'nullable|exists:tipos_equipo,id',
                     'form.marca_id' => 'nullable|exists:marcas,id',
                     'form.modelo_id' => 'nullable|exists:modelos,id',
@@ -85,11 +87,45 @@ class Compras extends Component
                     'form.es_inventariable' => 'boolean',
                 ],
                 'orderBy' => 'codigo',
-                'searchColumns' => ['codigo', 'descripcion', 'categoria'],
+                'searchColumns' => ['codigo', 'descripcion'],
                 // Ninguna otra tabla del módulo tiene FK hacia
                 // articulos_solicitud todavía — fusionar solo elimina el
                 // duplicado, sin reasignar nada.
                 'mergeReferences' => [],
+            ],
+            'categorias' => [
+                'label' => 'Categoría',
+                'model' => CategoriaArticulo::class,
+                // `slug` NUNCA es un campo del formulario (ni crear ni
+                // editar) — es interno, ver `save()` y el docblock del
+                // modelo `CategoriaArticulo`.
+                'fields' => ['nombre', 'es_compra'],
+                'rules' => [
+                    'form.nombre' => 'required|string|max:255',
+                    'form.es_compra' => 'boolean',
+                ],
+                'orderBy' => 'nombre',
+                'searchColumns' => ['nombre'],
+                'mergeReferences' => [
+                    ['model' => ArticuloSolicitud::class, 'column' => 'categoria_id'],
+                    ['model' => ProyectoPresupuestoArticulo::class, 'column' => 'categoria_id'],
+                ],
+            ],
+            // Mapeo EBS -> Artículo estándar (Fase 5) — las filas las crea
+            // automáticamente `EbsRequisitionSyncService` (un `firstOrCreate`
+            // por cada `item_id` nuevo visto, sin mapear), este tab SOLO
+            // sirve para revisar/corregir el `articulo_id` mapeado de cada
+            // una — sin "Nuevo" (`create()` no-opea para este tab) ni
+            // "Eliminar" (`delete()` ídem), ver el blade.
+            'ebs_articulos' => [
+                'label' => 'Artículos EBS',
+                'model' => EbsArticulo::class,
+                'fields' => ['articulo_id'],
+                'rules' => [
+                    'form.articulo_id' => 'nullable|exists:articulos_solicitud,id',
+                ],
+                'orderBy' => 'ebs_item_id',
+                'searchColumns' => ['ebs_item_id', 'ebs_item_description'],
             ],
         ];
     }
@@ -110,6 +146,13 @@ class Compras extends Component
 
     public function create(): void
     {
+        // Tab "Artículos EBS" — las filas las crea el sync, nunca el
+        // usuario; sin botón "Nuevo" en el blade, este no-op es la segunda
+        // capa de defensa.
+        if ($this->tab === 'ebs_articulos') {
+            return;
+        }
+
         $this->editingId = null;
         $this->form = array_fill_keys($this->catalogos()[$this->tab]['fields'], null);
         $this->resetValidation();
@@ -130,18 +173,39 @@ class Compras extends Component
     /**
      * Los selects opcionales mandan '' para la opción "Sin asignar" —
      * normalizarlos a null antes de validar/guardar para que la FK nullable
-     * (o `Rule::in(...)` de categoría) no reciba una cadena vacía.
-     * Generalizado desde solo `tipo_equipo_id` para cubrir también
-     * `marca_id`/`modelo_id`/`procesador_id`/`ram_id`/`almacenamiento_id`/
-     * `categoria` del tab de Artículos.
+     * no reciba una cadena vacía. Generalizado desde solo `tipo_equipo_id`
+     * para cubrir también `marca_id`/`modelo_id`/`procesador_id`/`ram_id`/
+     * `almacenamiento_id`/`categoria_id` del tab de Artículos.
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'categoria'] as $field) {
+        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'categoria_id', 'articulo_id'] as $field) {
             if (array_key_exists($field, $this->form) && $this->form[$field] === '') {
                 $this->form[$field] = null;
             }
         }
+    }
+
+    /**
+     * Genera un `slug` único (`Str::slug($nombre, '_')`) para una Categoría
+     * nueva — nunca se vuelve a tocar después de crearse (protege el
+     * matcheo de lógica de negocio real contra `slug`, ver el docblock de
+     * `Modules\GestionTI\Models\CategoriaArticulo`). Si el slug generado ya
+     * existe, le agrega un sufijo numérico incremental hasta que sea único
+     * — mismo criterio defensivo que `Asset::generateCodigo()`.
+     */
+    private function generarSlugUnico(string $nombre): string
+    {
+        $base = Str::slug($nombre, '_');
+        $slug = $base;
+        $sufijo = 1;
+
+        while (CategoriaArticulo::where('slug', $slug)->exists()) {
+            $sufijo++;
+            $slug = "{$base}_{$sufijo}";
+        }
+
+        return $slug;
     }
 
     public function save(): void
@@ -158,11 +222,20 @@ class Compras extends Component
             $this->form['es_inventariable'] = (bool) $this->form['es_inventariable'];
         }
 
+        // Mismo tratamiento para el toggle "Va a Compras" del tab Categoría.
+        if (array_key_exists('es_compra', $this->form)) {
+            $this->form['es_compra'] = (bool) $this->form['es_compra'];
+        }
+
         $this->validate($config['rules']);
 
         if ($this->editingId) {
             $config['model']::findOrFail($this->editingId)->update($this->form);
         } else {
+            if ($this->tab === 'categorias') {
+                $this->form['slug'] = $this->generarSlugUnico($this->form['nombre']);
+            }
+
             $config['model']::create($this->form);
         }
 
@@ -184,6 +257,13 @@ class Compras extends Component
      */
     public function delete(int $id): void
     {
+        // Tab "Artículos EBS" — sin "Eliminar" (ver docblock de `create()`
+        // arriba); si se borrara, el sync la recrearía sin mapear en la
+        // siguiente corrida de todos modos.
+        if ($this->tab === 'ebs_articulos') {
+            return;
+        }
+
         $config = $this->catalogos()[$this->tab];
         $record = $config['model']::findOrFail($id);
 
@@ -230,7 +310,8 @@ class Compras extends Component
         $config = $catalogos[$this->tab];
 
         $records = $config['model']::query()
-            ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'marca', 'modelo']))
+            ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'marca', 'modelo', 'categoria']))
+            ->when($this->tab === 'ebs_articulos', fn ($q) => $q->with('articulo'))
             ->when($this->search !== '', function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -248,6 +329,9 @@ class Compras extends Component
             'tipoEquipoOptions' => $this->tab === 'articulos_solicitud'
                 ? TipoEquipo::where('activo', true)->orderBy('nombre')->get()
                 : null,
+            'categoriaOptions' => $this->tab === 'articulos_solicitud'
+                ? CategoriaArticulo::where('activo', true)->orderBy('nombre')->get()
+                : null,
             'marcaOptions' => $this->tab === 'articulos_solicitud'
                 ? Marca::where('activo', true)->orderBy('nombre')->get()
                 : null,
@@ -259,6 +343,9 @@ class Compras extends Component
                 : null,
             'ramOptions' => $this->tab === 'articulos_solicitud'
                 ? Ram::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'articuloMapeadoOptions' => $this->tab === 'ebs_articulos'
+                ? ArticuloSolicitud::where('activo', true)->orderBy('descripcion')->get()
                 : null,
             'almacenamientoOptions' => $this->tab === 'articulos_solicitud'
                 ? Almacenamiento::where('activo', true)->orderBy('nombre')->get()

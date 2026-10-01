@@ -446,6 +446,90 @@ class SolicitudesSicTest extends TestCase
     }
 
     /**
+     * Rediseño "SIC en EBS -> Solicitud a Proveedor" (ver
+     * docs/gestionti-progreso.md): una vez vinculada a una requisición de
+     * EBS, el estatus le pertenece solo al sync automático — captura manual
+     * ya no puede autorizar/rechazar, ni aunque el estatus local siga en
+     * "SIC creada".
+     */
+    public function test_cannot_mark_autorizada_once_linked_to_an_ebs_requisition(): void
+    {
+        $this->actingAs($this->actingUser());
+        $c = $this->baseCatalogos();
+
+        $ebsRequisicion = EbsRequisition::create(['requisition_header_id' => 777, 'code' => 'EBS-LINK-1']);
+
+        $solicitud = SolicitudSicBorrador::create([
+            'ticket_id' => $c['ticket']->id,
+            'empleado_id' => $c['empleado']->id,
+            'tipo_equipo_id' => $c['tipoEquipo']->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => $c['centroCosto']->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => SolicitudSicBorrador::ESTATUS_SIC_CREADA,
+            'folio_sic' => 'EBS-LINK-1',
+            'ebs_requisition_id' => $ebsRequisicion->id,
+        ]);
+
+        Livewire::test(SolicitudesSic::class)->call('marcarAutorizada', $solicitud->id);
+
+        $this->assertSame(SolicitudSicBorrador::ESTATUS_SIC_CREADA, $solicitud->fresh()->estatus);
+    }
+
+    /** Mismo guard que arriba, para `marcarRechazada()`. */
+    public function test_cannot_mark_rechazada_once_linked_to_an_ebs_requisition(): void
+    {
+        $this->actingAs($this->actingUser());
+        $c = $this->baseCatalogos();
+
+        $ebsRequisicion = EbsRequisition::create(['requisition_header_id' => 778, 'code' => 'EBS-LINK-2']);
+
+        $solicitud = SolicitudSicBorrador::create([
+            'ticket_id' => $c['ticket']->id,
+            'empleado_id' => $c['empleado']->id,
+            'tipo_equipo_id' => $c['tipoEquipo']->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => $c['centroCosto']->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => SolicitudSicBorrador::ESTATUS_SIC_CREADA,
+            'folio_sic' => 'EBS-LINK-2',
+            'ebs_requisition_id' => $ebsRequisicion->id,
+        ]);
+
+        Livewire::test(SolicitudesSic::class)->call('marcarRechazada', $solicitud->id);
+
+        $this->assertSame(SolicitudSicBorrador::ESTATUS_SIC_CREADA, $solicitud->fresh()->estatus);
+    }
+
+    /** El botón "Autorizar"/"Rechazar" se oculta una vez vinculada a EBS. */
+    public function test_autorizar_and_rechazar_buttons_are_hidden_once_linked_to_an_ebs_requisition(): void
+    {
+        $this->actingAs($this->actingUser());
+        $c = $this->baseCatalogos();
+
+        $ebsRequisicion = EbsRequisition::create(['requisition_header_id' => 779, 'code' => 'EBS-LINK-3']);
+
+        SolicitudSicBorrador::create([
+            'ticket_id' => $c['ticket']->id,
+            'empleado_id' => $c['empleado']->id,
+            'tipo_equipo_id' => $c['tipoEquipo']->id,
+            'motivo' => 'Equipo nuevo',
+            'centro_costo_id' => $c['centroCosto']->id,
+            'urgencia' => 'media',
+            'fecha_solicitud' => '2026-08-01',
+            'estatus' => SolicitudSicBorrador::ESTATUS_SIC_CREADA,
+            'folio_sic' => 'EBS-LINK-3',
+            'ebs_requisition_id' => $ebsRequisicion->id,
+        ]);
+
+        Livewire::test(SolicitudesSic::class)
+            ->assertDontSee('wire:click="marcarAutorizada', false)
+            ->assertDontSee('wire:click="marcarRechazada', false);
+    }
+
+    /**
      * Catálogo unificado de Artículos (ver docs/gestionti-progreso.md) —
      * capturar/editar una SIC con `articulo_id` opcional; el select solo
      * ofrece artículos activos e inventariables.

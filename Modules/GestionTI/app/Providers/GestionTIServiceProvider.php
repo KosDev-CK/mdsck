@@ -18,7 +18,6 @@ use Modules\GestionTI\Livewire\Catalogos\Empleados as CatalogosEmpleados;
 use Modules\GestionTI\Livewire\Catalogos\Inventario as CatalogosInventario;
 use Modules\GestionTI\Livewire\Catalogos\Nucleo as CatalogosNucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
-use Modules\GestionTI\Livewire\Configuracion\CategoriasCompra;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
@@ -134,7 +133,6 @@ class GestionTIServiceProvider extends ModuleServiceProvider
         Livewire::component('gestionti.avisos.tipos-aviso', TiposAviso::class);
         Livewire::component('gestionti.avisos.historial', AvisosHistorial::class);
         Livewire::component('gestionti.configuracion.almacenamiento-documentos', AlmacenamientoDocumentos::class);
-        Livewire::component('gestionti.configuracion.categorias-compra', CategoriasCompra::class);
     }
 
     /**

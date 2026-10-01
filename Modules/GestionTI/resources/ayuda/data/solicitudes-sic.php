@@ -14,7 +14,7 @@ return [
         'Adjunta el documento de la SIC si ya lo tienes a la mano (opcional, se puede agregar después).',
         'Guarda — la solicitud queda en estatus "Capturado".',
         'Cuando la requisición ya exista en Oracle EBS, usa "Marcar SIC creada": puedes escribir el folio a mano, o buscar y elegir la requisición ya sincronizada en la lista (esto autocompleta el folio y la vincula automáticamente) — la solicitud pasa a "SIC creada".',
-        'Una vez creada la SIC, autorízala o recházala desde esta misma pantalla (cada acción envía un aviso al empleado solicitante) — si ya está vinculada a una requisición de EBS, este paso también puede resolverse solo con la sincronización automática diaria, sin tocar nada aquí.',
+        'Una vez creada la SIC, autorízala o recházala desde esta misma pantalla (cada acción envía un aviso al empleado solicitante) — estos botones solo aparecen si la SIC NO está vinculada a una requisición de EBS. Si ya está vinculada, el estatus le pertenece solo a la sincronización automática diaria (que lo actualiza sola en cuanto Oracle EBS la apruebe o rechace), no hay nada que hacer a mano aquí.',
         'En cualquier momento puedes generar el PDF de respaldo de la solicitud con el botón "Generar PDF".',
     ],
     'campos' => [
@@ -29,7 +29,7 @@ return [
         ['nombre' => 'Urgencia', 'explicacion' => 'Qué tan pronto se necesita resolver la solicitud: Baja, Media o Alta. Obligatorio.'],
         ['nombre' => 'Fecha de solicitud', 'explicacion' => 'Fecha en que se capturó la necesidad. Obligatorio.'],
         ['nombre' => 'Adjunto (SIC)', 'explicacion' => 'Archivo de respaldo de la solicitud (PDF o imagen), por ejemplo una cotización o el propio formato firmado. Opcional.'],
-        ['nombre' => 'Estatus', 'explicacion' => '"Capturado" (recién creada), "SIC creada" (ya tiene folio de Oracle EBS), "Autorizada" o "Rechazada" (resolución final, dispara un aviso al solicitante). Solo se puede autorizar/rechazar una solicitud que ya esté en "SIC creada".'],
+        ['nombre' => 'Estatus', 'explicacion' => '"Capturado" (recién creada), "SIC creada" (ya tiene folio de Oracle EBS), "Autorizada" o "Rechazada" (resolución final, dispara un aviso al solicitante). Solo se puede autorizar/rechazar a mano una solicitud que ya esté en "SIC creada" Y que NO esté vinculada a una requisición de EBS — una vez vinculada, el estatus lo actualiza solo la sincronización automática diaria.'],
         ['nombre' => 'Requisición de EBS (en "Marcar SIC creada")', 'explicacion' => 'Buscador opcional para elegir, de las requisiciones ya sincronizadas desde Oracle EBS, la que corresponde a esta SIC — al elegir una se autocompleta el folio y queda vinculada. Si no eliges ninguna, puedes seguir escribiendo el folio a mano, exactamente igual que antes de que existiera esta integración.'],
         ['nombre' => 'Folio SIC (EBS)', 'explicacion' => 'El folio de la requisición tal como quedó en Oracle EBS. Se autocompleta al elegir una requisición de la lista, o se puede escribir a mano como respaldo si el API de EBS no está disponible.'],
     ],

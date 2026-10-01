@@ -339,21 +339,18 @@ class DashboardTest extends TestCase
         // 2 pendientes de captura para este empleado, 1 ya capturado (no
         // debe contar).
         $proyecto->articulos()->create([
-            'categoria' => 'laptops_desktops',
             'descripcion' => 'Laptop 1',
             'cantidad' => 1,
             'responsable_costo_id' => $empleado->id,
             'estatus_captura' => ProyectoPresupuestoArticulo::ESTATUS_CAPTURA_PENDIENTE,
         ]);
         $proyecto->articulos()->create([
-            'categoria' => 'laptops_desktops',
             'descripcion' => 'Laptop 2',
             'cantidad' => 1,
             'responsable_costo_id' => $empleado->id,
             'estatus_captura' => ProyectoPresupuestoArticulo::ESTATUS_CAPTURA_PENDIENTE,
         ]);
         $proyecto->articulos()->create([
-            'categoria' => 'laptops_desktops',
             'descripcion' => 'Laptop 3',
             'cantidad' => 1,
             'responsable_costo_id' => $empleado->id,

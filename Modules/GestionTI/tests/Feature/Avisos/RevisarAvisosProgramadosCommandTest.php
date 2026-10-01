@@ -230,7 +230,6 @@ class RevisarAvisosProgramadosCommandTest extends TestCase
 
         ProyectoPresupuestoArticulo::create([
             'proyecto_id' => $proyecto->id,
-            'categoria' => 'laptops_desktops',
             'descripcion' => 'Laptop pendiente',
             'cantidad' => 1,
             'responsable_costo_id' => $responsable->id,
@@ -275,7 +274,6 @@ class RevisarAvisosProgramadosCommandTest extends TestCase
 
         ProyectoPresupuestoArticulo::create([
             'proyecto_id' => $proyecto->id,
-            'categoria' => 'laptops_desktops',
             'descripcion' => 'Laptop lejana',
             'cantidad' => 1,
             'responsable_costo_id' => $responsable->id,

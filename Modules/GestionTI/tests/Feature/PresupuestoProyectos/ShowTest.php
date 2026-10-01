@@ -10,6 +10,7 @@ use Livewire\Livewire;
 use Modules\GestionTI\Livewire\PresupuestoProyectos\Show;
 use Modules\GestionTI\Models\Area;
 use Modules\GestionTI\Models\AvisoEnviado;
+use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
@@ -75,7 +76,7 @@ class ShowTest extends TestCase
         $responsable = $this->empleado('EMP-RESP-'.random_int(1000, 9999));
 
         return $proyecto->articulos()->create(array_merge([
-            'categoria' => 'laptops_desktops',
+            'categoria_id' => CategoriaArticulo::where('slug', 'laptops_desktops')->value('id'),
             'categoria_contable' => 'infraestructura',
             'descripcion' => 'Laptop para gerente',
             'cantidad' => 1,
@@ -97,9 +98,11 @@ class ShowTest extends TestCase
         $proyecto = $this->proyecto();
         $responsable = $this->empleado('EMP-R1');
 
+        $categoriaId = CategoriaArticulo::where('slug', 'laptops_desktops')->value('id');
+
         $component = Livewire::test(Show::class, ['proyectoPresupuesto' => $proyecto])
             ->call('openArticuloModal')
-            ->set('articuloForm.categoria', 'laptops_desktops')
+            ->set('articuloForm.categoria_id', $categoriaId)
             ->set('articuloForm.categoria_contable', 'infraestructura')
             ->set('articuloForm.descripcion', 'Laptop Dell')
             ->set('articuloForm.cantidad', 3)
