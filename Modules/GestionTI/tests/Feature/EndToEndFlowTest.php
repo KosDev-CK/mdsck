@@ -326,6 +326,7 @@ class EndToEndFlowTest extends TestCase
 
         Livewire::test(SolicitudesProveedor::class)
             ->call('create')
+            ->call('addLinea')
             ->set('form.folio', 'SP-E2E-001')
             ->set('form.vendor_id', $proveedor->id)
             ->set('form.fecha_solicitud', '2026-08-25')

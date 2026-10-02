@@ -58,6 +58,7 @@
             $headers = match ($tab) {
                 'proveedores' => ['Nombre comercial', 'Razón social', 'RFC', 'Contacto', 'Estatus', ''],
                 'categorias' => ['Nombre', 'Va a Compras', 'Estatus', ''],
+                'lugares_entrega' => ['Nombre', 'Estatus', ''],
                 'ebs_articulos' => ['Item ID (EBS)', 'Descripción en EBS', 'Artículo mapeado', ''],
                 default => ['Código', 'Descripción', 'Unidad de medida', 'Categoría', 'Tipo de equipo', 'Estatus', ''],
             };
@@ -76,6 +77,8 @@
                         <td class="py-2">
                             <x-ui.badge :color="$record->es_compra ? 'emerald' : 'gray'">{{ $record->es_compra ? 'Sí' : 'No' }}</x-ui.badge>
                         </td>
+                    @elseif ($tab === 'lugares_entrega')
+                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                     @elseif ($tab === 'ebs_articulos')
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->ebs_item_id }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->ebs_item_description ?? '—' }}</td>
@@ -142,6 +145,8 @@
             @elseif ($tab === 'categorias')
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
                 <x-ui.toggle label="Va a Compras (genera Solicitud a Proveedor)" name="form.es_compra" wire:model="form.es_compra" />
+            @elseif ($tab === 'lugares_entrega')
+                <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
             @elseif ($tab === 'ebs_articulos')
                 <x-ui.select label="Artículo del catálogo" name="form.articulo_id" wire:model="form.articulo_id" hint="El artículo estándar/genérico al que corresponde este ítem de EBS (no la marca/modelo real — eso se resuelve después, en Recepción de Proveedor).">
                     <option value="">Sin mapear</option>

@@ -15,6 +15,7 @@ use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Procesador;
@@ -22,6 +23,7 @@ use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\Ram;
+use Modules\GestionTI\Models\SolicitudProveedor;
 use Modules\GestionTI\Models\TipoEquipo;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -649,5 +651,118 @@ class ComprasTest extends TestCase
         $descripciones = $component->viewData('records')->pluck('ebs_item_description')->all();
         $this->assertContains('MONITOR 24 PULGADAS', $descripciones);
         $this->assertNotContains('TECLADO INALAMBRICO', $descripciones);
+    }
+
+    // --- tab "Lugar de entrega" ----------------------------------------
+    // Catálogo nuevo (ver docs/gestionti-progreso.md, tabla compacta de
+    // "Líneas del pedido" en Solicitud a Proveedores) — sembrado
+    // incondicionalmente por la migración con Zurich/CEDA/Sotelo, mismo
+    // patrón `mergeReferences` que el tab "categorias".
+
+    public function test_lugares_entrega_tab_lists_the_seeded_rows(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->assertSet('tab', 'lugares_entrega')
+            ->assertSee('Zurich')
+            ->assertSee('CEDA')
+            ->assertSee('Sotelo');
+    }
+
+    public function test_can_create_a_lugar_de_entrega(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('create')
+            ->set('form.nombre', 'Bodega Norte')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('lugares_entrega', ['nombre' => 'Bodega Norte']);
+    }
+
+    public function test_lugar_de_entrega_requires_nombre(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('create')
+            ->call('save')
+            ->assertHasErrors(['form.nombre']);
+    }
+
+    public function test_can_edit_a_lugar_de_entrega(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $lugar = LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('edit', $lugar->id)
+            ->assertSet('form.nombre', 'CEDA')
+            ->set('form.nombre', 'CEDA Corregido')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('CEDA Corregido', $lugar->fresh()->nombre);
+    }
+
+    public function test_can_toggle_activo_on_a_lugar_de_entrega(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $lugar = LugarEntrega::where('nombre', 'Sotelo')->firstOrFail();
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('toggleActivo', $lugar->id);
+
+        $this->assertFalse($lugar->fresh()->activo);
+    }
+
+    public function test_can_delete_a_lugar_de_entrega_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $lugar = LugarEntrega::create(['nombre' => 'Temporal']);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('delete', $lugar->id);
+
+        $this->assertDatabaseMissing('lugares_entrega', ['id' => $lugar->id]);
+    }
+
+    public function test_cannot_delete_a_lugar_de_entrega_referenced_by_a_solicitud_proveedor_linea(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $lugar = LugarEntrega::where('nombre', 'Zurich')->firstOrFail();
+
+        $vendor = Proveedor::create(['nombre_comercial' => 'Proveedor Lugar', 'razon_social' => 'Proveedor Lugar S.A. de C.V.']);
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-LUGAR-001',
+            'vendor_id' => $vendor->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create([
+            'descripcion_libre' => 'Artículo para prueba de lugar en uso',
+            'cantidad_solicitada' => 1,
+            'lugar_entrega_id' => $lugar->id,
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('delete', $lugar->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('lugares_entrega', ['id' => $lugar->id]);
     }
 }

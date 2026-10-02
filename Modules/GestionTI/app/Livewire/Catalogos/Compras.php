@@ -12,6 +12,7 @@ use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\EbsArticulo;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Mantenimiento;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
@@ -19,6 +20,7 @@ use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\Ram;
+use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\TipoEquipo;
 
 #[Layout('layouts.app')]
@@ -109,6 +111,19 @@ class Compras extends Component
                 'mergeReferences' => [
                     ['model' => ArticuloSolicitud::class, 'column' => 'categoria_id'],
                     ['model' => ProyectoPresupuestoArticulo::class, 'column' => 'categoria_id'],
+                ],
+            ],
+            'lugares_entrega' => [
+                'label' => 'Lugar de entrega',
+                'model' => LugarEntrega::class,
+                'fields' => ['nombre'],
+                'rules' => [
+                    'form.nombre' => 'required|string|max:255',
+                ],
+                'orderBy' => 'nombre',
+                'searchColumns' => ['nombre'],
+                'mergeReferences' => [
+                    ['model' => SolicitudProveedorLinea::class, 'column' => 'lugar_entrega_id'],
                 ],
             ],
             // Mapeo EBS -> Artículo estándar (Fase 5) — las filas las crea

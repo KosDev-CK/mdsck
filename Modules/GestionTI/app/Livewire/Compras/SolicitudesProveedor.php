@@ -12,10 +12,12 @@ use Modules\GestionTI\Mail\SolicitudProveedorMail;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\EbsRequisition;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\Ticket;
 
@@ -24,15 +26,16 @@ use Modules\GestionTI\Models\Ticket;
  * ver `SolicitudProveedorLinea`) O un artículo de Proyecto de Presupuesto
  * (`form.proyecto_presupuesto_articulo_id`), nunca ambos — regla de negocio
  * validada en `validateOrigenUnico()`. Ver docs/gestionti-progreso.md,
- * entrada del rediseño "Solicitud a Proveedores: selección de 1 a N SICs
- * autorizadas" para el diseño completo.
+ * entrada "Una sola tabla: elegir y editar SICs es la misma acción" para el
+ * diseño completo de `$lineas` (reemplaza el picker separado + tabla de la
+ * entrada anterior del mismo día).
  *
- * Cada SIC seleccionada en el picker (`$sicIdsSeleccionados`, checkboxes
- * poblados por `sicPickerOptions()`) se convierte automáticamente en una
- * línea nueva — no hace falta una tabla pivote aparte, "de 1 a N SICs" surge
- * de "N líneas, cada una con su propia SIC opcional". También es posible
- * capturar una línea manual con `folio_sic_manual` (texto libre) cuando no
- * existe todavía el registro real de la SIC.
+ * En origen "sic", `$lineas` es el POOL COMPLETO de SICs/EBS elegibles (ver
+ * `sicPickerOptions()`/`ebsPickerOptions()`) — una fila por cada una, esté
+ * marcada o no (`lineas.*.seleccionada`), más cualquier línea manual
+ * agregada al final. No hay una lista de "opciones" separada: la misma
+ * tabla "Líneas del pedido" sirve para elegir Y editar. Solo las filas
+ * marcadas (o manuales) se persisten al guardar (`lineasAGuardar()`).
  */
 #[Layout('layouts.app')]
 class SolicitudesProveedor extends Component
@@ -53,37 +56,24 @@ class SolicitudesProveedor extends Component
     public string $origen = 'sic';
 
     /**
-     * IDs de SIC marcados en el picker de "SICs autorizadas y disponibles"
-     * (camino "SIC local") — cada cambio (marcar/desmarcar) sincroniza
-     * `$lineas` vía `syncLineasFromSeleccionados()`, llamado desde el
-     * catch-all `updated()`.
+     * En origen "sic": una fila por cada SIC/EBS elegible (todas, marcadas
+     * o no, ver `construirLineasDesdePool()`/`construirLineasParaEdicion()`)
+     * más cualquier línea manual agregada al final. Una fila "de pool" trae
+     * `sic_id` o `ebs_requisition_id`; una fila manual no trae ninguno de
+     * los 2. `seleccionada` decide si una fila de pool se guarda
+     * (`lineasAGuardar()`) — las manuales siempre se evalúan por contenido
+     * (`esLineaEnBlancoSinTocar()`), ese campo no aplica para ellas.
+     * `ebs_item_description`/`folio_sic_display`/`articulo_descripcion_preview`
+     * son puramente informativos (no se guardan en la BD, no son campos de
+     * `SolicitudProveedorLinea`): el primero muestra la descripción
+     * original de EBS de solo lectura para detectar un mapeo automático
+     * incorrecto; el segundo es la etiqueta de SIC/EBS a mostrar en la
+     * columna "SIC"; el tercero es una vista previa liviana del artículo
+     * mapeado para filas de pool aún no marcadas (sin controles editables
+     * de por medio, para no renderizar selects de 500+ opciones de entrada
+     * en 50+ filas).
      *
-     * @var array<int, int>
-     */
-    public array $sicIdsSeleccionados = [];
-
-    /**
-     * IDs de `EbsRequisition` marcados en el mismo picker (camino "EBS
-     * directo, sin SIC local" — ver `EbsRequisition::scopeElegibleDirectoSinSic()`)
-     * — mismo mecanismo de sincronización que `$sicIdsSeleccionados`. Nunca
-     * se solapan: una opción del picker es una SIC local O una requisición
-     * de EBS, nunca ambas.
-     *
-     * @var array<int, int>
-     */
-    public array $ebsIdsSeleccionados = [];
-
-    /**
-     * `ebs_item_description` es puramente informativo (no se guarda en la
-     * BD, no es un campo de `SolicitudProveedorLinea`) — se cachea aquí al
-     * construir el array en `edit()`/`syncLineasFromSeleccionados()` para
-     * no repetir la consulta en cada render: la descripción original de EBS
-     * de la línea, mostrada de solo lectura junto al artículo de catálogo
-     * cuando la línea (por SIC con `ebs_requisition_id`, o por EBS directo)
-     * viene de una requisición de EBS, para detectar si el mapeo automático
-     * (`EbsArticulo`) eligió mal.
-     *
-     * @var array<int, array{id: ?int, sic_id: ?int, folio_sic_manual: ?string, ebs_requisition_id: ?int, articulo_id: ?int, descripcion_libre: ?string, cantidad_solicitada: int, precio_unitario_cotizado: ?float, es_activo_inventariable: bool, observaciones_especificaciones: ?string, ebs_item_description: ?string}>
+     * @var array<int, array{id: ?int, sic_id: ?int, folio_sic_manual: ?string, ebs_requisition_id: ?int, lugar_entrega_id: ?int, articulo_id: ?int, descripcion_libre: ?string, cantidad_solicitada: int, precio_unitario_cotizado: ?float, es_activo_inventariable: bool, observaciones_especificaciones: ?string, ebs_item_description: ?string, folio_sic_display: ?string, articulo_descripcion_preview: ?string, seleccionada: bool}>
      */
     public array $lineas = [];
 
@@ -94,6 +84,23 @@ class SolicitudesProveedor extends Component
 
     public bool $showModal = false;
 
+    /**
+     * Modal de solo lectura "ver detalle de la SIC" al dar clic sobre el
+     * número de SIC en la tabla de "Líneas del pedido" — mismo detalle que
+     * ya existe en "SIC en EBS" (`MesaServicio\EbsRequisiciones::openDetalle()`),
+     * reutilizado vía el partial compartido `partials.ebs-requisicion-detalle`.
+     * Para una línea con requisición de EBS resuelta (directa, o heredada de
+     * su SIC local vinculada) se abre ESE detalle; para una SIC puramente
+     * local (sin EBS) se abre en su lugar `partials.sic-local-detalle`. Una
+     * línea con solo `folio_sic_manual` (sin registro real) no tiene nada
+     * que abrir — su celda se queda como el input editable de siempre.
+     */
+    public bool $showDetalleModal = false;
+
+    public ?int $detalleEbsRequisitionId = null;
+
+    public ?int $detalleSicLocalId = null;
+
     protected function rules(): array
     {
         return [
@@ -103,10 +110,10 @@ class SolicitudesProveedor extends Component
             'form.ticket_id' => 'nullable|exists:tickets,id',
             'form.proyecto_presupuesto_articulo_id' => 'nullable|exists:proyecto_presupuesto_articulos,id',
             'form.tipo_solicitud' => ['required', Rule::in(SolicitudProveedor::TIPOS)],
-            'lineas' => 'required|array|min:1',
             'lineas.*.sic_id' => 'nullable|exists:solicitudes_sic_borrador,id',
             'lineas.*.folio_sic_manual' => 'nullable|string|max:100',
             'lineas.*.ebs_requisition_id' => 'nullable|exists:ebs_requisitions,id',
+            'lineas.*.lugar_entrega_id' => 'nullable|exists:lugares_entrega,id',
             'lineas.*.articulo_id' => 'nullable|exists:articulos_solicitud,id',
             'lineas.*.descripcion_libre' => 'nullable|string|max:255',
             'lineas.*.cantidad_solicitada' => 'required|integer|min:1',
@@ -138,14 +145,13 @@ class SolicitudesProveedor extends Component
     }
 
     /**
-     * Creación directa desde "SIC en EBS" (punto 6/7 del rediseño) — cuando
-     * llega `?crear_desde_sics=1,2,3` y/o `?crear_desde_ebs=4,5` en la URL
-     * (pueden venir ambos a la vez si se seleccionó una mezcla de orígenes),
-     * abre el formulario de creación ya precargado con esos ids marcados y
-     * sus líneas generadas, reutilizando el 100% de la lógica ya construida
-     * (`create()` + `syncLineasFromSeleccionados()`), sin duplicar nada. Si
-     * los 2 query params vienen vacíos/ausentes, el `mount()` no hace nada
-     * distinto de siempre (la pantalla abre en su estado normal de listado).
+     * Creación directa desde "SIC en EBS" — cuando llega
+     * `?crear_desde_sics=1,2,3` y/o `?crear_desde_ebs=4,5` en la URL (pueden
+     * venir ambos a la vez si se seleccionó una mezcla de orígenes), abre el
+     * formulario de creación ya precargado con esas filas del pool
+     * premarcadas (`seleccionada = true`). Si los 2 query params vienen
+     * vacíos/ausentes, el `mount()` no hace nada distinto de siempre (la
+     * pantalla abre en su estado normal de listado).
      */
     public function mount(): void
     {
@@ -156,10 +162,7 @@ class SolicitudesProveedor extends Component
             return;
         }
 
-        $this->create();
-        $this->sicIdsSeleccionados = $sicIds;
-        $this->ebsIdsSeleccionados = $ebsIds;
-        $this->syncLineasFromSeleccionados();
+        $this->create($sicIds, $ebsIds);
     }
 
     public function updatingSearch(): void
@@ -202,13 +205,21 @@ class SolicitudesProveedor extends Component
         }
     }
 
-    public function addLinea(): void
+    /**
+     * Línea "manual" vacía — folio de SIC a mano (origen sic) o captura
+     * 100% libre (origen proyecto), sin `sic_id`/`ebs_requisition_id`. Mismo
+     * shape que una fila de pool (incluye `seleccionada` por consistencia,
+     * aunque no se usa para decidir si una línea manual se guarda — ver
+     * `lineasAGuardar()`).
+     */
+    private function lineaManualVacia(): array
     {
-        $this->lineas[] = [
+        return [
             'id' => null,
             'sic_id' => null,
             'folio_sic_manual' => null,
             'ebs_requisition_id' => null,
+            'lugar_entrega_id' => null,
             'articulo_id' => null,
             'descripcion_libre' => null,
             'cantidad_solicitada' => 1,
@@ -216,33 +227,29 @@ class SolicitudesProveedor extends Component
             'es_activo_inventariable' => false,
             'observaciones_especificaciones' => null,
             'ebs_item_description' => null,
+            'folio_sic_display' => null,
+            'articulo_descripcion_preview' => null,
+            'seleccionada' => false,
         ];
     }
 
+    public function addLinea(): void
+    {
+        $this->lineas[] = $this->lineaManualVacia();
+    }
+
     /**
-     * Si la línea removida venía de una SIC o de una requisición de EBS
-     * directa marcada en el picker, la desmarca también
-     * (`sicIdsSeleccionados`/`ebsIdsSeleccionados`) — evita que el checkbox
-     * siga viéndose marcado después de quitar la línea que generó.
+     * Esta acción solo es alcanzable desde el blade para filas manuales
+     * (sin `sic_id` ni `ebs_requisition_id`) — una fila de pool ya no se
+     * "quita", se desmarca con su checkbox (`lineas.*.seleccionada`).
      */
     public function removeLinea(int $index): void
     {
-        $sicId = $this->lineas[$index]['sic_id'] ?? null;
-        $ebsRequisitionId = $this->lineas[$index]['ebs_requisition_id'] ?? null;
-
-        if (! empty($sicId)) {
-            $this->sicIdsSeleccionados = array_values(array_diff($this->sicIdsSeleccionados, [$sicId]));
-        }
-
-        if (! empty($ebsRequisitionId)) {
-            $this->ebsIdsSeleccionados = array_values(array_diff($this->ebsIdsSeleccionados, [$ebsRequisitionId]));
-        }
-
         unset($this->lineas[$index]);
         $this->lineas = array_values($this->lineas);
     }
 
-    public function create(): void
+    public function create(array $sicIdsPreseleccionados = [], array $ebsIdsPreseleccionados = []): void
     {
         $this->editingId = null;
         $this->form = [
@@ -254,10 +261,9 @@ class SolicitudesProveedor extends Component
             'tipo_solicitud' => 'regular',
         ];
         $this->origen = 'sic';
-        $this->sicIdsSeleccionados = [];
-        $this->ebsIdsSeleccionados = [];
-        $this->lineas = [];
-        $this->addLinea();
+        $this->lineas = $this->origen === 'sic'
+            ? $this->construirLineasDesdePool($sicIdsPreseleccionados, $ebsIdsPreseleccionados)
+            : [$this->lineaManualVacia()];
         $this->resetValidation();
         $this->showModal = true;
     }
@@ -270,7 +276,7 @@ class SolicitudesProveedor extends Component
      */
     public function edit(int $id): void
     {
-        $record = SolicitudProveedor::with('lineas')->findOrFail($id);
+        $record = SolicitudProveedor::with('lineas.articulo')->findOrFail($id);
 
         if (! $this->puedeEditar($record)) {
             return;
@@ -285,30 +291,22 @@ class SolicitudesProveedor extends Component
             'proyecto_presupuesto_articulo_id' => $record->proyecto_presupuesto_articulo_id,
             'tipo_solicitud' => $record->tipo_solicitud,
         ];
-        $this->lineas = $record->lineas->map(fn ($linea) => [
-            'id' => $linea->id,
-            'sic_id' => $linea->sic_id,
-            'folio_sic_manual' => $linea->folio_sic_manual,
-            'ebs_requisition_id' => $linea->ebs_requisition_id,
-            'articulo_id' => $linea->articulo_id,
-            'descripcion_libre' => $linea->descripcion_libre,
-            'cantidad_solicitada' => $linea->cantidad_solicitada,
-            'precio_unitario_cotizado' => $linea->precio_unitario_cotizado,
-            'es_activo_inventariable' => $linea->es_activo_inventariable,
-            'observaciones_especificaciones' => $linea->observaciones_especificaciones,
-            'ebs_item_description' => $this->ebsItemDescriptionFor($linea->sic_id, $linea->ebs_requisition_id),
-        ])->all();
         $this->origen = $record->proyecto_presupuesto_articulo_id ? 'proyecto' : 'sic';
-        $this->sicIdsSeleccionados = collect($this->lineas)->pluck('sic_id')->filter()->map(fn ($id) => (int) $id)->values()->all();
-        $this->ebsIdsSeleccionados = collect($this->lineas)->pluck('ebs_requisition_id')->filter()->map(fn ($id) => (int) $id)->values()->all();
+
+        if ($this->origen === 'sic') {
+            $this->lineas = $this->construirLineasParaEdicion($record);
+        } else {
+            $this->lineas = $record->lineas->map(fn ($linea) => $this->lineaArrayDesdeRegistro($linea, true))->all();
+        }
+
         $this->resetValidation();
         $this->showModal = true;
     }
 
     /**
-     * Descripción original de EBS de referencia (punto 8 del rediseño) —
-     * para los 2 orígenes posibles de una línea con rastro de EBS: una SIC
-     * con `ebs_requisition_id` (camino "SIC local"), o `ebs_requisition_id`
+     * Descripción original de EBS de referencia — para los 2 orígenes
+     * posibles de una línea con rastro de EBS: una SIC con
+     * `ebs_requisition_id` (camino "SIC local"), o `ebs_requisition_id`
      * directo en la propia línea (camino "EBS directo, sin SIC local"). Se
      * muestra de solo lectura junto al select de "Artículo del catálogo"
      * para detectar a simple vista si el mapeo automático (`EbsArticulo`)
@@ -336,161 +334,191 @@ class SolicitudesProveedor extends Component
     }
 
     /**
-     * Catch-all de Livewire — reacciona a cambios de propiedades de primer
-     * nivel. `sicIdsSeleccionados`/`ebsIdsSeleccionados` son las únicas que
-     * necesitan lógica propia aquí: cada marca/desmarca del picker
-     * resincroniza `$lineas`.
-     *
-     * Bug real encontrado en verificación visual (2026-09-28): el checkbox
-     * del picker (`wire:model.live="sicIdsSeleccionados"` repetido) llega
-     * aquí con `$name` como `"sicIdsSeleccionados.N"` (path con el índice
-     * tocado), no como el nombre plano de la propiedad — el `===` estricto
-     * de abajo nunca coincidía, así que marcar una SIC nunca generaba su
-     * línea en un navegador real (los tests con `->set('sicIdsSeleccionados',
-     * [...])` sí disparaban esto porque `set()` reemplaza la propiedad
-     * completa, sin sufijo de índice — por eso la suite pasaba en verde pero
-     * la pantalla real no funcionaba). Se agregan además los hooks
-     * específicos `updatedSicIdsSeleccionados()`/`updatedEbsIdsSeleccionados()`
-     * (más abajo), que Livewire sí resuelve de forma confiable sin importar
-     * si el path viene con índice o no — son la fuente de verdad real; este
-     * catch-all se deja también, ya cubriendo ambas formas del path, por si
-     * algún otro camino lo dispara distinto.
-     */
-    public function updated($name, $value): void
-    {
-        if ($name === 'sicIdsSeleccionados' || str_starts_with($name, 'sicIdsSeleccionados.')
-            || $name === 'ebsIdsSeleccionados' || str_starts_with($name, 'ebsIdsSeleccionados.')) {
-            $this->syncLineasFromSeleccionados();
-        }
-    }
-
-    public function updatedSicIdsSeleccionados(): void
-    {
-        $this->syncLineasFromSeleccionados();
-    }
-
-    public function updatedEbsIdsSeleccionados(): void
-    {
-        $this->syncLineasFromSeleccionados();
-    }
-
-    /**
      * Cambiar de origen es puramente de UI (qué sección se muestra), pero
      * para no dejar datos "fantasma" inconsistentes con lo que el usuario ve:
-     * pasar a "proyecto" limpia el picker de SICs/EBS y las líneas que
-     * hubiera generado; pasar a "sic" limpia el artículo de proyecto
-     * elegido. Decisión tomada sobre la marcha, no especificada 100% en el
-     * plan.
+     * pasar a "proyecto" reemplaza `$lineas` por una sola línea manual en
+     * blanco (se pierde cualquier marca del pool, consistente con que esa
+     * tabla deja de mostrarse); pasar a "sic" limpia el artículo de proyecto
+     * elegido y reconstruye el pool completo, sin preselección. Decisión
+     * tomada sobre la marcha, no especificada 100% en el plan.
      */
     public function updatedOrigen(string $value): void
     {
         if ($value === 'proyecto') {
-            $this->sicIdsSeleccionados = [];
-            $this->ebsIdsSeleccionados = [];
-            $this->syncLineasFromSeleccionados();
+            $this->lineas = [$this->lineaManualVacia()];
         } else {
             $this->form['proyecto_presupuesto_articulo_id'] = null;
+            $this->lineas = $this->construirLineasDesdePool();
         }
     }
 
     /**
-     * Reconstruye las líneas derivadas de SICs/EBS directo a partir de
-     * `$sicIdsSeleccionados`/`$ebsIdsSeleccionados`: agrega una línea nueva
-     * por cada id recién marcado (heredando `articulo_id` y
-     * `es_activo_inventariable` del Artículo — siempre resuelto, ver
-     * `sicPickerOptions()`/`EbsRequisition::articuloMapeadoDeCompra()`) y
-     * quita las líneas de ids que ya no están marcados. Las líneas manuales
-     * (sin `sic_id` ni `ebs_requisition_id`) nunca se tocan aquí.
+     * Fila de pool para una SIC local — misma forma que
+     * `lineaArrayDesdeRegistro()`, pero con los valores por defecto de una
+     * línea nunca guardada (cantidad 1, sin precio/lugar/observaciones).
      */
-    private function syncLineasFromSeleccionados(): void
+    private function filaDesdeSic(SolicitudSicBorrador $sic, bool $seleccionada): array
     {
-        $sicSeleccionados = array_map('intval', $this->sicIdsSeleccionados);
-        $ebsSeleccionados = array_map('intval', $this->ebsIdsSeleccionados);
+        return [
+            'id' => null,
+            'sic_id' => $sic->id,
+            'folio_sic_manual' => null,
+            'ebs_requisition_id' => null,
+            'lugar_entrega_id' => null,
+            'articulo_id' => $sic->articulo_id,
+            'descripcion_libre' => null,
+            'cantidad_solicitada' => 1,
+            'precio_unitario_cotizado' => null,
+            'es_activo_inventariable' => $sic->articulo?->es_inventariable ?? true,
+            'observaciones_especificaciones' => null,
+            'ebs_item_description' => $sic->ebs_requisition_id
+                ? $sic->ebsRequisition?->lines->sortBy('line_number')->first()?->item_description
+                : null,
+            'folio_sic_display' => $sic->folio_sic,
+            'articulo_descripcion_preview' => $sic->articulo?->descripcion,
+            'seleccionada' => $seleccionada,
+        ];
+    }
 
-        $this->lineas = array_values(array_filter(
-            $this->lineas,
-            fn ($linea) => (empty($linea['sic_id']) || in_array((int) $linea['sic_id'], $sicSeleccionados, true))
-                && (empty($linea['ebs_requisition_id']) || in_array((int) $linea['ebs_requisition_id'], $ebsSeleccionados, true))
-        ));
+    /**
+     * Fila de pool para una requisición de EBS sin SIC local — espejo de
+     * `filaDesdeSic()` para el camino directo.
+     */
+    private function filaDesdeEbs(EbsRequisition $ebsRequisicion, bool $seleccionada): array
+    {
+        $articulo = $ebsRequisicion->articuloMapeadoDeCompra();
 
-        $sicYaPresentes = collect($this->lineas)->pluck('sic_id')->filter()->map(fn ($id) => (int) $id)->all();
-        $ebsYaPresentes = collect($this->lineas)->pluck('ebs_requisition_id')->filter()->map(fn ($id) => (int) $id)->all();
+        return [
+            'id' => null,
+            'sic_id' => null,
+            'folio_sic_manual' => null,
+            'ebs_requisition_id' => $ebsRequisicion->id,
+            'lugar_entrega_id' => null,
+            'articulo_id' => $articulo?->id,
+            'descripcion_libre' => null,
+            'cantidad_solicitada' => 1,
+            'precio_unitario_cotizado' => null,
+            'es_activo_inventariable' => $articulo?->es_inventariable ?? true,
+            'observaciones_especificaciones' => null,
+            'ebs_item_description' => $ebsRequisicion->lines->sortBy('line_number')->first()?->item_description,
+            'folio_sic_display' => $ebsRequisicion->code,
+            'articulo_descripcion_preview' => $articulo?->descripcion,
+            'seleccionada' => $seleccionada,
+        ];
+    }
 
-        foreach ($sicSeleccionados as $sicId) {
-            if (in_array($sicId, $sicYaPresentes, true)) {
-                continue;
-            }
+    /**
+     * El pool completo (punto central del rediseño): una fila por cada SIC
+     * local elegible (`sicPickerOptions()`) y por cada requisición de EBS
+     * elegible sin SIC local (`ebsPickerOptions()`) — todas, estén
+     * premarcadas o no. Usado tanto por `create()`/`updatedOrigen()` (sin
+     * preselección) como por `mount()` (con preselección desde
+     * `crear_desde_sics`/`crear_desde_ebs`).
+     */
+    private function construirLineasDesdePool(array $sicIdsPreseleccionados = [], array $ebsIdsPreseleccionados = []): array
+    {
+        $lineas = [];
 
-            $sic = SolicitudSicBorrador::with(['articulo', 'ebsRequisition.lines'])->find($sicId);
-
-            if (! $sic) {
-                continue;
-            }
-
-            $this->lineas[] = [
-                'id' => null,
-                'sic_id' => $sic->id,
-                'folio_sic_manual' => null,
-                'ebs_requisition_id' => null,
-                'articulo_id' => $sic->articulo_id,
-                'descripcion_libre' => null,
-                'cantidad_solicitada' => 1,
-                'precio_unitario_cotizado' => null,
-                'es_activo_inventariable' => $sic->articulo?->es_inventariable ?? true,
-                'observaciones_especificaciones' => null,
-                'ebs_item_description' => $sic->ebs_requisition_id
-                    ? $sic->ebsRequisition?->lines->sortBy('line_number')->first()?->item_description
-                    : null,
-            ];
+        foreach ($this->sicPickerOptions() as $sic) {
+            $lineas[] = $this->filaDesdeSic($sic, in_array($sic->id, $sicIdsPreseleccionados, true));
         }
 
-        foreach ($ebsSeleccionados as $ebsRequisitionId) {
-            if (in_array($ebsRequisitionId, $ebsYaPresentes, true)) {
-                continue;
-            }
-
-            $ebsRequisicion = EbsRequisition::with('lines')->find($ebsRequisitionId);
-
-            if (! $ebsRequisicion) {
-                continue;
-            }
-
-            $articulo = $ebsRequisicion->articuloMapeadoDeCompra();
-
-            $this->lineas[] = [
-                'id' => null,
-                'sic_id' => null,
-                'folio_sic_manual' => null,
-                'ebs_requisition_id' => $ebsRequisicion->id,
-                'articulo_id' => $articulo?->id,
-                'descripcion_libre' => null,
-                'cantidad_solicitada' => 1,
-                'precio_unitario_cotizado' => null,
-                'es_activo_inventariable' => $articulo?->es_inventariable ?? true,
-                'observaciones_especificaciones' => null,
-                'ebs_item_description' => $ebsRequisicion->lines->sortBy('line_number')->first()?->item_description,
-            ];
+        foreach ($this->ebsPickerOptions() as $ebsRequisicion) {
+            $lineas[] = $this->filaDesdeEbs($ebsRequisicion, in_array($ebsRequisicion->id, $ebsIdsPreseleccionados, true));
         }
 
-        // `create()` siempre arranca con 1 línea manual en blanco (ver
-        // `addLinea()`), pensada para cuando el usuario captura a mano sin
-        // usar el picker. En cuanto hay al menos 1 línea real derivada de
-        // una SIC o de EBS directo, esa línea en blanco (nunca tocada por el
-        // usuario) deja de tener sentido y, sin quitarla, `validateLineas()`
-        // la rechazaría igual al guardar ("elige un artículo o descripción")
-        // — se limpia aquí para que marcar una opción del picker sea
-        // suficiente por sí solo, sin obligar al usuario a borrar
-        // manualmente el renglón vacío que él nunca pidió.
-        if (collect($this->lineas)->contains(fn ($linea) => ! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id']))) {
-            $this->lineas = array_values(array_filter($this->lineas, fn ($linea) => ! $this->esLineaEnBlancoSinTocar($linea)));
+        return $lineas;
+    }
+
+    /**
+     * Arma el array de una línea YA GUARDADA (con su `id` real y sus
+     * valores reales) — usada tanto para filas de pool ya marcadas en una
+     * edición previa como para líneas manuales/de proyecto.
+     */
+    private function lineaArrayDesdeRegistro(SolicitudProveedorLinea $linea, bool $seleccionada): array
+    {
+        return [
+            'id' => $linea->id,
+            'sic_id' => $linea->sic_id,
+            'folio_sic_manual' => $linea->folio_sic_manual,
+            'ebs_requisition_id' => $linea->ebs_requisition_id,
+            'lugar_entrega_id' => $linea->lugar_entrega_id,
+            'articulo_id' => $linea->articulo_id,
+            'descripcion_libre' => $linea->descripcion_libre,
+            'cantidad_solicitada' => $linea->cantidad_solicitada,
+            'precio_unitario_cotizado' => $linea->precio_unitario_cotizado,
+            'es_activo_inventariable' => $linea->es_activo_inventariable,
+            'observaciones_especificaciones' => $linea->observaciones_especificaciones,
+            'ebs_item_description' => $this->ebsItemDescriptionFor($linea->sic_id, $linea->ebs_requisition_id),
+            'folio_sic_display' => $linea->folioSicDisplay(),
+            'articulo_descripcion_preview' => $linea->articulo?->descripcion,
+            'seleccionada' => $seleccionada,
+        ];
+    }
+
+    /**
+     * Pool completo para `edit()` (origen sic): recorre el mismo pool de
+     * `construirLineasDesdePool()` (que YA incluye, gracias a
+     * `$exceptSolicitudId` en `sicPickerOptions()`/`ebsPickerOptions()`, las
+     * SICs/EBS consumidas por ESTA MISMA solicitud) y por cada entrada
+     * revisa si ya existe una línea guardada con ese `sic_id`/
+     * `ebs_requisition_id` — si existe, usa sus valores reales y queda
+     * marcada; si no, usa la fila fresca del pool sin marcar. Al final
+     * agrega las líneas manuales guardadas (sin `sic_id` ni
+     * `ebs_requisition_id`) y, como red de seguridad, cualquier línea
+     * guardada con `sic_id`/`ebs_requisition_id` que por algún motivo no
+     * haya aparecido en el pool (no debería pasar dado `$exceptSolicitudId`,
+     * pero así no se pierde el dato).
+     */
+    private function construirLineasParaEdicion(SolicitudProveedor $record): array
+    {
+        $guardadasPorSic = $record->lineas->filter(fn ($l) => ! empty($l->sic_id))->keyBy('sic_id');
+        $guardadasPorEbs = $record->lineas->filter(fn ($l) => ! empty($l->ebs_requisition_id))->keyBy('ebs_requisition_id');
+
+        $lineas = [];
+        $sicIdsCubiertos = [];
+        $ebsIdsCubiertos = [];
+
+        foreach ($this->sicPickerOptions() as $sic) {
+            $sicIdsCubiertos[] = $sic->id;
+            $guardada = $guardadasPorSic->get($sic->id);
+            $lineas[] = $guardada
+                ? $this->lineaArrayDesdeRegistro($guardada, true)
+                : $this->filaDesdeSic($sic, false);
         }
+
+        foreach ($this->ebsPickerOptions() as $ebsRequisicion) {
+            $ebsIdsCubiertos[] = $ebsRequisicion->id;
+            $guardada = $guardadasPorEbs->get($ebsRequisicion->id);
+            $lineas[] = $guardada
+                ? $this->lineaArrayDesdeRegistro($guardada, true)
+                : $this->filaDesdeEbs($ebsRequisicion, false);
+        }
+
+        foreach ($record->lineas->filter(fn ($l) => empty($l->sic_id) && empty($l->ebs_requisition_id)) as $manual) {
+            $lineas[] = $this->lineaArrayDesdeRegistro($manual, true);
+        }
+
+        foreach ($guardadasPorSic as $sicId => $guardada) {
+            if (! in_array($sicId, $sicIdsCubiertos, true)) {
+                $lineas[] = $this->lineaArrayDesdeRegistro($guardada, true);
+            }
+        }
+
+        foreach ($guardadasPorEbs as $ebsId => $guardada) {
+            if (! in_array($ebsId, $ebsIdsCubiertos, true)) {
+                $lineas[] = $this->lineaArrayDesdeRegistro($guardada, true);
+            }
+        }
+
+        return $lineas;
     }
 
     /**
      * Línea "nueva" que nadie ha tocado todavía — mismos valores que
-     * `addLinea()` produce. Usada por `syncLineasFromSeleccionados()` para
-     * no dejar un renglón fantasma inválido cuando el usuario arma la
-     * solicitud completa desde el picker de SICs/EBS.
+     * `lineaManualVacia()` produce. Usada por `lineasAGuardar()` para no
+     * persistir un renglón manual fantasma que el usuario agregó (o que
+     * quedó) sin capturar nada.
      */
     private function esLineaEnBlancoSinTocar(array $linea): bool
     {
@@ -506,18 +534,81 @@ class SolicitudesProveedor extends Component
     }
 
     /**
+     * Lista filtrada de líneas que realmente se persisten al guardar: una
+     * fila de pool (con `sic_id`/`ebs_requisition_id`) solo si está marcada
+     * (`seleccionada`); una fila manual siempre, salvo que esté en blanco
+     * sin tocar.
+     */
+    private function lineasAGuardar(): array
+    {
+        return array_values(array_filter($this->lineas, function ($linea) {
+            if (! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id'])) {
+                return ! empty($linea['seleccionada']);
+            }
+
+            return ! $this->esLineaEnBlancoSinTocar($linea);
+        }));
+    }
+
+    /**
+     * Abre el detalle de solo lectura de una línea al dar clic en su número
+     * de SIC (tabla "Líneas del pedido") — resuelve cuál de los 2 partials
+     * mostrar: si hay una requisición de EBS resoluble (directa en la línea,
+     * o heredada de su SIC local vinculada) se abre
+     * `partials.ebs-requisicion-detalle` (mismo detalle que "SIC en EBS");
+     * si no, pero sí hay una SIC local pura, se abre
+     * `partials.sic-local-detalle`. Sin efecto si la línea no tiene ningún
+     * origen real (solo `folio_sic_manual`) — esa celda nunca ofrece este
+     * botón, ver el blade.
+     */
+    public function openSicDetalle(int $sicId = 0, int $ebsRequisitionId = 0): void
+    {
+        // `0` en vez de un parámetro nullable — más seguro que depender de
+        // que Livewire parsee un literal `null` dentro de `wire:click="...(…)"`
+        // (nunca probado en este codebase); los ids reales nunca son 0.
+        $sicId = $sicId ?: null;
+        $ebsRequisitionId = $ebsRequisitionId ?: null;
+
+        $ebsRequisitionIdResuelto = $ebsRequisitionId;
+
+        if (! $ebsRequisitionIdResuelto && $sicId) {
+            $ebsRequisitionIdResuelto = SolicitudSicBorrador::find($sicId)?->ebs_requisition_id;
+        }
+
+        if ($ebsRequisitionIdResuelto) {
+            $this->detalleEbsRequisitionId = $ebsRequisitionIdResuelto;
+            $this->detalleSicLocalId = null;
+            $this->showDetalleModal = true;
+        } elseif ($sicId) {
+            $this->detalleSicLocalId = $sicId;
+            $this->detalleEbsRequisitionId = null;
+            $this->showDetalleModal = true;
+        }
+    }
+
+    public function closeDetalle(): void
+    {
+        $this->showDetalleModal = false;
+        $this->detalleEbsRequisitionId = null;
+        $this->detalleSicLocalId = null;
+    }
+
+    /**
      * "El origen de una Solicitud a Proveedor es una o más SICs/requisiciones
      * de EBS O un artículo de proyecto, no ambos" — regla de negocio del
-     * spec, generalizada de "una SIC" a "de 1 a N SICs/EBS": ahora se
-     * detecta mirando si ALGUNA línea trae `sic_id` o `ebs_requisition_id`
-     * (antes miraba el campo de cabecera `form.sic_id`, ya eliminado). El
-     * error se agrega sobre `origen` (el selector visual) y sobre el campo
-     * de proyecto para que el mensaje aparezca sin importar cuál mire el
-     * usuario primero.
+     * spec, generalizada de "una SIC" a "de 1 a N SICs/EBS": se detecta
+     * mirando si ALGUNA línea trae `sic_id`/`ebs_requisition_id` Y está
+     * marcada (`seleccionada`) — una fila de pool sin marcar no cuenta,
+     * aunque esté presente en `$lineas` (casi todas lo están, sea cual sea
+     * lo que el usuario haya elegido). El error se agrega sobre `origen`
+     * (el selector visual) y sobre el campo de proyecto para que el mensaje
+     * aparezca sin importar cuál mire el usuario primero.
      */
     private function validateOrigenUnico(): void
     {
-        $tieneSic = collect($this->lineas)->contains(fn ($linea) => ! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id']));
+        $tieneSic = collect($this->lineas)->contains(
+            fn ($linea) => (! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id'])) && ! empty($linea['seleccionada'])
+        );
 
         if ($tieneSic && ! empty($this->form['proyecto_presupuesto_articulo_id'] ?? null)) {
             $mensaje = 'El origen debe ser una o más SICs o un artículo de proyecto, no ambos.';
@@ -527,18 +618,24 @@ class SolicitudesProveedor extends Component
     }
 
     /**
-     * Cada línea necesita exactamente uno de articulo_id/descripcion_libre
-     * (no ambos, no ninguno) — regla dependiente entre 2 campos del mismo
-     * renglón que una regla wildcard simple no puede expresar, mismo patrón
-     * que `validateSubFieldOptions()` en Modules\FormBuilder\Livewire\Forms\Builder.
-     * Las líneas generadas desde el picker de SICs siempre traen
-     * `articulo_id` (la SIC no aparece en el picker si no lo tiene, ver
-     * `sicPickerOptions()`), así que pasan esta validación sin intervención
-     * manual.
+     * Cada línea que se va a guardar necesita exactamente uno de
+     * articulo_id/descripcion_libre (no ambos, no ninguno) — regla
+     * dependiente entre 2 campos del mismo renglón que una regla wildcard
+     * simple no puede expresar, mismo patrón que `validateSubFieldOptions()`
+     * en Modules\FormBuilder\Livewire\Forms\Builder. Las filas de pool sin
+     * marcar se saltan por completo — sus valores son solo los defaults del
+     * pool (o, en edición, los de una fila "cubierta" que no se tocó), no
+     * importa si "parecen" inválidos porque nunca se van a guardar.
      */
     private function validateLineas(): void
     {
         foreach ($this->lineas as $i => $linea) {
+            $esFilaDePool = ! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id']);
+
+            if ($esFilaDePool && empty($linea['seleccionada'])) {
+                continue;
+            }
+
             $tieneArticulo = ! empty($linea['articulo_id']);
             $tieneDescripcion = trim((string) ($linea['descripcion_libre'] ?? '')) !== '';
 
@@ -547,6 +644,19 @@ class SolicitudesProveedor extends Component
             } elseif (! $tieneArticulo && ! $tieneDescripcion) {
                 $this->addError("lineas.$i.articulo_id", 'Elige un artículo del catálogo o captura una descripción libre.');
             }
+        }
+    }
+
+    /**
+     * Reemplaza la vieja regla `'lineas' => 'required|array|min:1'` de
+     * `rules()` — ya no tiene sentido ahí porque `$lineas` casi siempre
+     * tiene entradas (el pool completo), estén marcadas o no. La validación
+     * real de "hay algo que guardar" vive aquí, mirando `lineasAGuardar()`.
+     */
+    private function validateAlMenosUnaLinea(): void
+    {
+        if (empty($this->lineasAGuardar())) {
+            $this->addError('lineas', 'Agrega al menos una línea: marca una SIC/EBS del listado o agrega una línea manual.');
         }
     }
 
@@ -578,6 +688,7 @@ class SolicitudesProveedor extends Component
         $this->validate($this->rules());
         $this->validateOrigenUnico();
         $this->validateLineas();
+        $this->validateAlMenosUnaLinea();
 
         if ($this->getErrorBag()->isNotEmpty()) {
             return;
@@ -594,11 +705,12 @@ class SolicitudesProveedor extends Component
         }
 
         $keptIds = [];
-        foreach ($this->lineas as $linea) {
+        foreach ($this->lineasAGuardar() as $linea) {
             $attributes = [
                 'sic_id' => $linea['sic_id'] ?: null,
                 'folio_sic_manual' => ($linea['folio_sic_manual'] ?? '') !== '' ? $linea['folio_sic_manual'] : null,
                 'ebs_requisition_id' => $linea['ebs_requisition_id'] ?: null,
+                'lugar_entrega_id' => $linea['lugar_entrega_id'] ?: null,
                 'articulo_id' => $linea['articulo_id'] ?: null,
                 'descripcion_libre' => $linea['descripcion_libre'] ?: null,
                 'cantidad_solicitada' => $linea['cantidad_solicitada'],
@@ -628,8 +740,6 @@ class SolicitudesProveedor extends Component
         $this->editingId = null;
         $this->form = [];
         $this->origen = 'sic';
-        $this->sicIdsSeleccionados = [];
-        $this->ebsIdsSeleccionados = [];
         $this->lineas = [];
         $this->resetValidation();
     }
@@ -687,32 +797,6 @@ class SolicitudesProveedor extends Component
     }
 
     /**
-     * Etiqueta legible para el picker de SICs — pública porque se invoca
-     * desde la vista Blade.
-     */
-    public function sicPickerLabel(SolicitudSicBorrador $sic): string
-    {
-        $folio = $sic->folio_sic ?: "SIC #{$sic->id}";
-        $categoria = $sic->articulo?->categoria?->nombre;
-
-        return "{$folio} — {$sic->empleado?->nombre} — {$sic->articulo?->descripcion} ({$categoria})";
-    }
-
-    /**
-     * Etiqueta legible para el picker de requisiciones de EBS sin SIC local
-     * (camino directo) — mismo espíritu que `sicPickerLabel()`, pero sin
-     * solicitante/folio de SIC (no existen para este camino): código de la
-     * requisición + artículo mapeado + categoría.
-     */
-    public function ebsPickerLabel(EbsRequisition $ebsRequisicion): string
-    {
-        $articulo = $ebsRequisicion->articuloMapeadoDeCompra();
-        $categoria = $articulo?->categoria?->nombre;
-
-        return "EBS {$ebsRequisicion->code} — {$articulo?->descripcion} ({$categoria})";
-    }
-
-    /**
      * "SICs autorizadas y disponibles" — mismo criterio `whereDoesntHave(...)`
      * ya usado en `Asignaciones::render()`/`Stock::sicReservationOptions()`
      * para "SIC autorizada y aún no consumida", extendido con el filtro de
@@ -722,9 +806,9 @@ class SolicitudesProveedor extends Component
      * sin clasificar) o cuya categoría no esté marcada como "va a Compra"
      * no aparece — sigue disponible solo por captura manual (folio de
      * texto). En modo edición, las SICs ya recogidas por ESTA MISMA
-     * solicitud se siguen mostrando (y marcadas, ver `edit()`) aunque ya
-     * tengan una línea — de lo contrario desaparecerían del picker al
-     * reabrir la solicitud para editarla.
+     * solicitud se siguen mostrando (y marcadas, ver `construirLineasParaEdicion()`)
+     * aunque ya tengan una línea — de lo contrario desaparecerían del pool
+     * al reabrir la solicitud para editarla.
      */
     private function sicPickerOptions()
     {
@@ -735,11 +819,11 @@ class SolicitudesProveedor extends Component
     }
 
     /**
-     * Segunda fuente del mismo picker (unión con `sicPickerOptions()`,
-     * punto 6 del rediseño) — requisiciones de EBS que NUNCA tuvieron SIC
-     * local, aprobadas, con su artículo mapeado de categoría "va a Compra" y
-     * sin asignar todavía por el camino directo. Mismo criterio de
-     * elegibilidad que "SIC en EBS" (`EbsRequisition::scopeElegibleDirectoSinSic()`).
+     * Segunda fuente del mismo pool (unión con `sicPickerOptions()`) —
+     * requisiciones de EBS que NUNCA tuvieron SIC local, aprobadas, con su
+     * artículo mapeado de categoría "va a Compra" y sin asignar todavía por
+     * el camino directo. Mismo criterio de elegibilidad que "SIC en EBS"
+     * (`EbsRequisition::scopeElegibleDirectoSinSic()`).
      */
     private function ebsPickerOptions()
     {
@@ -766,13 +850,35 @@ class SolicitudesProveedor extends Component
             ->orderByDesc('fecha_solicitud')
             ->paginate(10);
 
+        $detalleEbsRequisicion = $this->showDetalleModal && $this->detalleEbsRequisitionId
+            ? EbsRequisition::with([
+                'lines', 'notes',
+                'solicitudSicBorrador.ticket',
+                'solicitudSicBorrador.solicitudProveedorLineas.solicitud',
+                'solicitudProveedorLineas.solicitud',
+            ])->find($this->detalleEbsRequisitionId)
+            : null;
+
+        $detalleSicLocal = $this->showDetalleModal && $this->detalleSicLocalId
+            ? SolicitudSicBorrador::with(['empleado', 'ticket', 'tipoEquipo', 'articulo.categoria', 'centroCosto', 'solicitudProveedorLineas.solicitud'])->find($this->detalleSicLocalId)
+            : null;
+
         return view('gestionti::livewire.compras.solicitudes-proveedor', [
+            'detalleEbsRequisicion' => $detalleEbsRequisicion,
+            'detalleSicLocal' => $detalleSicLocal,
+            // Mismo mapa que `MesaServicio\EbsRequisiciones` — el partial
+            // compartido `partials.ebs-requisicion-detalle` lo necesita tal
+            // cual para pintar el badge de estatus de la requisición.
+            'ebsEstatusColors' => [
+                'APPROVED' => 'emerald',
+                'REJECTED' => 'red',
+                'IN PROCESS' => 'indigo',
+            ],
             'records' => $records,
             'vendorOptions' => Proveedor::where('activo', true)->orderBy('nombre_comercial')->get(),
             'ticketOptions' => Ticket::orderByDesc('fecha')->get(),
-            'sicPickerOptions' => $this->sicPickerOptions(),
-            'ebsPickerOptions' => $this->ebsPickerOptions(),
             'articuloOptions' => ArticuloSolicitud::where('activo', true)->orderBy('descripcion')->get(),
+            'lugarEntregaOptions' => LugarEntrega::where('activo', true)->orderBy('nombre')->get(),
             // Artículos de categoría "laptops_desktops" de proyectos ya
             // autorizados y que ninguna otra Solicitud a Proveedor haya
             // recogido todavía — ver docs/gestionti-progreso.md, decisión de

@@ -14,6 +14,7 @@ class SolicitudProveedorLinea extends Model
         'sic_id',
         'folio_sic_manual',
         'ebs_requisition_id',
+        'lugar_entrega_id',
         'descripcion_libre',
         'cantidad_solicitada',
         'cantidad_recibida',
@@ -66,6 +67,16 @@ class SolicitudProveedorLinea extends Model
     public function recepcionLineas()
     {
         return $this->hasMany(RecepcionLinea::class, 'solicitud_proveedor_linea_id');
+    }
+
+    /**
+     * Lugar donde debe entregarse esta línea (catálogo real "Lugar de
+     * entrega", pestaña propia de "Catálogos de Compras") — opcional, cada
+     * línea de un mismo pedido puede entregarse en un sitio distinto.
+     */
+    public function lugarEntrega()
+    {
+        return $this->belongsTo(LugarEntrega::class, 'lugar_entrega_id');
     }
 
     /**

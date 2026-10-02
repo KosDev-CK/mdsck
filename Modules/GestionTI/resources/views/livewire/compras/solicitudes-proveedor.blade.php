@@ -149,33 +149,7 @@
                 @enderror
             </div>
 
-            @if ($origen === 'sic')
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SICs autorizadas y disponibles</label>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                        Solo aparecen SICs autorizadas, de una categoría marcada como "va a Compra" (pantalla "Categorías que van a Compra") y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra" (marcadas "EBS {código}"). Marca una o más — cada una se agrega como línea nueva.
-                    </p>
-
-                    @if ($sicPickerOptions->isEmpty() && $ebsPickerOptions->isEmpty())
-                        <p class="text-sm text-gray-500 dark:text-gray-400">No hay SICs ni requisiciones de EBS disponibles con la configuración actual.</p>
-                    @else
-                        <div class="space-y-1 max-h-56 overflow-y-auto rounded-md border border-gray-100 dark:border-gray-800 p-3">
-                            @foreach ($sicPickerOptions as $sic)
-                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                    <input type="checkbox" value="{{ $sic->id }}" wire:model.live="sicIdsSeleccionados" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
-                                    {{ $this->sicPickerLabel($sic) }}
-                                </label>
-                            @endforeach
-                            @foreach ($ebsPickerOptions as $ebsRequisicion)
-                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                    <input type="checkbox" value="{{ $ebsRequisicion->id }}" wire:model.live="ebsIdsSeleccionados" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
-                                    {{ $this->ebsPickerLabel($ebsRequisicion) }}
-                                </label>
-                            @endforeach
-                        </div>
-                    @endif
-                </div>
-            @else
+            @if ($origen !== 'sic')
                 <x-ui.select label="Artículo de Proyecto de Presupuesto" name="form.proyecto_presupuesto_articulo_id" wire:model="form.proyecto_presupuesto_articulo_id" hint="Solo artículos Laptops/Desktops de proyectos ya autorizados.">
                     <option value="">Sin asignar</option>
                     @foreach ($proyectoArticuloOptions as $proyectoArticulo)
@@ -196,58 +170,135 @@
                     </button>
                 </div>
 
+                @if ($origen === 'sic')
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        Solo aparecen SICs autorizadas, de una categoría marcada como "va a Compra" (pantalla "Categorías que van a Compra") y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra". Marca una o más — cada una se agrega al pedido y sus campos se vuelven editables justo ahí.
+                    </p>
+                @endif
+
                 @error('lineas')
                     <p class="mb-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                 @enderror
 
-                <div class="space-y-3">
-                    @foreach ($lineas as $i => $linea)
-                        <div wire:key="linea-{{ $i }}" class="rounded-md border border-gray-100 dark:border-gray-800 p-3 space-y-2">
-                            @if (! empty($linea['sic_id']))
-                                <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 px-2 py-1 text-xs text-gray-600 dark:text-gray-400">
-                                    Línea generada desde una SIC marcada en el picker de arriba — desmárcala ahí (o usa "Quitar línea") para eliminarla.
-                                </div>
-                            @elseif (! empty($linea['ebs_requisition_id']))
-                                <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 px-2 py-1 text-xs text-gray-600 dark:text-gray-400">
-                                    Línea generada desde una requisición de EBS (sin SIC local) marcada en el picker de arriba — desmárcala ahí (o usa "Quitar línea") para eliminarla.
-                                </div>
-                            @elseif ($origen === 'sic')
-                                <x-ui.input label="Folio de SIC (manual, opcional)" name="lineas.{{ $i }}.folio_sic_manual" wire:model="lineas.{{ $i }}.folio_sic_manual" hint="Solo si la SIC todavía no existe como registro real — captura el folio a mano." />
-                            @endif
-
-                            @if (! empty($linea['ebs_item_description']))
-                                <p class="text-xs text-gray-500 dark:text-gray-400">
-                                    <span class="font-medium">Descripción original en EBS:</span> {{ $linea['ebs_item_description'] }}
-                                    — compárala con el artículo elegido abajo; si el mapeo automático se equivocó, corrígelo aquí mismo.
-                                </p>
-                            @endif
-
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <x-ui.select label="Artículo del catálogo" name="lineas.{{ $i }}.articulo_id" wire:model="lineas.{{ $i }}.articulo_id">
-                                    <option value="">Sin catálogo (descripción libre)</option>
-                                    @foreach ($articuloOptions as $articulo)
-                                        <option value="{{ $articulo->id }}">{{ $articulo->codigo }} — {{ $articulo->descripcion }}</option>
-                                    @endforeach
-                                </x-ui.select>
-
-                                <x-ui.input label="Descripción libre" name="lineas.{{ $i }}.descripcion_libre" wire:model="lineas.{{ $i }}.descripcion_libre" hint="Usa esto solo si el artículo no está en el catálogo." />
-                            </div>
-
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                                <x-ui.input label="Cantidad solicitada" name="lineas.{{ $i }}.cantidad_solicitada" type="number" wire:model="lineas.{{ $i }}.cantidad_solicitada" />
-                                <x-ui.input label="Precio unitario cotizado" name="lineas.{{ $i }}.precio_unitario_cotizado" type="number" wire:model="lineas.{{ $i }}.precio_unitario_cotizado" />
-                                <x-ui.toggle label="Es activo inventariable" wire:model="lineas.{{ $i }}.es_activo_inventariable" />
-                            </div>
-
-                            <x-ui.input label="Observaciones / especificaciones adicionales" name="lineas.{{ $i }}.observaciones_especificaciones" wire:model="lineas.{{ $i }}.observaciones_especificaciones" hint="Notas libres para esta línea (opcional)." />
-
-                            <div class="flex justify-end">
-                                <button type="button" wire:click="removeLinea({{ $i }})" class="text-sm text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300">
-                                    Quitar línea
-                                </button>
-                            </div>
-                        </div>
-                    @endforeach
+                <div class="overflow-x-auto rounded-md border border-gray-100 dark:border-gray-800">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-gray-500 border-b border-gray-100 dark:text-gray-400 dark:border-gray-800">
+                                <th class="py-2 px-2 whitespace-nowrap">Selec.</th>
+                                <th class="py-2 px-2 whitespace-nowrap">SIC</th>
+                                <th class="py-2 px-2 whitespace-nowrap">Art. EBS</th>
+                                <th class="py-2 px-2 min-w-[14rem]">Artículo</th>
+                                <th class="py-2 px-2 whitespace-nowrap">Cantidad</th>
+                                <th class="py-2 px-2 whitespace-nowrap">P. Unit.</th>
+                                <th class="py-2 px-2 min-w-[9rem]">Lugar de entrega</th>
+                                <th class="py-2 px-2 min-w-[10rem]">Observaciones</th>
+                                <th class="py-2 px-2 whitespace-nowrap">Inventariable</th>
+                                <th class="py-2 px-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach ($lineas as $i => $linea)
+                                @php
+                                    $esFilaDePool = ! empty($linea['sic_id']) || ! empty($linea['ebs_requisition_id']);
+                                    $mostrarEditable = ! $esFilaDePool || ! empty($linea['seleccionada']);
+                                @endphp
+                                <tr wire:key="linea-{{ $i }}" class="border-b border-gray-50 dark:border-gray-800 align-top">
+                                    <td class="py-2 px-2 w-10 text-center">
+                                        @if ($esFilaDePool)
+                                            <input type="checkbox" wire:model.live="lineas.{{ $i }}.seleccionada" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 w-28">
+                                        @if ($esFilaDePool)
+                                            <button
+                                                type="button"
+                                                wire:click="openSicDetalle({{ $linea['sic_id'] ?? 0 }}, {{ $linea['ebs_requisition_id'] ?? 0 }})"
+                                                class="block text-xs text-primary hover:underline text-left"
+                                                title="{{ ! empty($linea['sic_id']) ? 'Clic para ver el detalle de la SIC.' : 'Clic para ver el detalle de la requisición de EBS.' }}"
+                                            >
+                                                {{ $linea['folio_sic_display'] ?? '—' }}
+                                            </button>
+                                        @elseif ($origen === 'sic')
+                                            <x-ui.input name="lineas.{{ $i }}.folio_sic_manual" wire:model="lineas.{{ $i }}.folio_sic_manual" placeholder="Folio SIC (manual)" class="text-xs" />
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 w-36">
+                                        @if (! empty($linea['ebs_item_description']))
+                                            <span class="block text-xs text-gray-500 dark:text-gray-400 max-w-[9rem] truncate" title="{{ $linea['ebs_item_description'] }}">
+                                                {{ $linea['ebs_item_description'] }}
+                                            </span>
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 min-w-[14rem]">
+                                        @if ($mostrarEditable)
+                                            <div class="space-y-1">
+                                                <x-ui.select name="lineas.{{ $i }}.articulo_id" wire:model="lineas.{{ $i }}.articulo_id">
+                                                    <option value="">Sin catálogo (descripción libre)</option>
+                                                    @foreach ($articuloOptions as $articulo)
+                                                        <option value="{{ $articulo->id }}">{{ $articulo->codigo }} — {{ $articulo->descripcion }}</option>
+                                                    @endforeach
+                                                </x-ui.select>
+                                                <x-ui.input name="lineas.{{ $i }}.descripcion_libre" wire:model="lineas.{{ $i }}.descripcion_libre" placeholder="o descripción libre" class="text-xs" />
+                                            </div>
+                                        @else
+                                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ $linea['articulo_descripcion_preview'] ?? '—' }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 w-20">
+                                        @if ($mostrarEditable)
+                                            <x-ui.input name="lineas.{{ $i }}.cantidad_solicitada" type="number" wire:model="lineas.{{ $i }}.cantidad_solicitada" class="w-20" />
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 w-24">
+                                        @if ($mostrarEditable)
+                                            <x-ui.input name="lineas.{{ $i }}.precio_unitario_cotizado" type="number" wire:model="lineas.{{ $i }}.precio_unitario_cotizado" class="w-24" />
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 min-w-[9rem]">
+                                        @if ($mostrarEditable)
+                                            <x-ui.select name="lineas.{{ $i }}.lugar_entrega_id" wire:model="lineas.{{ $i }}.lugar_entrega_id">
+                                                <option value="">Sin asignar</option>
+                                                @foreach ($lugarEntregaOptions as $lugar)
+                                                    <option value="{{ $lugar->id }}">{{ $lugar->nombre }}</option>
+                                                @endforeach
+                                            </x-ui.select>
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 min-w-[10rem]">
+                                        @if ($mostrarEditable)
+                                            <x-ui.input name="lineas.{{ $i }}.observaciones_especificaciones" wire:model="lineas.{{ $i }}.observaciones_especificaciones" />
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 text-center">
+                                        @if ($mostrarEditable)
+                                            <x-ui.toggle wire:model="lineas.{{ $i }}.es_activo_inventariable" />
+                                        @else
+                                            <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                                        @endif
+                                    </td>
+                                    <td class="py-2 px-2 text-right">
+                                        @unless ($esFilaDePool)
+                                            <x-ui.icon-button wire:click="removeLinea({{ $i }})" icon="heroicon-o-trash" title="Quitar línea" variant="danger" />
+                                        @endunless
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -256,6 +307,18 @@
                 <x-ui.button type="submit">Guardar</x-ui.button>
             </div>
         </form>
+    </x-ui.modal>
+
+    <x-ui.modal
+        model="showDetalleModal"
+        :title="$detalleEbsRequisicion ? 'Detalle de la requisición '.$detalleEbsRequisicion->code : 'Detalle de la SIC '.($detalleSicLocal?->folio_sic ?: '#'.$detalleSicLocal?->id)"
+        max-width="max-w-3xl"
+    >
+        @if ($detalleEbsRequisicion)
+            @include('gestionti::partials.ebs-requisicion-detalle', ['detalle' => $detalleEbsRequisicion, 'estatusColors' => $ebsEstatusColors, 'mostrarLinkSolicitudProveedor' => false])
+        @else
+            @include('gestionti::partials.sic-local-detalle', ['detalle' => $detalleSicLocal])
+        @endif
     </x-ui.modal>
 
     <x-ui.help-modal titulo="Solicitud a Proveedores" :pdf-url="route('gestionti.ayuda.pdf', 'solicitudes-proveedor')">
