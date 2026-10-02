@@ -8,8 +8,8 @@ return [
     'campos' => [
         ['nombre' => 'Activos por estatus', 'explicacion' => 'Conteo de equipos agrupados por su estatus actual (en stock, asignado, en mantenimiento, etc.). Solo visible si tienes permiso sobre la pantalla "Stock".'],
         ['nombre' => 'Stock disponible por tipo', 'explicacion' => 'Los 8 tipos de equipo con más unidades disponibles en almacén en este momento.'],
-        ['nombre' => 'SICs en captura', 'explicacion' => 'Número de Solicitudes Internas de Compra que siguen en borrador, o que ya generaron folio en EBS pero todavía no se envían a un proveedor.'],
-        ['nombre' => 'Solicitudes a proveedor pendientes', 'explicacion' => 'Solicitudes ya enviadas a un proveedor que aún no se reciben por completo.'],
+        ['nombre' => 'SICs en captura', 'explicacion' => 'Número de Solicitudes Internas de Compra en estatus "Capturado" o "SIC creada", es decir, que todavía no se autorizan ni se rechazan.'],
+        ['nombre' => 'Solicitudes a proveedor pendientes', 'explicacion' => 'Solicitudes a Proveedores en estatus "Solicitada" o "Parcialmente recibida", es decir, que aún no se reciben por completo (no depende de si ya se envió o no el correo al proveedor).'],
         ['nombre' => 'Facturas pendientes de pago / Diferencias a revisar', 'explicacion' => 'Conteo de facturas sin marcar como pagadas, y por separado, facturas cuyo monto no coincide con lo realmente recibido y necesitan revisión manual.'],
         ['nombre' => 'Mantenimientos próximos', 'explicacion' => 'Mantenimientos programados o reprogramados cuya fecha cae dentro de los próximos 7 días.'],
         ['nombre' => 'Mis pendientes', 'explicacion' => 'Solo aparece si tu correo coincide con el de un registro en "Catálogos > Empleados". Muestra tus costos de proyecto por capturar, autorizaciones de presupuesto que te toca aprobar, y tus notificaciones sin leer.'],
