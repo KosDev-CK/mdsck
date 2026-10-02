@@ -113,25 +113,51 @@ class SolicitudesProveedorTest extends TestCase
     }
 
     /**
-     * Localiza el índice de una fila del pool (`$lineas`) por `sic_id` o
-     * `ebs_requisition_id` — reemplaza al viejo patrón
-     * `->set('sicIdsSeleccionados', [...])`/`->set('ebsIdsSeleccionados', [...])`,
-     * ya que esas propiedades no existen más: ahora `$lineas` ES el pool
-     * completo (ver `SolicitudesProveedor::construirLineasDesdePool()`) y
-     * "marcar" una SIC/EBS es `->set("lineas.$i.seleccionada", true)`.
+     * Claves (`s{sic_id}` / `e{ebs_requisition_id}`) de TODO el pool de
+     * SICs/EBS elegibles tal como lo calcula el componente
+     * (`SolicitudesProveedor::pool()`, computed — el pool ya no vive en una
+     * propiedad pública, ver docs/gestionti-progreso.md).
      */
-    private function indiceDeLinea($component, ?int $sicId = null, ?int $ebsRequisitionId = null): int
+    private function clavesDelPool($component): array
     {
-        foreach ($component->get('lineas') as $i => $linea) {
-            if ($sicId !== null && ($linea['sic_id'] ?? null) === $sicId) {
-                return $i;
-            }
-            if ($ebsRequisitionId !== null && ($linea['ebs_requisition_id'] ?? null) === $ebsRequisitionId) {
-                return $i;
-            }
+        return $component->instance()->pool->keys()->all();
+    }
+
+    private function filaDelPool($component, string $clave): ?array
+    {
+        return $component->instance()->pool->get($clave);
+    }
+
+    /**
+     * Crea `$n` SICs elegibles con fechas distintas y decrecientes: la
+     * posición 0 es la más reciente (primera de la primera página) y la
+     * última la más antigua (última página), así el reparto en páginas del
+     * pool es determinista.
+     *
+     * @return array<int, SolicitudSicBorrador>
+     */
+    private function crearSicsEnLote(int $n): array
+    {
+        $this->marcarCategoriaComoCompra();
+        $sics = [];
+
+        for ($i = 0; $i < $n; $i++) {
+            $sics[] = $this->crearSicAutorizada('laptops_desktops', [
+                'fecha_solicitud' => now()->subDays($i + 1)->format('Y-m-d'),
+                'folio_sic' => sprintf('LOTE-%03d', $i),
+            ]);
         }
 
-        throw new \RuntimeException('Línea no encontrada en el pool de la tabla.');
+        return $sics;
+    }
+
+    private function formularioBasico($component, string $folio, int $vendorId)
+    {
+        return $component
+            ->set('form.folio', $folio)
+            ->set('form.vendor_id', $vendorId)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular');
     }
 
     /**
@@ -193,13 +219,12 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 3)
-            ->set('lineas.0.precio_unitario_cotizado', 150.50)
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 3)
+            ->set('lineasManuales.0.precio_unitario_cotizado', 150.50)
             ->call('addLinea')
-            ->set('lineas.1.descripcion_libre', 'Cable HDMI especial')
-            ->set('lineas.1.cantidad_solicitada', 1)
-            ->set('lineas.1.es_activo_inventariable', true)
+            ->set('lineasManuales.1.descripcion_libre', 'Cable HDMI especial')
+            ->set('lineasManuales.1.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -223,8 +248,45 @@ class SolicitudesProveedorTest extends TestCase
             'solicitud_id' => $solicitud->id,
             'descripcion_libre' => 'Cable HDMI especial',
             'cantidad_solicitada' => 1,
-            'es_activo_inventariable' => true,
+            'es_activo_inventariable' => false,
         ]);
+    }
+
+    public function test_es_activo_inventariable_is_derived_from_the_selected_articulo(): void
+    {
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+        $inventariable = ArticuloSolicitud::create(['codigo' => 'ART-INV', 'descripcion' => 'Laptop inv', 'unidad_medida' => 'Pieza', 'es_inventariable' => true]);
+        $consumible = ArticuloSolicitud::create(['codigo' => 'ART-CON', 'descripcion' => 'Cable', 'unidad_medida' => 'Pieza', 'es_inventariable' => false]);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('addLinea')
+            ->call('addLinea')
+            ->set('form.folio', 'SP-INV-001')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-08-31')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('lineasManuales.0.articulo_id', $inventariable->id)
+            ->set('lineasManuales.1.articulo_id', $consumible->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-INV-001')->firstOrFail();
+        $this->assertTrue($solicitud->lineas()->where('articulo_id', $inventariable->id)->firstOrFail()->es_activo_inventariable);
+        $this->assertFalse($solicitud->lineas()->where('articulo_id', $consumible->id)->firstOrFail()->es_activo_inventariable);
+    }
+
+    public function test_selecting_an_ebs_row_prefills_the_cantidad_from_the_ebs_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebsRequisicion = $this->crearEbsDirectoElegible('CANT-EBS-1', 7300);
+        $ebsRequisicion->lines()->update(['quantity' => 4]);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
+            ->assertSet('seleccion.e'.$ebsRequisicion->id.'.cantidad_solicitada', 4);
     }
 
     public function test_folio_is_suggested_when_creating(): void
@@ -263,8 +325,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-10-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.descripcion_libre', 'Línea 1')
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.descripcion_libre', 'Línea 1')
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -286,11 +348,11 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.descripcion_libre', 'Descripción libre también capturada')
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.descripcion_libre', 'Descripción libre también capturada')
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
-            ->assertHasErrors(['lineas.0.articulo_id']);
+            ->assertHasErrors(['lineasManuales.0.articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-TEST-002']);
     }
@@ -307,9 +369,10 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.observaciones_especificaciones', 'Solo una nota, sin artículo ni descripción')
             ->call('save')
-            ->assertHasErrors(['lineas.0.articulo_id']);
+            ->assertHasErrors(['lineasManuales.0.articulo_id']);
     }
 
     public function test_zero_lines_is_rejected(): void
@@ -323,6 +386,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
+            ->call('addLinea')
             ->call('removeLinea', 0)
             ->call('save')
             ->assertHasErrors(['lineas']);
@@ -331,43 +395,18 @@ class SolicitudesProveedorTest extends TestCase
     public function test_sic_and_proyecto_presupuesto_articulo_cannot_both_be_set(): void
     {
         $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
         $vendor = $this->proveedor();
-        $articulo = $this->articulo();
-
-        $ticket = Ticket::create([
-            'fecha' => '2026-08-01',
-            'empleado_id' => Empleado::create(['numero_empleado' => 'EMP-1', 'nombre' => 'Solicitante'])->id,
-        ]);
-
-        $sic = SolicitudSicBorrador::create([
-            'ticket_id' => $ticket->id,
-            'empleado_id' => $ticket->empleado_id,
-            'tipo_equipo_id' => TipoEquipo::create(['nombre' => 'Laptop'])->id,
-            'motivo' => 'Equipo nuevo',
-            'centro_costo_id' => CentroCosto::create([
-                'codigo' => 'CC-1',
-                'nombre' => 'Corporativo',
-                'empresa_id' => Empresa::create(['razon_social' => 'Kosmos', 'nombre_comercial' => 'Kosmos'])->id,
-            ])->id,
-            'urgencia' => 'media',
-            'fecha_solicitud' => '2026-08-01',
-            'estatus' => 'autorizada',
-            'folio_sic' => 'SIC-1',
-        ]);
-
+        $sic = $this->crearSicAutorizada('laptops_desktops');
         $proyectoArticulo = $this->proyectoPresupuestoArticulo();
 
         $component = Livewire::test(SolicitudesProveedor::class)
             ->call('create')
-            ->call('addLinea')
             ->set('form.folio', 'SP-TEST-005')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-08-31')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.sic_id', $sic->id)
-            ->set('lineas.0.seleccionada', true)
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->call('toggleSeleccion', 's'.$sic->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id);
 
         $component->call('save')->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
@@ -393,10 +432,10 @@ class SolicitudesProveedorTest extends TestCase
         Livewire::test(SolicitudesProveedor::class)
             ->call('edit', $solicitud->id)
             ->assertSet('form.folio', 'SP-EDIT-001')
-            ->set('lineas.0.cantidad_solicitada', 5)
+            ->set('lineasManuales.0.cantidad_solicitada', 5)
             ->call('addLinea')
-            ->set('lineas.1.descripcion_libre', 'Extra')
-            ->set('lineas.1.cantidad_solicitada', 1)
+            ->set('lineasManuales.1.descripcion_libre', 'Extra')
+            ->set('lineasManuales.1.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -481,8 +520,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
-            ->set('lineas.0.descripcion_libre', 'Laptop para gerente de centro')
-            ->set('lineas.0.cantidad_solicitada', 2)
+            ->set('lineasManuales.0.descripcion_libre', 'Laptop para gerente de centro')
+            ->set('lineasManuales.0.cantidad_solicitada', 2)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -524,42 +563,20 @@ class SolicitudesProveedorTest extends TestCase
     public function test_sic_and_proyecto_presupuesto_articulo_selected_together_via_ui_is_rejected(): void
     {
         $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
         $vendor = $this->proveedor();
         $proyectoArticulo = $this->proyectoPresupuestoArticulo();
-
-        $ticket = Ticket::create([
-            'fecha' => '2026-08-01',
-            'empleado_id' => Empleado::create(['numero_empleado' => 'EMP-2', 'nombre' => 'Solicitante 2'])->id,
-        ]);
-
-        $sic = SolicitudSicBorrador::create([
-            'ticket_id' => $ticket->id,
-            'empleado_id' => $ticket->empleado_id,
-            'tipo_equipo_id' => TipoEquipo::create(['nombre' => 'Laptop'])->id,
-            'motivo' => 'Equipo nuevo',
-            'centro_costo_id' => CentroCosto::create([
-                'codigo' => 'CC-2',
-                'nombre' => 'Corporativo',
-                'empresa_id' => Empresa::create(['razon_social' => 'Kosmos 2', 'nombre_comercial' => 'Kosmos 2'])->id,
-            ])->id,
-            'urgencia' => 'media',
-            'fecha_solicitud' => '2026-08-01',
-            'estatus' => 'autorizada',
-            'folio_sic' => 'SIC-2',
-        ]);
+        $sic = $this->crearSicAutorizada('laptops_desktops');
 
         Livewire::test(SolicitudesProveedor::class)
             ->call('create')
-            ->call('addLinea')
             ->set('form.folio', 'SP-PROYECTO-003')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.sic_id', $sic->id)
-            ->set('lineas.0.seleccionada', true)
+            ->call('toggleSeleccion', 's'.$sic->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
-            ->set('lineas.0.descripcion_libre', 'Laptop para gerente de centro')
-            ->set('lineas.0.cantidad_solicitada', 2)
+            ->set("seleccion.s{$sic->id}.cantidad_solicitada", 2)
             ->call('save')
             ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
 
@@ -574,7 +591,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertTrue(collect($component->get('lineas'))->pluck('sic_id')->contains($sic->id));
+        $this->assertContains('s'.$sic->id, $this->clavesDelPool($component));
     }
 
     public function test_sic_with_category_not_marked_as_compra_does_not_appear_in_the_picker(): void
@@ -585,7 +602,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertFalse(collect($component->get('lineas'))->pluck('sic_id')->contains($sic->id));
+        $this->assertNotContains('s'.$sic->id, $this->clavesDelPool($component));
     }
 
     public function test_sic_without_articulo_does_not_appear_in_the_picker(): void
@@ -613,7 +630,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertFalse(collect($component->get('lineas'))->pluck('sic_id')->contains($sic->id));
+        $this->assertNotContains('s'.$sic->id, $this->clavesDelPool($component));
     }
 
     public function test_sic_already_used_by_another_solicitud_does_not_appear_again(): void
@@ -628,17 +645,16 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-SIC-001')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-        $i = $this->indiceDeLinea($component, sicId: $sic->id);
-        $component->set("lineas.$i.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 's'.$sic->id)
             ->call('save')
             ->assertHasNoErrors();
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
-        $this->assertFalse(collect($component->get('lineas'))->pluck('sic_id')->contains($sic->id));
+        $this->assertNotContains('s'.$sic->id, $this->clavesDelPool($component));
     }
 
-    public function test_marking_sics_as_seleccionada_includes_them_and_unmarking_excludes_them(): void
+    public function test_toggling_sics_adds_them_to_the_seleccion_and_untoggling_removes_them(): void
     {
         $this->actingAs($this->actingUser());
         $this->marcarCategoriaComoCompra();
@@ -647,24 +663,32 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $iUno = $this->indiceDeLinea($component, sicId: $sicUno->id);
-        $iDos = $this->indiceDeLinea($component, sicId: $sicDos->id);
+        $component->assertSet('seleccion', [])
+            ->call('toggleSeleccion', 's'.$sicUno->id)
+            ->call('toggleSeleccion', 's'.$sicDos->id);
 
-        $component->set("lineas.$iUno.seleccionada", true)
-            ->set("lineas.$iDos.seleccionada", true);
+        $this->assertEqualsCanonicalizing(['s'.$sicUno->id, 's'.$sicDos->id], array_keys($component->get('seleccion')));
+        $this->assertSame($sicUno->id, $component->get('seleccion.s'.$sicUno->id.'.sic_id'));
+        $this->assertSame(1, $component->get('seleccion.s'.$sicUno->id.'.cantidad_solicitada'));
+        $this->assertSame($sicUno->articulo_id, $component->get('seleccion.s'.$sicUno->id.'.articulo_id'));
 
-        $this->assertTrue($component->get("lineas.$iUno.seleccionada"));
-        $this->assertTrue($component->get("lineas.$iDos.seleccionada"));
+        $component->call('toggleSeleccion', 's'.$sicDos->id);
 
-        $component->set("lineas.$iDos.seleccionada", false);
+        $this->assertSame(['s'.$sicUno->id], array_keys($component->get('seleccion')));
 
-        $this->assertTrue($component->get("lineas.$iUno.seleccionada"));
-        $this->assertFalse($component->get("lineas.$iDos.seleccionada"));
+        // Desmarcar no saca la fila del pool, solo de la selección.
+        $this->assertEqualsCanonicalizing(['s'.$sicUno->id, 's'.$sicDos->id], $this->clavesDelPool($component));
+    }
 
-        // Ambas filas se quedan en la tabla sea cual sea su estado de
-        // selección — ya no se "crean"/"quitan" líneas, solo se marcan.
-        $sicIdsEnLineas = collect($component->get('lineas'))->pluck('sic_id')->filter()->values()->all();
-        $this->assertEqualsCanonicalizing([$sicUno->id, $sicDos->id], $sicIdsEnLineas);
+    public function test_toggling_a_key_that_is_not_in_the_pool_is_ignored(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's999999')
+            ->call('toggleSeleccion', 'basura')
+            ->assertSet('seleccion', []);
     }
 
     public function test_saving_with_multiple_selected_sics_creates_one_line_per_sic(): void
@@ -680,13 +704,9 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-SIC-MULTI')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-
-        $iUno = $this->indiceDeLinea($component, sicId: $sicUno->id);
-        $iDos = $this->indiceDeLinea($component, sicId: $sicDos->id);
-
-        $component->set("lineas.$iUno.seleccionada", true)
-            ->set("lineas.$iDos.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 's'.$sicUno->id)
+            ->call('toggleSeleccion', 's'.$sicDos->id)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -708,9 +728,9 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.folio_sic_manual', 'SIC-A-MANO-001')
-            ->set('lineas.0.descripcion_libre', 'Laptop capturada a mano, SIC aún sin registro')
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.folio_sic_manual', 'SIC-A-MANO-001')
+            ->set('lineasManuales.0.descripcion_libre', 'Laptop capturada a mano, SIC aún sin registro')
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -723,7 +743,7 @@ class SolicitudesProveedorTest extends TestCase
         ]);
     }
 
-    public function test_editing_keeps_its_own_already_linked_sic_visible_and_checked_in_the_picker(): void
+    public function test_editing_keeps_its_own_already_linked_sic_visible_and_selected_in_the_picker(): void
     {
         $this->actingAs($this->actingUser());
         $this->marcarCategoriaComoCompra();
@@ -735,9 +755,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-SIC-EDIT')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-        $i = $this->indiceDeLinea($creacion, sicId: $sic->id);
-        $creacion->set("lineas.$i.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 's'.$sic->id)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -745,8 +764,10 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
 
-        $iEdicion = $this->indiceDeLinea($component, sicId: $sic->id);
-        $this->assertTrue($component->get("lineas.$iEdicion.seleccionada"));
+        $this->assertContains('s'.$sic->id, $this->clavesDelPool($component));
+        $this->assertArrayHasKey('s'.$sic->id, $component->get('seleccion'));
+        $this->assertNotNull($component->get('seleccion.s'.$sic->id.'.id'));
+        $this->assertSame([], $component->get('lineasManuales'));
     }
 
     private function administradorUser(): User
@@ -790,9 +811,8 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::withQueryParams(['crear_desde_sics' => (string) $sic->id])->test(SolicitudesProveedor::class);
 
-        $component->assertSet('showModal', true);
-        $i = $this->indiceDeLinea($component, sicId: $sic->id);
-        $this->assertTrue($component->get("lineas.$i.seleccionada"));
+        $component->assertSet('showForm', true);
+        $this->assertSame(['s'.$sic->id], array_keys($component->get('seleccion')));
     }
 
     public function test_mount_without_crear_desde_sics_opens_normally(): void
@@ -801,7 +821,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class);
 
-        $component->assertSet('showModal', false);
+        $component->assertSet('showForm', false);
     }
 
     public function test_line_from_an_ebs_sic_shows_the_original_ebs_description_for_reference(): void
@@ -814,10 +834,9 @@ class SolicitudesProveedorTest extends TestCase
             ->call('create')
             ->set('form.vendor_id', $vendor->id);
 
-        $lineas = collect($component->get('lineas'));
-        $linea = $lineas->firstWhere('sic_id', $sic->id);
+        $fila = $this->filaDelPool($component, 's'.$sic->id);
 
-        $this->assertSame('LAPTOP ITEM EBS ORIGINAL', $linea['ebs_item_description']);
+        $this->assertSame('LAPTOP ITEM EBS ORIGINAL', $fila['ebs_item_description']);
         $component->assertSee('LAPTOP ITEM EBS ORIGINAL');
     }
 
@@ -830,10 +849,9 @@ class SolicitudesProveedorTest extends TestCase
         $component = Livewire::test(SolicitudesProveedor::class)
             ->call('create');
 
-        $lineas = collect($component->get('lineas'));
-        $linea = $lineas->firstWhere('sic_id', $sic->id);
+        $fila = $this->filaDelPool($component, 's'.$sic->id);
 
-        $this->assertNull($linea['ebs_item_description']);
+        $this->assertNull($fila['ebs_item_description']);
     }
 
     public function test_observaciones_especificaciones_is_saved_and_retrieved_per_line(): void
@@ -849,9 +867,9 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 1)
-            ->set('lineas.0.observaciones_especificaciones', 'Con teclado en español')
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.observaciones_especificaciones', 'Con teclado en español')
             ->call('save')
             ->assertHasNoErrors();
 
@@ -862,7 +880,7 @@ class SolicitudesProveedorTest extends TestCase
         $solicitud = SolicitudProveedor::where('folio', 'SP-OBS-001')->firstOrFail();
         $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
 
-        $this->assertSame('Con teclado en español', $component->get('lineas.0.observaciones_especificaciones'));
+        $this->assertSame('Con teclado en español', $component->get('lineasManuales.0.observaciones_especificaciones'));
     }
 
     public function test_create_writes_creado_por_user_id(): void
@@ -879,8 +897,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -993,7 +1011,7 @@ class SolicitudesProveedorTest extends TestCase
         // edit() no-opea: el modal no se abre.
         Livewire::test(SolicitudesProveedor::class)
             ->call('edit', $solicitud->id)
-            ->assertSet('showModal', false);
+            ->assertSet('showForm', false);
 
         // save() no-opea si se fuerza editingId a mano — ni siquiera llega a
         // validar, así que un folio distinto tampoco se guarda.
@@ -1027,8 +1045,8 @@ class SolicitudesProveedorTest extends TestCase
 
         Livewire::test(SolicitudesProveedor::class)
             ->call('edit', $solicitud->id)
-            ->assertSet('showModal', true)
-            ->set('lineas.0.cantidad_solicitada', 9)
+            ->assertSet('showForm', true)
+            ->set('lineasManuales.0.cantidad_solicitada', 9)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -1203,7 +1221,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertTrue(collect($component->get('lineas'))->pluck('ebs_requisition_id')->contains($ebsRequisicion->id));
+        $this->assertContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
     }
 
     public function test_ebs_requisition_with_an_existing_local_sic_does_not_appear_in_the_direct_picker(): void
@@ -1216,7 +1234,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertFalse(collect($component->get('lineas'))->pluck('ebs_requisition_id')->contains($ebsRequisicion->id));
+        $this->assertNotContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
     }
 
     public function test_selecting_an_ebs_direct_requisition_creates_a_line_with_the_mapped_articulo(): void
@@ -1226,12 +1244,14 @@ class SolicitudesProveedorTest extends TestCase
         $articulo = ArticuloSolicitud::where('codigo', 'ART-EBS-DIRECTO-PICKER-EBS-2')->firstOrFail();
 
         $component = Livewire::test(SolicitudesProveedor::class)
-            ->call('create');
+            ->call('create')
+            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id);
 
-        $linea = collect($component->get('lineas'))->firstWhere('ebs_requisition_id', $ebsRequisicion->id);
+        $linea = $component->get('seleccion.e'.$ebsRequisicion->id);
         $this->assertNotNull($linea);
         $this->assertSame($articulo->id, $linea['articulo_id']);
         $this->assertNull($linea['sic_id']);
+        $this->assertSame($ebsRequisicion->id, $linea['ebs_requisition_id']);
     }
 
     public function test_saving_a_line_from_an_ebs_direct_requisition_persists_ebs_requisition_id_and_null_sic_id(): void
@@ -1245,9 +1265,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-EBS-DIRECTO-001')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-        $i = $this->indiceDeLinea($component, ebsRequisitionId: $ebsRequisicion->id);
-        $component->set("lineas.$i.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -1267,8 +1286,8 @@ class SolicitudesProveedorTest extends TestCase
         $component = Livewire::test(SolicitudesProveedor::class)
             ->call('create');
 
-        $linea = collect($component->get('lineas'))->firstWhere('ebs_requisition_id', $ebsRequisicion->id);
-        $this->assertSame('LAPTOP ITEM EBS DIRECTO ORIGINAL', $linea['ebs_item_description']);
+        $fila = $this->filaDelPool($component, 'e'.$ebsRequisicion->id);
+        $this->assertSame('LAPTOP ITEM EBS DIRECTO ORIGINAL', $fila['ebs_item_description']);
         $component->assertSee('LAPTOP ITEM EBS DIRECTO ORIGINAL');
     }
 
@@ -1279,9 +1298,8 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::withQueryParams(['crear_desde_ebs' => (string) $ebsRequisicion->id])->test(SolicitudesProveedor::class);
 
-        $component->assertSet('showModal', true);
-        $i = $this->indiceDeLinea($component, ebsRequisitionId: $ebsRequisicion->id);
-        $this->assertTrue($component->get("lineas.$i.seleccionada"));
+        $component->assertSet('showForm', true);
+        $this->assertSame(['e'.$ebsRequisicion->id], array_keys($component->get('seleccion')));
     }
 
     /** `crear_desde_sics` y `crear_desde_ebs` pueden venir mezclados a la vez. */
@@ -1297,14 +1315,14 @@ class SolicitudesProveedorTest extends TestCase
             'crear_desde_ebs' => (string) $ebsRequisicion->id,
         ])->test(SolicitudesProveedor::class);
 
-        $component->assertSet('showModal', true);
-        $iSic = $this->indiceDeLinea($component, sicId: $sic->id);
-        $iEbs = $this->indiceDeLinea($component, ebsRequisitionId: $ebsRequisicion->id);
-        $this->assertTrue($component->get("lineas.$iSic.seleccionada"));
-        $this->assertTrue($component->get("lineas.$iEbs.seleccionada"));
+        $component->assertSet('showForm', true);
+        $this->assertEqualsCanonicalizing(
+            ['s'.$sic->id, 'e'.$ebsRequisicion->id],
+            array_keys($component->get('seleccion'))
+        );
     }
 
-    public function test_editing_keeps_its_own_ebs_direct_requisition_visible_and_checked_in_the_picker(): void
+    public function test_editing_keeps_its_own_ebs_direct_requisition_visible_and_selected_in_the_picker(): void
     {
         $this->actingAs($this->actingUser());
         $vendor = $this->proveedor();
@@ -1315,9 +1333,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-EBS-EDIT')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-        $i = $this->indiceDeLinea($creacion, ebsRequisitionId: $ebsRequisicion->id);
-        $creacion->set("lineas.$i.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -1325,8 +1342,8 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
 
-        $iEdicion = $this->indiceDeLinea($component, ebsRequisitionId: $ebsRequisicion->id);
-        $this->assertTrue($component->get("lineas.$iEdicion.seleccionada"));
+        $this->assertContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
+        $this->assertArrayHasKey('e'.$ebsRequisicion->id, $component->get('seleccion'));
     }
 
     // --- Campo nuevo por línea: "Lugar de entrega" (catálogo real) ---------
@@ -1345,9 +1362,9 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 1)
-            ->set('lineas.0.lugar_entrega_id', $lugar->id)
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.lugar_entrega_id', $lugar->id)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -1358,7 +1375,7 @@ class SolicitudesProveedorTest extends TestCase
         ]);
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
-        $this->assertSame($lugar->id, $component->get('lineas.0.lugar_entrega_id'));
+        $this->assertSame($lugar->id, $component->get('lineasManuales.0.lugar_entrega_id'));
     }
 
     public function test_a_line_without_a_lugar_de_entrega_persists_it_as_null(): void
@@ -1374,8 +1391,8 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->set('lineas.0.articulo_id', $articulo->id)
-            ->set('lineas.0.cantidad_solicitada', 1)
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
             ->assertHasNoErrors();
 
@@ -1409,14 +1426,473 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.folio', 'SP-ORIGEN-EBS')
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
-            ->set('form.tipo_solicitud', 'regular');
-        $i = $this->indiceDeLinea($component, ebsRequisitionId: $ebsRequisicion->id);
-        $component->set("lineas.$i.seleccionada", true)
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
             ->call('save')
             ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-ORIGEN-EBS']);
+    }
+
+    // --- Pantalla única: pool paginado + selección que se conserva ---------
+
+    /** 20 elegibles = 15 en la primera página y 5 en la segunda; el pool no viaja en una propiedad pública. */
+    public function test_the_sics_table_is_paginated_15_per_page(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $pagina1 = $component->viewData('sics');
+        $this->assertSame(20, $pagina1->total());
+        $this->assertSame(15, $pagina1->count());
+        $this->assertSame(2, $pagina1->lastPage());
+        $this->assertSame('s'.$sics[0]->id, $pagina1->first()['clave']);
+
+        $component->call('gotoPage', 2, 'sicsPage');
+
+        $pagina2 = $component->viewData('sics');
+        $this->assertSame(2, $pagina2->currentPage());
+        $this->assertSame(5, $pagina2->count());
+        $this->assertSame('s'.$sics[19]->id, $pagina2->last()['clave']);
+
+        // El pool completo no es una propiedad pública (no se serializa).
+        $this->assertFalse(property_exists($component->instance(), 'lineas'));
+        $component->assertSee('LOTE-019')->assertDontSee('LOTE-000');
+        $component->call('gotoPage', 1, 'sicsPage')->assertSee('LOTE-000')->assertDontSee('LOTE-019');
+    }
+
+    /** La selección sobrevive a cambiar de página: marcar en una, ir a otra, marcar, volver. */
+    public function test_selection_persists_across_page_changes(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sics[0]->id)
+            ->call('gotoPage', 2, 'sicsPage')
+            ->call('toggleSeleccion', 's'.$sics[19]->id)
+            ->call('gotoPage', 1, 'sicsPage');
+
+        $this->assertEqualsCanonicalizing(
+            ['s'.$sics[0]->id, 's'.$sics[19]->id],
+            array_keys($component->get('seleccion'))
+        );
+        $component->assertSee('2 seleccionadas');
+    }
+
+    /** Buscar vuelve a la página 1, filtra por folio y no pierde lo ya seleccionado. */
+    public function test_selection_persists_when_searching_and_search_resets_the_page(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sics[0]->id)
+            ->call('gotoPage', 2, 'sicsPage')
+            ->set('sicSearch', 'LOTE-017');
+
+        $resultado = $component->viewData('sics');
+        $this->assertSame(1, $resultado->currentPage());
+        $this->assertSame(['s'.$sics[17]->id], $resultado->pluck('clave')->all());
+
+        $component->call('toggleSeleccion', 's'.$sics[17]->id);
+        $component->set('sicSearch', '');
+
+        $this->assertEqualsCanonicalizing(
+            ['s'.$sics[0]->id, 's'.$sics[17]->id],
+            array_keys($component->get('seleccion'))
+        );
+    }
+
+    /** El buscador también filtra por la descripción del artículo mapeado y por la descripción EBS. */
+    public function test_search_matches_the_mapped_articulo_and_the_ebs_description(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sic = $this->crearSicDeEbs('SIC-BUSCA-1', 'MONITOR CURVO ULTRAWIDE');
+        $otra = $this->crearSicAutorizada('laptops_desktops', ['folio_sic' => 'SIC-BUSCA-2']);
+
+        $porEbs = Livewire::test(SolicitudesProveedor::class)->call('create')->set('sicSearch', 'ultrawide');
+        $this->assertSame(['s'.$sic->id], $porEbs->viewData('sics')->pluck('clave')->all());
+
+        $porArticulo = Livewire::test(SolicitudesProveedor::class)->call('create')->set('sicSearch', $otra->articulo->descripcion);
+        $this->assertSame(['s'.$otra->id], $porArticulo->viewData('sics')->pluck('clave')->all());
+    }
+
+    public function test_solo_seleccionadas_shows_only_the_selected_rows_across_pages(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sics[2]->id)
+            ->call('toggleSeleccion', 's'.$sics[18]->id)
+            ->set('soloSeleccionadas', true);
+
+        $resultado = $component->viewData('sics');
+        $this->assertSame(2, $resultado->total());
+        $this->assertSame(1, $resultado->lastPage());
+        $this->assertEqualsCanonicalizing(['s'.$sics[2]->id, 's'.$sics[18]->id], $resultado->pluck('clave')->all());
+
+        $component->set('soloSeleccionadas', false);
+        $this->assertSame(20, $component->viewData('sics')->total());
+    }
+
+    public function test_saving_with_a_selection_spread_over_two_pages_persists_all_of_it(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-PAGINAS-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sics[1]->id)
+            ->call('gotoPage', 2, 'sicsPage')
+            ->call('toggleSeleccion', 's'.$sics[19]->id)
+            ->set('seleccion.s'.$sics[19]->id.'.cantidad_solicitada', 4)
+            ->call('save')
+            ->assertHasNoErrors()
+            ->assertSet('showForm', false);
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-PAGINAS-001')->firstOrFail();
+        $this->assertCount(2, $solicitud->lineas);
+        $this->assertDatabaseHas('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'sic_id' => $sics[1]->id, 'cantidad_solicitada' => 1]);
+        $this->assertDatabaseHas('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'sic_id' => $sics[19]->id, 'cantidad_solicitada' => 4]);
+    }
+
+    /** El `sic_id` guardado sale de la clave de la fila, no de lo que el cliente mande dentro del valor. */
+    public function test_the_persisted_origin_is_derived_from_the_row_key_not_from_client_data(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sicReal = $this->crearSicAutorizada('laptops_desktops');
+        $otra = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-CLAVE-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sicReal->id)
+            ->set('seleccion.s'.$sicReal->id.'.sic_id', $otra->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-CLAVE-001')->firstOrFail();
+        $this->assertSame([$sicReal->id], $solicitud->lineas()->pluck('sic_id')->all());
+    }
+
+    public function test_create_in_sic_origin_starts_without_selection_or_manual_lines_and_proyecto_starts_with_one_blank_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $component->assertSet('seleccion', [])->assertSet('lineasManuales', []);
+
+        $component->set('origen', 'proyecto');
+        $this->assertCount(1, $component->get('lineasManuales'));
+        $component->assertSet('seleccion', []);
+
+        $component->set('origen', 'sic');
+        $component->assertSet('lineasManuales', [])->assertSet('seleccion', [])->assertSet('form.proyecto_presupuesto_articulo_id', null);
+    }
+
+    public function test_switching_to_proyecto_origin_discards_the_selection(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $this->marcarCategoriaComoCompra();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->set('origen', 'proyecto')
+            ->assertSet('seleccion', []);
+    }
+
+    public function test_a_blank_manual_line_is_discarded_on_save(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-BLANCO-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->call('addLinea')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-BLANCO-001')->firstOrFail();
+        $this->assertCount(1, $solicitud->lineas);
+    }
+
+    /** Pool + manuales en la misma solicitud: se guardan y se recuperan separados al editar. */
+    public function test_edit_recovers_the_selected_pool_rows_and_the_manual_lines_separately(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+        $ebs = $this->crearEbsDirectoElegible('MIXTA-EBS-1', 7201);
+        $lugar = LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-MIXTA-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->set('seleccion.s'.$sic->id.'.cantidad_solicitada', 3)
+            ->set('seleccion.s'.$sic->id.'.lugar_entrega_id', $lugar->id)
+            ->call('toggleSeleccion', 'e'.$ebs->id)
+            ->call('addLinea')
+            ->set('lineasManuales.0.folio_sic_manual', 'SIC-MANUAL-9')
+            ->set('lineasManuales.0.descripcion_libre', 'Cable especial')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-MIXTA-001')->firstOrFail();
+        $this->assertCount(3, $solicitud->lineas);
+
+        $edicion = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+
+        $edicion->assertSet('showForm', true);
+        $this->assertEqualsCanonicalizing(['s'.$sic->id, 'e'.$ebs->id], array_keys($edicion->get('seleccion')));
+        $this->assertSame(3, $edicion->get('seleccion.s'.$sic->id.'.cantidad_solicitada'));
+        $this->assertSame($lugar->id, $edicion->get('seleccion.s'.$sic->id.'.lugar_entrega_id'));
+        $this->assertNotNull($edicion->get('seleccion.s'.$sic->id.'.id'));
+        $this->assertCount(1, $edicion->get('lineasManuales'));
+        $this->assertSame('SIC-MANUAL-9', $edicion->get('lineasManuales.0.folio_sic_manual'));
+
+        // Quitar una fila de la selección y guardar borra su línea.
+        $edicion->call('toggleSeleccion', 'e'.$ebs->id)->call('save')->assertHasNoErrors();
+        $this->assertCount(2, $solicitud->fresh()->lineas);
+        $this->assertDatabaseMissing('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'ebs_requisition_id' => $ebs->id]);
+    }
+
+    /** Red de seguridad: una línea guardada que ya no es elegible se inyecta al pool y no se pierde. */
+    public function test_edit_injects_a_saved_pool_line_that_is_no_longer_eligible(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-HUERFANA-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        // La categoría deja de ir a Compra: la SIC ya no cumple el criterio.
+        CategoriaArticulo::where('slug', 'laptops_desktops')->update(['es_compra' => false]);
+
+        $solicitud = SolicitudProveedor::where('folio', 'SP-HUERFANA-001')->firstOrFail();
+        $edicion = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+
+        $this->assertContains('s'.$sic->id, $this->clavesDelPool($edicion));
+        $this->assertArrayHasKey('s'.$sic->id, $edicion->get('seleccion'));
+        $this->assertSame(['s'.$sic->id], $edicion->viewData('sics')->pluck('clave')->all());
+
+        $edicion->call('save')->assertHasNoErrors();
+        $this->assertCount(1, $solicitud->fresh()->lineas);
+    }
+
+    /** `crear_desde_sics` con una SIC que cae en la 2a página: queda seleccionada aunque no esté a la vista. */
+    public function test_mount_preselects_rows_that_fall_on_another_page(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sics = $this->crearSicsEnLote(20);
+
+        $component = Livewire::withQueryParams(['crear_desde_sics' => $sics[19]->id.','.$sics[0]->id])->test(SolicitudesProveedor::class);
+
+        $component->assertSet('showForm', true);
+        $this->assertEqualsCanonicalizing(
+            ['s'.$sics[0]->id, 's'.$sics[19]->id],
+            array_keys($component->get('seleccion'))
+        );
+        $this->assertNotContains('s'.$sics[19]->id, $component->viewData('sics')->pluck('clave')->all());
+
+        $component->call('gotoPage', 2, 'sicsPage');
+        $this->assertContains('s'.$sics[19]->id, $component->viewData('sics')->pluck('clave')->all());
+    }
+
+    /** Ids de query param que no son elegibles se ignoran en silencio (nunca llegan a la selección). */
+    public function test_mount_ignores_preselected_ids_that_are_not_eligible(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+
+        $component = Livewire::withQueryParams(['crear_desde_sics' => '999999', 'crear_desde_ebs' => '888888'])->test(SolicitudesProveedor::class);
+
+        $component->assertSet('showForm', true)->assertSet('seleccion', []);
+    }
+
+    /** Un error en una fila seleccionada que está en OTRA página se reporta (no queda invisible). */
+    public function test_validation_errors_on_a_selected_row_in_another_page_are_reported(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sics = $this->crearSicsEnLote(20);
+        $clave = 's'.$sics[19]->id;
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-ERR-PAG-001', $vendor->id)
+            ->call('toggleSeleccion', $clave)
+            ->set("seleccion.$clave.cantidad_solicitada", 0)
+            ->call('save')
+            ->assertHasErrors(["seleccion.$clave.cantidad_solicitada"])
+            ->assertSet('showForm', true)
+            ->assertSee('Hay 1 línea con errores')
+            ->assertSee('LOTE-019');
+
+        $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-ERR-PAG-001']);
+    }
+
+    public function test_a_selected_row_without_articulo_is_rejected(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+        $this->formularioBasico($component, 'SP-SIN-ART-001', $vendor->id)
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->set('seleccion.s'.$sic->id.'.articulo_id', null)
+            ->call('save')
+            ->assertHasErrors(['seleccion.s'.$sic->id.'.articulo_id']);
+    }
+
+    /** Elegir un artículo en una fila de pool descarta una descripción libre heredada. */
+    public function test_choosing_an_articulo_on_a_pool_row_clears_a_legacy_free_description(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+        $articulo = $this->articulo();
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->set('seleccion.s'.$sic->id.'.descripcion_libre', 'texto heredado')
+            ->set('seleccion.s'.$sic->id.'.articulo_id', $articulo->id);
+
+        $this->assertNull($component->get('seleccion.s'.$sic->id.'.descripcion_libre'));
+    }
+
+    /** "Volver al listado" descarta el formulario, la selección y los filtros del pool. */
+    public function test_cancel_returns_to_the_listing_and_discards_the_form_state(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->set('sicSearch', 'algo')
+            ->set('soloSeleccionadas', true)
+            ->call('cancel')
+            ->assertSet('showForm', false)
+            ->assertSet('seleccion', [])
+            ->assertSet('lineasManuales', [])
+            ->assertSet('sicSearch', '')
+            ->assertSet('soloSeleccionadas', false)
+            ->assertSet('editingId', null);
+    }
+
+    /** El detalle de SIC sigue abriéndose como modal desde el link de la tabla (con el formulario a la vista). */
+    public function test_sic_link_in_the_selection_table_opens_the_detail_modal(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $this->marcarCategoriaComoCompra();
+        $sic = $this->crearSicAutorizada('laptops_desktops', ['folio_sic' => 'SIC-LINK-1']);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->assertSee("openSicDetalle({$sic->id}, 0)", false)
+            ->call('openSicDetalle', $sic->id, 0)
+            ->assertSet('showDetalleModal', true)
+            ->assertSet('showForm', true)
+            ->assertSee('Detalle de la SIC SIC-LINK-1');
+    }
+
+    /** Las filas seleccionadas muestran controles; las demás, solo texto. */
+    public function test_only_selected_rows_render_editable_controls(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $uno = $this->crearSicAutorizada('laptops_desktops', ['folio_sic' => 'SIC-CTRL-1']);
+        $dos = $this->crearSicAutorizada('laptops_desktops', ['folio_sic' => 'SIC-CTRL-2']);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $component->assertDontSee("seleccion.s{$uno->id}.cantidad_solicitada", false)
+            ->call('toggleSeleccion', 's'.$uno->id)
+            ->assertSee("seleccion.s{$uno->id}.cantidad_solicitada", false)
+            ->assertDontSee("seleccion.s{$dos->id}.cantidad_solicitada", false);
+    }
+
+    /** Armar el pool de SICs no crece en queries con la cantidad de SICs (sin N+1). */
+    public function test_building_the_pool_does_not_run_queries_per_sic(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+
+        $contarQueries = function (): int {
+            $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            $component->instance()->pool;
+            $total = count(\Illuminate\Support\Facades\DB::getQueryLog());
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+
+            return $total;
+        };
+
+        $this->crearSicDeEbs('SIC-NPLUS-1');
+        $conPocas = $contarQueries();
+
+        foreach (range(2, 12) as $n) {
+            $this->crearSicDeEbs("SIC-NPLUS-$n");
+        }
+        $conMuchas = $contarQueries();
+
+        $this->assertSame($conPocas, $conMuchas);
+    }
+
+    public function test_listing_screen_is_shown_when_the_form_is_closed_and_the_form_when_open(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        SolicitudProveedor::create(['folio' => 'SP-LISTA-001', 'vendor_id' => $vendor->id, 'fecha_solicitud' => '2026-09-01', 'tipo_solicitud' => 'regular']);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->assertSee('SP-LISTA-001')
+            // (El texto "Volver al listado" también aparece en la ayuda, así
+            // que se distingue por el botón real que dispara `cancel`.)
+            ->assertDontSee('wire:click="cancel"', false)
+            ->call('create')
+            ->assertSee('wire:click="cancel"', false)
+            ->assertSee('Datos de la solicitud')
+            ->assertSee('Líneas manuales (sin SIC real)')
+            ->assertDontSee('SP-LISTA-001');
     }
 
     // --- Detalle de SIC al dar clic en la columna "SIC" de la tabla --------

@@ -73,3 +73,56 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, optgroup:f
 button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
 }
+
+/*
+ * Indicador global de carga de Livewire (ver resources/js/app.js). Sin @layer a
+ * propósito, igual que las reglas de arriba (el CSS sin capa gana a las capas
+ * de Tailwind). `data-lw-busy` = hay un request en vuelo: se ignoran re-clics
+ * sobre acciones para no aplicarlas dos veces. `data-lw-slow` = tarda más de
+ * 250 ms: barra de progreso superior, cursor de espera y acciones atenuadas.
+ */
+#lw-busy-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    height: 3px;
+    width: 100%;
+    background: var(--color-primary);
+    transform-origin: 0 50%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease;
+}
+
+html[data-lw-slow] #lw-busy-bar {
+    opacity: 1;
+    animation: lw-busy-bar 1.1s ease-in-out infinite;
+}
+
+@keyframes lw-busy-bar {
+    0% { transform: translateX(-100%) scaleX(.4); }
+    50% { transform: translateX(10%) scaleX(.6); }
+    100% { transform: translateX(100%) scaleX(.4); }
+}
+
+html[data-lw-busy] [wire\:click],
+html[data-lw-busy] button[type="submit"] {
+    pointer-events: none;
+}
+
+html[data-lw-slow] [wire\:click],
+html[data-lw-slow] button[type="submit"] {
+    opacity: .55;
+}
+
+html[data-lw-slow], html[data-lw-slow] body {
+    cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-lw-slow] #lw-busy-bar {
+        animation: none;
+        transform: none;
+    }
+}

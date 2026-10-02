@@ -113,6 +113,7 @@ class EndToEndFlowTest extends TestCase
             'descripcion' => 'Laptop estándar E2E',
             'unidad_medida' => 'Pieza',
             'tipo_equipo_id' => $tipoEquipo->id,
+            'es_inventariable' => true,
         ]);
 
         $solicitanteEmpleado = Empleado::create(['numero_empleado' => 'EMP-E2E-SOL', 'nombre' => 'Solicitante E2E', 'correo' => 'solicitante-e2e@example.com']);
@@ -332,10 +333,9 @@ class EndToEndFlowTest extends TestCase
             ->set('form.fecha_solicitud', '2026-08-25')
             ->set('form.tipo_solicitud', 'regular')
             ->set('form.proyecto_presupuesto_articulo_id', $articuloPresupuesto->id)
-            ->set('lineas.0.articulo_id', $articuloCatalogo->id)
-            ->set('lineas.0.cantidad_solicitada', 2)
-            ->set('lineas.0.precio_unitario_cotizado', 15000)
-            ->set('lineas.0.es_activo_inventariable', true)
+            ->set('lineasManuales.0.articulo_id', $articuloCatalogo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 2)
+            ->set('lineasManuales.0.precio_unitario_cotizado', 15000)
             ->call('save')
             ->assertHasNoErrors();
 
