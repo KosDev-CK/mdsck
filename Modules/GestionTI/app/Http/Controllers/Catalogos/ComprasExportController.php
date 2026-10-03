@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\CategoriaArticulo;
+use Modules\GestionTI\Models\EbsArticulo;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Support\Exports\StreamsXlsxDownloads;
 
@@ -22,6 +24,8 @@ class ComprasExportController extends Controller
         'proveedores' => ['model' => Proveedor::class, 'orderBy' => 'nombre_comercial', 'searchColumns' => ['razon_social', 'nombre_comercial', 'rfc', 'contacto_nombre']],
         'articulos_solicitud' => ['model' => ArticuloSolicitud::class, 'orderBy' => 'codigo', 'searchColumns' => ['codigo', 'descripcion']],
         'categorias' => ['model' => CategoriaArticulo::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
+        'lugares_entrega' => ['model' => LugarEntrega::class, 'orderBy' => 'nombre', 'searchColumns' => ['nombre']],
+        'ebs_articulos' => ['model' => EbsArticulo::class, 'orderBy' => 'ebs_item_id', 'searchColumns' => ['ebs_item_id', 'ebs_item_description']],
     ];
 
     public function __invoke(Request $request)
@@ -34,6 +38,7 @@ class ComprasExportController extends Controller
 
         $records = $config['model']::query()
             ->when($tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'categoria']))
+            ->when($tab === 'ebs_articulos', fn ($q) => $q->with('articulo'))
             ->when($search !== '', function ($q) use ($config, $search) {
                 $q->where(function ($q) use ($config, $search) {
                     foreach ($config['searchColumns'] as $column) {
@@ -52,6 +57,14 @@ class ComprasExportController extends Controller
             'categorias' => [
                 ['Nombre', 'Va a Compras', 'Estatus'],
                 $records->map(fn ($r) => [$r->nombre, $r->es_compra ? 'Sí' : 'No', $r->activo ? 'Activo' : 'Inactivo']),
+            ],
+            'lugares_entrega' => [
+                ['Nombre', 'Estatus'],
+                $records->map(fn ($r) => [$r->nombre, $r->activo ? 'Activo' : 'Inactivo']),
+            ],
+            'ebs_articulos' => [
+                ['Item ID (EBS)', 'Descripción en EBS', 'Artículo mapeado'],
+                $records->map(fn ($r) => [$r->ebs_item_id, $r->ebs_item_description, $r->articulo ? "{$r->articulo->codigo} — {$r->articulo->descripcion}" : 'Sin mapear']),
             ],
             default => [
                 ['Código', 'Descripción', 'Unidad de medida', 'Categoría', 'Tipo de equipo', 'Estatus'],

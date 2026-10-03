@@ -177,7 +177,7 @@
                         <div>
                             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">SICs y requisiciones disponibles</h3>
                             <p class="mt-1 max-w-4xl text-xs text-gray-500 dark:text-gray-400">
-                                Solo aparecen SICs autorizadas, de una categoría marcada como "va a Compra" (pantalla "Categorías que van a Compra") y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra". Marca una o más: sus campos se vuelven editables en la misma fila. La selección se conserva al cambiar de página o al buscar.
+                                Solo aparecen SICs autorizadas, de una categoría marcada como "Va a Compras" (pestaña "Categoría" de Catálogos de Compras) y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra". Marca una o más: sus campos se vuelven editables en la misma fila. La selección se conserva al cambiar de página o al buscar.
                             </p>
                         </div>
                         <x-ui.badge color="indigo">{{ count($seleccion) }} {{ count($seleccion) === 1 ? 'seleccionada' : 'seleccionadas' }}</x-ui.badge>

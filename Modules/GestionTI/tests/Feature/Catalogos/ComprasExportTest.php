@@ -5,6 +5,7 @@ namespace Modules\GestionTI\Tests\Feature\Catalogos;
 use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\Proveedor;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -64,6 +65,20 @@ class ComprasExportTest extends TestCase
 
         $response->assertOk();
         $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_export_returns_an_xlsx_file_for_lugares_entrega_and_ebs_articulos(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        EbsArticulo::create(['ebs_item_id' => 9001, 'ebs_item_description' => 'LAPTOP EBS']);
+
+        foreach (['lugares_entrega', 'ebs_articulos'] as $tab) {
+            $response = $this->get("/catalogos/compras/exportar?tab={$tab}");
+
+            $response->assertOk();
+            $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        }
     }
 
     public function test_export_returns_404_for_an_unknown_tab(): void

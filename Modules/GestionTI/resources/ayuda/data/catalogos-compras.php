@@ -10,7 +10,7 @@ return [
         'En Artículos EBS: las filas las crea automáticamente la sincronización con Oracle EBS la primera vez que ve un ítem nuevo — no hay botón "Nuevo" ni "Eliminar". Da clic en "Editar" sobre la fila del ítem que quieras mapear (o corregir) y elige el artículo estándar/genérico del catálogo que le corresponde.',
         'Usa "Desactivar" en vez de borrar cuando un proveedor, artículo o categoría ya no se debe seguir usando — así no se pierde el historial de solicitudes o facturas que ya lo referencian.',
         'Si detectas que el mismo proveedor, artículo o categoría quedó capturado más de una vez, usa "Fusionar duplicados" en vez de editar o borrar a mano.',
-        'Usa "Exportar a Excel" para descargar el catálogo de las pestañas Proveedor, Artículo de Solicitud y Categoría (en Lugar de entrega y Artículos EBS no hay exportación disponible por ahora).',
+        'Usa "Exportar a Excel" para descargar a un archivo .xlsx el contenido de la pestaña que estás viendo (Proveedor, Artículo de Solicitud, Categoría, Lugar de entrega o Artículos EBS), respetando la búsqueda si hay una activa.',
         'Usa el icono de Eliminar solo para registros que nunca se usaron: en Proveedor, Categoría y Lugar de entrega el sistema rechaza el borrado si algo ya lo referencia (y te indica cuántos registros lo usan); en ese caso desactívalo o fusiónalo con el correcto. En Artículo de Solicitud el borrado no está protegido: los registros que lo usaban (Activos, SICs, líneas de solicitud/recepción, mapeos de Artículos EBS) quedan sin artículo, así que prefiere "Desactivar". Artículos EBS no se pueden eliminar.',
     ],
     'campos' => [
