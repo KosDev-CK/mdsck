@@ -17,7 +17,9 @@ use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
+use Modules\GestionTI\Models\EbsArticulo;
 use Modules\GestionTI\Models\EstatusActivo;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Procesador;
@@ -25,6 +27,7 @@ use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\Ram;
 use Modules\GestionTI\Models\Recepcion;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\Ticket;
 use Modules\GestionTI\Models\TipoEquipo;
@@ -36,6 +39,19 @@ use Tests\TestCase;
 class RecepcionesTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Las líneas de prueba se entregan en Zurich salvo que el test indique
+        // otro lugar (o `null` explícito).
+        SolicitudProveedorLinea::creating(function (SolicitudProveedorLinea $linea) {
+            if (! array_key_exists('lugar_entrega_id', $linea->getAttributes())) {
+                $linea->lugar_entrega_id = LugarEntrega::where('nombre', 'Zurich')->value('id');
+            }
+        });
+    }
 
     private function actingUser(): User
     {
@@ -56,6 +72,12 @@ class RecepcionesTest extends TestCase
         $user = User::factory()->create(['is_active' => true]);
         $user->assignRole($role);
 
+        // El técnico receptor es quien tiene la sesión: un Validador ligado a
+        // su usuario, sin sitio asignado (puede recibir en cualquiera). Zurich
+        // llega a "Almacén Central".
+        Validador::create(['nombre' => 'Ana Torres', 'user_id' => $user->id]);
+        $this->ubicacion();
+
         return $user;
     }
 
@@ -71,12 +93,20 @@ class RecepcionesTest extends TestCase
 
     private function validador(): Validador
     {
-        return Validador::create(['nombre' => 'Ana Torres']);
+        return Validador::where('user_id', auth()->id())->firstOrFail();
     }
 
     private function ubicacion(): Ubicacion
     {
-        return Ubicacion::create(['nombre' => 'Almacén Central']);
+        $ubicacion = Ubicacion::firstOrCreate(['nombre' => 'Almacén Central']);
+        LugarEntrega::where('nombre', 'Zurich')->update(['ubicacion_id' => $ubicacion->id]);
+
+        return $ubicacion;
+    }
+
+    private function lugar(string $nombre): LugarEntrega
+    {
+        return LugarEntrega::where('nombre', $nombre)->firstOrFail();
     }
 
     private function proveedor(): Proveedor
@@ -198,6 +228,677 @@ class RecepcionesTest extends TestCase
             ->call('save');
 
         $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-NO-DEBE-GUARDAR']);
+    }
+
+    public function test_scanning_an_exact_folio_opens_that_solicitud(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+
+        $solicitud = $this->solicitudConLineaInventariable(['folio' => 'SP-261002-001']);
+        $this->solicitudConLineaInventariable(['folio' => 'SP-261002-002']);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirPorCodigo', ' SP-261002-001 ')
+            ->assertSet('showModal', true)
+            ->assertSet('selectedSolicitudId', $solicitud->id)
+            ->assertSet('search', '');
+
+        $this->assertTrue($component->viewData('puedeRecibir'));
+    }
+
+    public function test_scanning_an_unknown_folio_shows_an_error_and_keeps_the_text_in_the_search(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->solicitudConLineaInventariable(['folio' => 'SP-261002-001']);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirPorCodigo', 'SP-NO-EXISTE')
+            ->assertSet('showModal', false)
+            ->assertSet('search', 'SP-NO-EXISTE')
+            ->assertSee('No se encontró ninguna solicitud');
+    }
+
+    public function test_the_same_serial_number_cannot_be_captured_twice_in_one_reception(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $marca = Marca::create(['nombre' => 'Lenovo']);
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-DUP-1')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.marca_id', $marca->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'PW0GX3BT')
+            ->set('lineas.0.unidades.1.numero_serie', ' pw0gx3bt ')
+            ->call('save')
+            ->assertHasErrors(['lineas.0.unidades.1.numero_serie']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-DUP-1']);
+    }
+
+    public function test_a_line_saved_as_non_inventariable_is_inventariable_in_reception_if_its_articulo_is_now_inventariable(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+
+        $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false]);
+        $solicitud->lineas->first()->articulo->update(['es_inventariable' => true]);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertTrue($component->get('lineas.0.es_activo_inventariable'));
+        $this->assertCount(2, $component->get('lineas.0.unidades'));
+    }
+
+    /**
+     * Solicitud hecha con un artículo GENÉRICO no inventariable (el estándar al
+     * que se mapea un ítem de EBS) — lo que realmente llega se elige en la
+     * recepción.
+     *
+     * @return array{0: SolicitudProveedor, 1: ArticuloSolicitud, 2: ArticuloSolicitud}
+     */
+    private function solicitudConArticuloGenerico(): array
+    {
+        $tipoEquipo = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+
+        $generico = ArticuloSolicitud::create([
+            'codigo' => 'ART-LAPTOP-EJECUTIVA-ESTANDAR',
+            'descripcion' => 'Laptop Ejecutiva',
+            'unidad_medida' => 'pieza',
+            'es_inventariable' => false,
+        ]);
+        EbsArticulo::create(['ebs_item_id' => 6962, 'articulo_id' => $generico->id]);
+
+        $real = ArticuloSolicitud::create([
+            'codigo' => 'ART-HUAWEI-B3-420',
+            'descripcion' => 'Huawei MateBook B3-420',
+            'unidad_medida' => 'pieza',
+            'es_inventariable' => true,
+            'tipo_equipo_id' => $tipoEquipo->id,
+            'marca_id' => Marca::create(['nombre' => 'Huawei'])->id,
+        ]);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-GENERICO-1',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-10-02',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create([
+            'articulo_id' => $generico->id,
+            'cantidad_solicitada' => 2,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => false,
+        ]);
+
+        return [$solicitud, $generico, $real];
+    }
+
+    public function test_a_generic_line_must_be_changed_to_the_real_articulo_before_receiving(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        [$solicitud, $generico] = $this->solicitudConArticuloGenerico();
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertTrue($component->get('lineas.0.articulo_generico'));
+        $this->assertFalse($component->get('lineas.0.es_activo_inventariable'));
+
+        $component
+            ->set('form.folio_remision', 'REM-GEN-1')
+            ->set('form.fecha_recepcion', '2026-10-03')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->call('save')
+            ->assertHasErrors(['lineas.0.articulo_id']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-GEN-1']);
+        $this->assertSame(0, Asset::count());
+    }
+
+    public function test_choosing_the_real_inventariable_articulo_asks_for_serials_and_creates_the_assets_with_that_articulo(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        [$solicitud, $generico, $real] = $this->solicitudConArticuloGenerico();
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('lineas.0.articulo_id', $real->id);
+
+        $this->assertTrue($component->get('lineas.0.es_activo_inventariable'));
+        $this->assertCount(2, $component->get('lineas.0.unidades'));
+        $this->assertSame($real->marca_id, $component->get('lineas.0.articulo_marca_id'));
+
+        $component
+            ->set('form.folio_remision', 'REM-GEN-2')
+            ->set('form.fecha_recepcion', '2026-10-03')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.unidades.0.numero_serie', '4PHPM21B23000056')
+            ->set('lineas.0.unidades.1.numero_serie', '4PHPM21B23000057')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(2, Asset::where('articulo_id', $real->id)->count());
+        $this->assertSame(0, Asset::where('articulo_id', $generico->id)->count());
+        $this->assertSame(SolicitudProveedor::ESTATUS_RECIBIDA, $solicitud->fresh()->estatus);
+        // La solicitud conserva el artículo genérico con el que se pidió.
+        $this->assertSame($generico->id, $solicitud->lineas()->first()->articulo_id);
+    }
+
+    public function test_switching_back_to_a_non_inventariable_articulo_drops_the_serial_rows(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        [$solicitud, $generico, $real] = $this->solicitudConArticuloGenerico();
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('lineas.0.articulo_id', $real->id);
+        $this->assertCount(2, $component->get('lineas.0.unidades'));
+
+        $component->set('lineas.0.articulo_id', $generico->id);
+        $this->assertFalse($component->get('lineas.0.es_activo_inventariable'));
+        $this->assertSame([], $component->get('lineas.0.unidades'));
+    }
+
+    // --- Buscador de "Artículo recibido": solo el mismo tipo de equipo ---------
+
+    /**
+     * Genérico de laptop y de PC, ambos mapeados desde EBS, con una laptop real
+     * y una PC real (las dos inventariables).
+     */
+    private function escenarioTipos(): array
+    {
+        $laptop = TipoEquipo::firstOrCreate(['nombre' => 'Laptop']);
+        $pc = TipoEquipo::firstOrCreate(['nombre' => 'Desktop']);
+
+        $nuevo = fn (string $codigo, string $descripcion, TipoEquipo $tipo, bool $inventariable) => ArticuloSolicitud::create([
+            'codigo' => $codigo,
+            'descripcion' => $descripcion,
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $tipo->id,
+            'es_inventariable' => $inventariable,
+        ]);
+
+        $genericoLaptop = $nuevo('GEN-LAP', 'Laptop Ejecutiva', $laptop, false);
+        $genericoPc = $nuevo('GEN-PC', 'PC de Escritorio Gerencial', $pc, false);
+        EbsArticulo::create(['ebs_item_id' => 6962, 'articulo_id' => $genericoLaptop->id]);
+        EbsArticulo::create(['ebs_item_id' => 1608, 'articulo_id' => $genericoPc->id]);
+
+        $realLaptop = $nuevo('LAP-HUAWEI', 'Huawei MateBook B3-420', $laptop, true);
+        $realPc = $nuevo('PC-DELL', 'Dell OptiPlex 7010', $pc, true);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-TIPOS-1',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-10-02',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create(['articulo_id' => $genericoLaptop->id, 'cantidad_solicitada' => 1, 'cantidad_recibida' => 0, 'es_activo_inventariable' => false]);
+        $solicitud->lineas()->create(['articulo_id' => $genericoPc->id, 'cantidad_solicitada' => 1, 'cantidad_recibida' => 0, 'es_activo_inventariable' => false]);
+
+        return [$solicitud, $realLaptop, $realPc, $genericoLaptop, $genericoPc];
+    }
+
+    public function test_the_article_search_only_offers_the_same_equipment_type_as_the_requested_article(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        [$solicitud, $realLaptop, $realPc, $genericoLaptop, $genericoPc] = $this->escenarioTipos();
+
+        $laptops = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 0)
+            ->viewData('resultadosArticulos')->pluck('id')->all();
+
+        $this->assertSame([$realLaptop->id], $laptops);
+
+        $pcs = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 1)
+            ->viewData('resultadosArticulos')->pluck('id')->all();
+
+        $this->assertSame([$realPc->id], $pcs);
+    }
+
+    public function test_choosing_an_article_of_another_equipment_type_is_ignored_and_a_forced_one_is_rejected(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        [$solicitud, $realLaptop, $realPc] = $this->escenarioTipos();
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 0)
+            ->call('elegirArticulo', $realPc->id);
+
+        $this->assertNotSame($realPc->id, $component->get('lineas.0.articulo_id'));
+
+        // Forzado directo en el estado del cliente: el servidor lo rechaza al guardar.
+        $component
+            ->set('lineas.0.articulo_id', $realPc->id)
+            ->set('lineas.1.articulo_id', $realPc->id)
+            ->set('form.folio_remision', 'REM-TIPOS-1')
+            ->set('form.fecha_recepcion', '2026-10-03')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->call('save')
+            ->assertHasErrors(['lineas.0.articulo_id']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-TIPOS-1']);
+    }
+
+    public function test_choosing_from_the_search_sets_the_article_and_closes_the_modal(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        [$solicitud, $realLaptop] = $this->escenarioTipos();
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 0)
+            ->assertSet('showArticuloModal', true)
+            ->call('elegirArticulo', $realLaptop->id)
+            ->assertSet('showArticuloModal', false)
+            ->assertSet('lineas.0.articulo_id', $realLaptop->id);
+
+        $this->assertTrue($component->get('lineas.0.es_activo_inventariable'));
+    }
+
+    public function test_the_article_search_shows_at_most_10_results_and_filters_by_the_typed_text(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        [$solicitud, , , $genericoLaptop] = $this->escenarioTipos();
+
+        for ($n = 1; $n <= 14; $n++) {
+            ArticuloSolicitud::create([
+                'codigo' => sprintf('LAP-EXTRA-%02d', $n),
+                'descripcion' => "Laptop extra {$n}",
+                'unidad_medida' => 'pieza',
+                'tipo_equipo_id' => $genericoLaptop->tipo_equipo_id,
+                'es_inventariable' => true,
+            ]);
+        }
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 0);
+
+        $this->assertGreaterThan(10, $component->viewData('resultadosArticulos')->count());
+        $component->assertSee('Se muestran 10 artículos');
+
+        $filtrados = $component->set('articuloSearch', 'extra 14')->viewData('resultadosArticulos');
+        $this->assertSame(['LAP-EXTRA-14'], $filtrados->pluck('codigo')->all());
+    }
+
+    public function test_the_article_search_matches_every_word_in_any_order_ignoring_case_accents_and_separators(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        [$solicitud, , , $genericoLaptop] = $this->escenarioTipos();
+
+        $lenovo = Marca::firstOrCreate(['nombre' => 'Lenovo']);
+        $modelo = \Modules\GestionTI\Models\Modelo::create(['nombre' => 'Lenovo 20 RV', 'marca_id' => $lenovo->id]);
+        $objetivo = ArticuloSolicitud::create([
+            'codigo' => 'ART-LAPTOP-LENOVO-LENOVO-20-RV',
+            'descripcion' => 'Laptop Lenovo Lenovo 20 RV',
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $genericoLaptop->tipo_equipo_id,
+            'marca_id' => $lenovo->id,
+            'modelo_id' => $modelo->id,
+            'es_inventariable' => true,
+        ]);
+        ArticuloSolicitud::create([
+            'codigo' => 'ART-LAPTOP-LENOVO-20RS',
+            'descripcion' => 'Laptop Lenovo 20RS',
+            'unidad_medida' => 'pieza',
+            'tipo_equipo_id' => $genericoLaptop->tipo_equipo_id,
+            'marca_id' => $lenovo->id,
+            'es_inventariable' => true,
+        ]);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('abrirBuscadorArticulo', 0);
+
+        foreach (['lenovo 20rv', '20rv lenovo', 'LENOVO 20-RV', 'lénovo   20 rv', 'laptop rv 20'] as $consulta) {
+            $ids = $component->set('articuloSearch', $consulta)->viewData('resultadosArticulos')->pluck('id')->all();
+            $this->assertSame([$objetivo->id], $ids, "La búsqueda \"{$consulta}\" debe encontrar solo el Lenovo 20 RV.");
+        }
+
+        // Una palabra que no existe en ningún campo no devuelve nada.
+        $this->assertCount(0, $component->set('articuloSearch', 'lenovo inexistente')->viewData('resultadosArticulos'));
+    }
+
+    // --- Técnico = usuario en sesión, y recepción por sitio de entrega --------
+
+    public function test_a_user_without_a_validador_cannot_receive(): void
+    {
+        $user = $this->actingUser();
+        Validador::where('user_id', $user->id)->delete();
+        $this->actingAs($user);
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertFalse($component->viewData('puedeRecibir'));
+        $component->assertSee('no está dado de alta como técnico receptor');
+
+        $component
+            ->set('form.folio_remision', 'REM-SIN-TEC')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save');
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-SIN-TEC']);
+    }
+
+    public function test_the_reception_is_registered_by_the_logged_in_technician_at_the_lines_site(): void
+    {
+        $user = $this->actingUser();
+        $this->actingAs($user);
+        $this->estatusEnStock();
+        $marca = Marca::create(['nombre' => 'Dell']);
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-SITIO-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->set('lineas.0.marca_id', $marca->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-1')
+            ->set('lineas.0.unidades.1.numero_serie', 'SN-2')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $recepcion = Recepcion::where('folio_remision', 'REM-SITIO-1')->firstOrFail();
+        $this->assertSame($this->validador()->id, $recepcion->recibido_por_id);
+        $this->assertSame($user->id, $recepcion->registrado_por_user_id);
+        $this->assertSame($this->lugar('Zurich')->id, $recepcion->lugar_entrega_id);
+        $this->assertSame($this->ubicacion()->id, $recepcion->ubicacion_id);
+        $this->assertSame(2, Asset::where('ubicacion_actual_id', $this->ubicacion()->id)->count());
+    }
+
+    public function test_a_technician_with_an_assigned_site_only_receives_the_lines_of_that_site(): void
+    {
+        $user = $this->actingUser();
+        $this->actingAs($user);
+        $this->estatusEnStock();
+        $ceda = $this->lugar('CEDA');
+        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+        $this->validador()->update(['lugar_entrega_id' => $ceda->id]);
+
+        // 2 laptops a Zurich y 1 cable a CEDA en la misma solicitud.
+        $solicitud = $this->solicitudConLineaInventariable(); // Zurich
+        $solicitud->lineas()->create([
+            'descripcion_libre' => 'Cable HDMI',
+            'cantidad_solicitada' => 3,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => false,
+            'lugar_entrega_id' => $ceda->id,
+        ]);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertSame($ceda->id, $component->get('lugarRecepcionId'));
+        $this->assertFalse($component->get('lineas.0.recibible'));
+        $this->assertSame(0, $component->get('lineas.0.cantidad_a_recibir'));
+        $this->assertTrue($component->get('lineas.1.recibible'));
+        $this->assertSame(3, $component->get('lineas.1.cantidad_a_recibir'));
+
+        // Intenta recibir también la línea de Zurich (forzando el estado del cliente): se rechaza.
+        $component
+            ->set('form.folio_remision', 'REM-CEDA-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->set('lineas.0.cantidad_a_recibir', 1)
+            ->call('save')
+            ->assertHasErrors(['lineas.0.cantidad_a_recibir']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-CEDA-1']);
+
+        // Solo lo de CEDA: pasa, y queda ligado a CEDA.
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-CEDA-2')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $recepcion = Recepcion::where('folio_remision', 'REM-CEDA-2')->firstOrFail();
+        $this->assertSame($ceda->id, $recepcion->lugar_entrega_id);
+        $this->assertSame(SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA, $solicitud->fresh()->estatus);
+    }
+
+    public function test_a_technician_without_an_assigned_site_must_pick_one_when_the_solicitud_has_several(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $ceda = $this->lugar('CEDA');
+        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+
+        $solicitud = $this->solicitudConLineaInventariable();
+        $solicitud->lineas()->create([
+            'descripcion_libre' => 'Cable HDMI',
+            'cantidad_solicitada' => 3,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => false,
+            'lugar_entrega_id' => $ceda->id,
+        ]);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertNull($component->get('lugarRecepcionId'));
+        $this->assertFalse($component->get('lineas.0.recibible'));
+
+        $component
+            ->set('form.folio_remision', 'REM-ELIGE-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasErrors(['lugarRecepcionId']);
+
+        $component->set('lugarRecepcionId', $ceda->id);
+        $this->assertTrue($component->get('lineas.1.recibible'));
+        $this->assertFalse($component->get('lineas.0.recibible'));
+    }
+
+    public function test_a_site_without_an_inventory_location_blocks_the_reception(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->lugar('Zurich')->update(['ubicacion_id' => null]);
+        $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-SIN-UBI')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasErrors(['lugarRecepcionId']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-SIN-UBI']);
+    }
+
+    public function test_a_line_without_a_lugar_de_entrega_cannot_be_received(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable([], ['lugar_entrega_id' => null]);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        $this->assertFalse($component->get('lineas.0.recibible'));
+        $component->assertSee('no tiene lugar de entrega');
+    }
+
+    public function test_the_reception_date_cannot_be_in_the_future_nor_before_the_solicitud_date(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable(['fecha_solicitud' => '2026-09-10'], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-FECHA');
+
+        $component->set('form.fecha_recepcion', now()->addDay()->format('Y-m-d'))->call('save')
+            ->assertHasErrors(['form.fecha_recepcion']);
+        $component->set('form.fecha_recepcion', '2026-09-09')->call('save')
+            ->assertHasErrors(['form.fecha_recepcion']);
+        $component->set('form.fecha_recepcion', '2026-09-10')->call('save')
+            ->assertHasNoErrors();
+    }
+
+    public function test_each_line_shows_its_sic_folio_and_can_open_the_detail(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable([], ['folio_sic_manual' => 'SIC-MANUAL-77']);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->assertSee('SIC SIC-MANUAL-77');
+
+        $this->assertSame('SIC-MANUAL-77', $component->get('lineas.0.sic_display'));
+
+        $component->call('openSicDetalle', 0, 0)->assertSet('showDetalleModal', false);
+    }
+
+    // --- Administrador captura por otro técnico ------------------------------
+
+    private function administradorSinValidador(): User
+    {
+        $user = $this->actingUser();
+        $user->assignRole(Role::findOrCreate('Administrador', 'web'));
+        Validador::where('user_id', $user->id)->delete();
+
+        return $user;
+    }
+
+    public function test_an_administrator_can_register_the_reception_on_behalf_of_a_technician(): void
+    {
+        $admin = $this->administradorSinValidador();
+        $this->actingAs($admin);
+        $this->estatusEnStock();
+
+        $ceda = $this->lugar('CEDA');
+        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+        $tecnico = Validador::create(['nombre' => 'Técnico CEDA', 'lugar_entrega_id' => $ceda->id]);
+
+        $solicitud = $this->solicitudConLineaInventariable([], ['lugar_entrega_id' => $ceda->id, 'es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable', 'cantidad_solicitada' => 3]);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        // Sin técnico elegido (el admin no es técnico) todavía no puede guardar.
+        $this->assertFalse($component->viewData('puedeRecibir'));
+        $component->assertSee('Selecciona al técnico que recibió');
+
+        $component->set('tecnicoRecibeId', $tecnico->id);
+        $this->assertTrue($component->viewData('puedeRecibir'));
+        $this->assertSame($ceda->id, $component->get('lugarRecepcionId'));
+
+        $component
+            ->set('form.folio_remision', 'REM-ADMIN-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $recepcion = Recepcion::where('folio_remision', 'REM-ADMIN-1')->firstOrFail();
+        $this->assertSame($tecnico->id, $recepcion->recibido_por_id);
+        $this->assertSame($admin->id, $recepcion->registrado_por_user_id);
+        $this->assertSame($ceda->id, $recepcion->lugar_entrega_id);
+    }
+
+    public function test_an_administrator_must_pick_the_technician_before_saving(): void
+    {
+        $this->actingAs($this->administradorSinValidador());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('form.folio_remision', 'REM-ADMIN-2')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasErrors(['recibido_por']);
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-ADMIN-2']);
+    }
+
+    public function test_a_non_administrator_cannot_receive_on_behalf_of_another_technician(): void
+    {
+        $user = $this->actingUser();
+        $this->actingAs($user);
+        $this->estatusEnStock();
+        $otro = Validador::create(['nombre' => 'Otro técnico']);
+        $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->set('tecnicoRecibeId', $otro->id)
+            ->set('form.folio_remision', 'REM-NOADMIN-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $recepcion = Recepcion::where('folio_remision', 'REM-NOADMIN-1')->firstOrFail();
+        $this->assertSame($this->validador()->id, $recepcion->recibido_por_id);
+        $this->assertNotSame($otro->id, $recepcion->recibido_por_id);
+    }
+
+    public function test_the_grid_flags_overdue_pending_solicitudes_and_the_history_flags_late_deliveries(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+
+        $vencida = $this->solicitudConLineaInventariable(['fecha_solicitud' => '2026-09-01', 'fecha_entrega_prometida' => now()->subDays(2)->toDateString()]);
+        $vigente = $this->solicitudConLineaInventariable(['fecha_entrega_prometida' => now()->addDays(2)->toDateString()]);
+
+        // La fila de cada solicitud (la ayuda de la pantalla también menciona la palabra).
+        $html = Livewire::test(Recepciones::class)->html();
+        $fila = fn (SolicitudProveedor $solicitud) => (string) (preg_match('/wire:key="solicitud-'.$solicitud->id.'".*?<\/tr>/s', $html, $m) ? $m[0] : '');
+
+        $this->assertStringContainsString('Vencida', $fila($vencida));
+        $this->assertStringNotContainsString('Vencida', $fila($vigente));
+
+        // Entrega con retraso: llegó 3 días después de la fecha prometida.
+        $entregada = $this->solicitudConLineaInventariable(['fecha_solicitud' => '2026-09-01', 'fecha_entrega_prometida' => '2026-09-04', 'estatus' => SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA]);
+        $entregada->recepciones()->create([
+            'folio_remision' => 'REM-TARDE',
+            'fecha_recepcion' => '2026-09-07',
+            'recibido_por_id' => $validador->id,
+            'ubicacion_id' => $ubicacion->id,
+        ]);
+        $entregada->recepciones()->create([
+            'folio_remision' => 'REM-A-TIEMPO',
+            'fecha_recepcion' => '2026-09-03',
+            'recibido_por_id' => $validador->id,
+            'ubicacion_id' => $ubicacion->id,
+        ]);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $entregada->id)
+            ->assertSee('Con retraso de 3 d')
+            ->assertSee('A tiempo');
     }
 
     public function test_opening_a_pending_solicitud_loads_its_lines_for_reception(): void

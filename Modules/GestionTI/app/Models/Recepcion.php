@@ -19,6 +19,8 @@ class Recepcion extends Model
         'recibido_por_id',
         'documento_remision_id',
         'ubicacion_id',
+        'lugar_entrega_id',
+        'registrado_por_user_id',
         'observaciones',
     ];
 
@@ -39,6 +41,18 @@ class Recepcion extends Model
     public function ubicacion()
     {
         return $this->belongsTo(Ubicacion::class, 'ubicacion_id');
+    }
+
+    /** Sitio de entrega que se recibió (una recepción cubre un solo lugar de entrega). */
+    public function lugarEntrega()
+    {
+        return $this->belongsTo(LugarEntrega::class, 'lugar_entrega_id');
+    }
+
+    /** Usuario del sistema que registró la recepción (auditoría). */
+    public function registradoPor()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'registrado_por_user_id');
     }
 
     public function documentoRemision()

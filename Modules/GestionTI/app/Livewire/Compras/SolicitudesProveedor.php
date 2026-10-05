@@ -126,6 +126,7 @@ class SolicitudesProveedor extends Component
             'form.folio' => ['required', 'string', 'max:100', Rule::unique('solicitudes_proveedor', 'folio')->ignore($this->editingId)],
             'form.vendor_id' => 'required|exists:proveedores,id',
             'form.fecha_solicitud' => 'required|date',
+            'form.fecha_entrega_prometida' => 'nullable|date|after_or_equal:form.fecha_solicitud',
             'form.ticket_id' => 'nullable|exists:tickets,id',
             'form.proyecto_presupuesto_articulo_id' => 'nullable|exists:proyecto_presupuesto_articulos,id',
             'form.tipo_solicitud' => ['required', Rule::in(SolicitudProveedor::TIPOS)],
@@ -221,6 +222,34 @@ class SolicitudesProveedor extends Component
         $this->create($sicIds, $ebsIds);
     }
 
+    /** Fecha de solicitud antes del cambio en curso (solo vive dentro del request). */
+    private ?string $fechaSolicitudAnterior = null;
+
+    public function updatingForm($value, string $key): void
+    {
+        if ($key === 'fecha_solicitud') {
+            $this->fechaSolicitudAnterior = $this->form['fecha_solicitud'] ?? null;
+        }
+    }
+
+    /**
+     * Si la entrega prometida seguía siendo la propuesta automática (fecha de
+     * solicitud + 3 días), al cambiar la fecha de solicitud se propone la
+     * nueva; si alguien ya la ajustó a mano, no se toca.
+     */
+    public function updatedForm($value, string $key): void
+    {
+        if ($key !== 'fecha_solicitud' || ! $value || ! $this->fechaSolicitudAnterior) {
+            return;
+        }
+
+        $actual = $this->form['fecha_entrega_prometida'] ?? null;
+
+        if ($actual === null || $actual === '' || $actual === SolicitudProveedor::entregaPrometidaPorDefecto($this->fechaSolicitudAnterior)) {
+            $this->form['fecha_entrega_prometida'] = SolicitudProveedor::entregaPrometidaPorDefecto($value);
+        }
+    }
+
     public function updatingSearch(): void
     {
         $this->resetPage();
@@ -284,7 +313,7 @@ class SolicitudesProveedor extends Component
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        foreach (['ticket_id', 'proyecto_presupuesto_articulo_id'] as $field) {
+        foreach (['ticket_id', 'proyecto_presupuesto_articulo_id', 'fecha_entrega_prometida'] as $field) {
             if (($this->form[$field] ?? null) === '') {
                 $this->form[$field] = null;
             }
@@ -353,6 +382,7 @@ class SolicitudesProveedor extends Component
             'folio' => $this->suggestFolio(),
             'vendor_id' => null,
             'fecha_solicitud' => now()->format('Y-m-d'),
+            'fecha_entrega_prometida' => SolicitudProveedor::entregaPrometidaPorDefecto(now()),
             'ticket_id' => null,
             'proyecto_presupuesto_articulo_id' => null,
             'tipo_solicitud' => 'regular',
@@ -394,6 +424,7 @@ class SolicitudesProveedor extends Component
             'folio' => $record->folio,
             'vendor_id' => $record->vendor_id,
             'fecha_solicitud' => optional($record->fecha_solicitud)->format('Y-m-d'),
+            'fecha_entrega_prometida' => optional($record->fecha_entrega_prometida)->format('Y-m-d'),
             'ticket_id' => $record->ticket_id,
             'proyecto_presupuesto_articulo_id' => $record->proyecto_presupuesto_articulo_id,
             'tipo_solicitud' => $record->tipo_solicitud,
@@ -1034,6 +1065,18 @@ class SolicitudesProveedor extends Component
 
         if (! $record->enviada_at) {
             $record->enviada_at = now();
+
+            // La entrega prometida corre desde que el proveedor recibe el
+            // pedido: si seguía siendo la propuesta automática (solicitud + 3
+            // días) o ya venció antes de enviarse, se recorre a hoy + 3 días.
+            // Una fecha ajustada a mano y todavía vigente no se toca.
+            $prometida = $record->fecha_entrega_prometida;
+
+            if ($prometida === null
+                || $prometida->toDateString() === SolicitudProveedor::entregaPrometidaPorDefecto($record->fecha_solicitud)
+                || $prometida->lt(today())) {
+                $record->fecha_entrega_prometida = SolicitudProveedor::entregaPrometidaPorDefecto(today());
+            }
         }
         $record->ultimo_envio_at = now();
         $record->save();

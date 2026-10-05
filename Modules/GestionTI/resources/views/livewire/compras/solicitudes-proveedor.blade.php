@@ -124,7 +124,15 @@
                         @endforeach
                     </x-ui.select>
 
-                    <x-ui.input label="Fecha de solicitud" name="form.fecha_solicitud" type="date" wire:model="form.fecha_solicitud" />
+                    <x-ui.input label="Fecha de solicitud" name="form.fecha_solicitud" type="date" wire:model.live="form.fecha_solicitud" />
+
+                    <x-ui.input
+                        label="Entrega prometida"
+                        name="form.fecha_entrega_prometida"
+                        type="date"
+                        wire:model="form.fecha_entrega_prometida"
+                        hint="Por defecto 3 días después de la solicitud (se recorre a la fecha de envío al proveedor); ajústala si acuerdan otra. Es la referencia para medir si el proveedor entrega a tiempo."
+                    />
 
                     <x-ui.select label="Tipo de solicitud" name="form.tipo_solicitud" wire:model="form.tipo_solicitud">
                         <option value="regular">Regular</option>

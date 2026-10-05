@@ -1112,6 +1112,132 @@ class SolicitudesProveedorTest extends TestCase
         }
     }
 
+    public function test_the_pdf_embeds_a_code128_barcode_of_the_folio(): void
+    {
+        $uri = \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri('SP-261002-001');
+
+        $this->assertStringStartsWith('data:image/png;base64,', $uri);
+        $png = base64_decode(substr($uri, strlen('data:image/png;base64,')), true);
+        $this->assertNotFalse($png);
+        $this->assertSame("\x89PNG", substr($png, 0, 4));
+
+        $html = view('gestionti::pdf.solicitud-proveedor', [
+            'solicitud' => SolicitudProveedor::create([
+                'folio' => 'SP-261002-001',
+                'vendor_id' => $this->proveedor()->id,
+                'fecha_solicitud' => '2026-10-02',
+                'tipo_solicitud' => 'regular',
+            ])->load(['vendor', 'lineas']),
+        ])->render();
+
+        $this->assertStringContainsString($uri, $html);
+    }
+
+    // --- Fecha de entrega prometida (3 días por defecto, editable) -------------
+
+    public function test_the_promised_delivery_date_defaults_to_3_days_after_the_solicitud_and_is_saved(): void
+    {
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+        $articulo = $this->articulo();
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertSame(now()->addDays(3)->toDateString(), $component->get('form.fecha_entrega_prometida'));
+
+        $component
+            ->call('addLinea')
+            ->set('form.folio', 'SP-PROM-1')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-10-05')
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
+            ->conLugar()->call('save')
+            ->assertHasNoErrors();
+
+        // Al cambiar la fecha de solicitud, la propuesta automática la siguió.
+        $this->assertSame('2026-10-08', SolicitudProveedor::where('folio', 'SP-PROM-1')->firstOrFail()->fecha_entrega_prometida->toDateString());
+    }
+
+    public function test_a_manually_set_promised_date_is_kept_when_the_solicitud_date_changes_and_cannot_precede_it(): void
+    {
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+        $articulo = $this->articulo();
+
+        $component = Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->call('addLinea')
+            ->set('form.folio', 'SP-PROM-2')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-10-05')
+            ->set('form.fecha_entrega_prometida', '2026-10-20')
+            ->set('form.fecha_solicitud', '2026-10-06');
+
+        $this->assertSame('2026-10-20', $component->get('form.fecha_entrega_prometida'));
+
+        $component
+            ->set('form.tipo_solicitud', 'regular')
+            ->set('lineasManuales.0.articulo_id', $articulo->id)
+            ->set('lineasManuales.0.cantidad_solicitada', 1)
+            ->set('form.fecha_entrega_prometida', '2026-10-01')
+            ->conLugar()->call('save')
+            ->assertHasErrors(['form.fecha_entrega_prometida']);
+    }
+
+    public function test_sending_rebases_an_automatic_promised_date_to_the_send_date_plus_3_days_but_keeps_a_manual_one(): void
+    {
+        Mail::fake();
+        $this->actingAs($this->actingUser());
+        $vendor = $this->proveedor();
+        $vendor->update(['contacto_correo' => 'proveedor@example.com']);
+        $lugar = LugarEntrega::query()->value('id');
+
+        $crear = function (string $folio, string $fechaSolicitud, string $prometida) use ($vendor, $lugar) {
+            $solicitud = SolicitudProveedor::create([
+                'folio' => $folio,
+                'vendor_id' => $vendor->id,
+                'fecha_solicitud' => $fechaSolicitud,
+                'fecha_entrega_prometida' => $prometida,
+                'tipo_solicitud' => 'regular',
+            ]);
+            $solicitud->lineas()->create(['articulo_id' => $this->articulo()->id, 'cantidad_solicitada' => 1, 'lugar_entrega_id' => $lugar]);
+
+            return $solicitud;
+        };
+
+        // Solicitud de hace 10 días con la propuesta automática: se recorre a hoy + 3.
+        $automatica = $crear('SP-REB-1', now()->subDays(10)->toDateString(), now()->subDays(7)->toDateString());
+        // Fecha ajustada a mano y vigente: se respeta.
+        $manual = $crear('SP-REB-2', now()->subDays(10)->toDateString(), now()->addDays(20)->toDateString());
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('enviarAProveedor', $automatica->id)
+            ->call('enviarAProveedor', $manual->id);
+
+        $this->assertSame(now()->addDays(3)->toDateString(), $automatica->fresh()->fecha_entrega_prometida->toDateString());
+        $this->assertSame(now()->addDays(20)->toDateString(), $manual->fresh()->fecha_entrega_prometida->toDateString());
+    }
+
+    public function test_the_promised_date_appears_in_the_mail_and_the_pdf(): void
+    {
+        $this->actingAs($this->actingUser());
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-PROM-MAIL',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-10-05',
+            'fecha_entrega_prometida' => '2026-10-08',
+            'tipo_solicitud' => 'regular',
+        ]);
+
+        $html = view('gestionti::pdf.solicitud-proveedor', ['solicitud' => $solicitud->load(['vendor', 'lineas'])])->render();
+        $this->assertStringContainsString('08/10/2026', $html);
+
+        $correo = (new SolicitudProveedorMail($solicitud->load(['vendor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition', 'creadoPor'])))->render();
+        $this->assertStringContainsString('08/10/2026', $correo);
+    }
+
     public function test_pdf_route_requires_the_screen_permission(): void
     {
         $user = User::factory()->create(['is_active' => true]);

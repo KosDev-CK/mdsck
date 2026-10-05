@@ -189,11 +189,13 @@ class Inventario extends Component
             'validadores' => [
                 'label' => 'Validador',
                 'model' => Validador::class,
-                'fields' => ['nombre', 'tecnico_id', 'iniciales'],
+                'fields' => ['nombre', 'tecnico_id', 'iniciales', 'user_id', 'lugar_entrega_id'],
                 'rules' => [
                     'form.nombre' => 'required|string|max:255',
                     'form.tecnico_id' => 'nullable|exists:sdp_technicians,id',
                     'form.iniciales' => 'nullable|string|max:20',
+                    'form.user_id' => 'nullable|exists:users,id',
+                    'form.lugar_entrega_id' => 'nullable|exists:lugares_entrega,id',
                 ],
                 'orderBy' => 'nombre',
                 'searchColumns' => ['nombre'],
@@ -275,6 +277,14 @@ class Inventario extends Component
             ];
         }
 
+        // Un usuario del sistema solo puede ser el técnico receptor de UN validador.
+        if ($this->tab === 'validadores') {
+            $rules['form.user_id'] = [
+                'nullable', 'exists:users,id',
+                Rule::unique('validadores', 'user_id')->ignore($this->editingId),
+            ];
+        }
+
         if ($this->tab === 'stock_minimo') {
             $rules['form.tipo_equipo_id'] = [
                 'required', 'exists:tipos_equipo,id',
@@ -312,8 +322,10 @@ class Inventario extends Component
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        if (($this->form['tecnico_id'] ?? null) === '') {
-            $this->form['tecnico_id'] = null;
+        foreach (['tecnico_id', 'user_id', 'lugar_entrega_id'] as $campo) {
+            if (($this->form[$campo] ?? null) === '') {
+                $this->form[$campo] = null;
+            }
         }
     }
 
@@ -449,7 +461,7 @@ class Inventario extends Component
             ->when($this->tab === 'modelos', fn ($q) => $q->with('marca'))
             ->when($this->tab === 'periodicidad_mantenimiento', fn ($q) => $q->with('tipoEquipo'))
             ->when($this->tab === 'stock_minimo', fn ($q) => $q->with(['tipoEquipo', 'ubicacion']))
-            ->when($this->tab === 'validadores', fn ($q) => $q->with('tecnico'))
+            ->when($this->tab === 'validadores', fn ($q) => $q->with(['tecnico', 'user', 'lugarEntrega']))
             ->when($this->search !== '' && ! empty($config['searchColumns']), function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -472,6 +484,12 @@ class Inventario extends Component
                 : null,
             'ubicacionOptions' => $this->tab === 'stock_minimo'
                 ? Ubicacion::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'usuarioOptions' => $this->tab === 'validadores'
+                ? \App\Models\User::where('is_active', true)->orderBy('name')->get()
+                : null,
+            'lugarEntregaOptions' => $this->tab === 'validadores'
+                ? \Modules\GestionTI\Models\LugarEntrega::where('activo', true)->orderBy('nombre')->get()
                 : null,
             'tecnicoOptions' => $this->tab === 'validadores'
                 ? SdpTechnician::activos()->orderBy('nombre')->get()

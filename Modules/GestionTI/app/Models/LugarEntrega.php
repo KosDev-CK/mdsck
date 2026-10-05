@@ -8,11 +8,17 @@ class LugarEntrega extends Model
 {
     protected $table = 'lugares_entrega';
 
-    protected $fillable = ['nombre', 'activo'];
+    protected $fillable = ['nombre', 'ubicacion_id', 'activo'];
 
     protected $casts = [
         'activo' => 'boolean',
     ];
+
+    /** Ubicación física (inventario) a la que llegan los activos recibidos en este lugar. */
+    public function ubicacion()
+    {
+        return $this->belongsTo(Ubicacion::class);
+    }
 
     public function lineas()
     {

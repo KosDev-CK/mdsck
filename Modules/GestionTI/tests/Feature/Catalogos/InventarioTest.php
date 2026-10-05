@@ -413,6 +413,52 @@ class InventarioTest extends TestCase
         ]);
     }
 
+    public function test_a_validador_can_be_linked_to_a_user_and_a_receiving_site(): void
+    {
+        $this->actingAs($this->actingUser());
+        $usuario = User::factory()->create(['is_active' => true]);
+        $ceda = \Modules\GestionTI\Models\LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('create')
+            ->set('form.nombre', 'Técnico CEDA')
+            ->set('form.user_id', $usuario->id)
+            ->set('form.lugar_entrega_id', $ceda->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('validadores', [
+            'nombre' => 'Técnico CEDA',
+            'user_id' => $usuario->id,
+            'lugar_entrega_id' => $ceda->id,
+        ]);
+    }
+
+    public function test_a_user_can_only_be_linked_to_one_validador_and_editing_keeps_its_own_link(): void
+    {
+        $this->actingAs($this->actingUser());
+        $usuario = User::factory()->create(['is_active' => true]);
+        $existente = Validador::create(['nombre' => 'Ya vinculado', 'user_id' => $usuario->id]);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('create')
+            ->set('form.nombre', 'Otro técnico')
+            ->set('form.user_id', $usuario->id)
+            ->call('save')
+            ->assertHasErrors(['form.user_id']);
+
+        Livewire::test(Inventario::class)
+            ->call('setTab', 'validadores')
+            ->call('edit', $existente->id)
+            ->set('form.nombre', 'Ya vinculado (editado)')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('Ya vinculado (editado)', $existente->fresh()->nombre);
+    }
+
     public function test_can_create_a_validador_without_a_tecnico_using_free_text_nombre(): void
     {
         $this->actingAs($this->actingUser());

@@ -29,8 +29,19 @@
         ];
     @endphp
 
-    <h1>Solicitud a Proveedor</h1>
-    <p class="meta">Folio {{ $solicitud->folio }} &middot; Generado el {{ now()->format('d/m/Y H:i') }}</p>
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="vertical-align: top;">
+                <h1>Solicitud a Proveedor</h1>
+                <p class="meta">Folio {{ $solicitud->folio }} &middot; Generado el {{ now()->format('d/m/Y H:i') }}</p>
+            </td>
+            <td style="vertical-align: top; text-align: right; width: 260px;">
+                {{-- Se escanea en Recepción de Proveedor para abrir esta solicitud. --}}
+                <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->folio) }}" alt="{{ $solicitud->folio }}" style="height: 48px; max-width: 250px;">
+                <div style="font-size: 9px; color: #6b7280; margin-top: 2px;">{{ $solicitud->folio }}</div>
+            </td>
+        </tr>
+    </table>
 
     <div class="section-label">Datos de la solicitud</div>
     <table class="fields">
@@ -45,6 +56,10 @@
         <tr>
             <td class="label">Fecha de solicitud</td>
             <td class="value">{{ optional($solicitud->fecha_solicitud)->format('d/m/Y') ?? '—' }}</td>
+        </tr>
+        <tr>
+            <td class="label">Fecha de entrega comprometida</td>
+            <td class="value">{{ optional($solicitud->fecha_entrega_prometida)->format('d/m/Y') ?? '—' }}</td>
         </tr>
         <tr>
             <td class="label">Solicitante</td>

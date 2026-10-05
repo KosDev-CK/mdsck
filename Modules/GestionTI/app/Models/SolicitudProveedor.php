@@ -25,10 +25,14 @@ class SolicitudProveedor extends Model
 
     public const TIPOS = ['regular', 'compra_especial'];
 
+    /** Días que se proponen para la entrega prometida (editable a mano en cada solicitud). */
+    public const DIAS_ENTREGA_PROMETIDA = 3;
+
     protected $fillable = [
         'folio',
         'vendor_id',
         'fecha_solicitud',
+        'fecha_entrega_prometida',
         'ticket_id',
         'proyecto_presupuesto_articulo_id',
         'tipo_solicitud',
@@ -40,9 +44,16 @@ class SolicitudProveedor extends Model
 
     protected $casts = [
         'fecha_solicitud' => 'date',
+        'fecha_entrega_prometida' => 'date',
         'enviada_at' => 'datetime',
         'ultimo_envio_at' => 'datetime',
     ];
+
+    /** Fecha de entrega que se propone para una solicitud de esa fecha (Y-m-d). */
+    public static function entregaPrometidaPorDefecto(string|\DateTimeInterface $fechaSolicitud): string
+    {
+        return \Illuminate\Support\Carbon::parse($fechaSolicitud)->addDays(self::DIAS_ENTREGA_PROMETIDA)->toDateString();
+    }
 
     public function vendor()
     {

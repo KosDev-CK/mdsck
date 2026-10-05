@@ -63,7 +63,7 @@
                 'estatus_activo' => ['Código', 'Nombre', 'Estatus', ''],
                 'periodicidad_mantenimiento' => ['Tipo de equipo', 'Meses sugeridos', 'Estatus', ''],
                 'stock_minimo' => ['Tipo de equipo', 'Ubicación', 'Cantidad mínima', 'Estatus', ''],
-                'validadores' => ['Nombre', 'Técnico', 'Iniciales', 'Estatus', ''],
+                'validadores' => ['Nombre', 'Técnico', 'Iniciales', 'Usuario del sistema', 'Sede de trabajo', 'Estatus', ''],
                 default => ['Nombre', 'Estatus', ''],
             };
         @endphp
@@ -94,6 +94,8 @@
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->tecnico?->nombre ?? '—' }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->iniciales }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->user?->name ?? '—' }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->lugarEntrega?->nombre ?? '—' }}</td>
                     @else
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                     @endif
@@ -191,6 +193,28 @@
                     wire:model="form.iniciales"
                     hint="Código corto original, ej. NKSM — solo referencia, no tiene que coincidir con nada del catálogo de Técnicos."
                 />
+                <x-ui.select
+                    label="Usuario del sistema (opcional)"
+                    name="form.user_id"
+                    wire:model="form.user_id"
+                    hint="Para poder registrar recepciones en Recepción de Proveedor, el técnico debe estar vinculado a su usuario: se registra como 'Recibido por' quien tenga la sesión iniciada."
+                >
+                    <option value="">Sin usuario</option>
+                    @foreach ($usuarioOptions as $usuarioOption)
+                        <option value="{{ $usuarioOption->id }}">{{ $usuarioOption->name }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.select
+                    label="Sede de trabajo (opcional)"
+                    name="form.lugar_entrega_id"
+                    wire:model="form.lugar_entrega_id"
+                    hint="Sitio de entrega (Zurich, CEDA, Sotelo) donde trabaja el técnico: es el sitio que recibe cuando él registra una recepción, y solo puede recibir las líneas de ese lugar. Vacío = elige el sitio al recibir."
+                >
+                    <option value="">Sin sede (elige el sitio al recibir)</option>
+                    @foreach ($lugarEntregaOptions as $lugarOption)
+                        <option value="{{ $lugarOption->id }}">{{ $lugarOption->nombre }}</option>
+                    @endforeach
+                </x-ui.select>
             @else
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
             @endif

@@ -17,6 +17,9 @@ Le compartimos la siguiente solicitud de compra:
 
 - **Folio:** {{ $solicitud->folio }}
 - **Fecha de solicitud:** {{ $solicitud->fecha_solicitud?->format('d/m/Y') }}
+@if ($solicitud->fecha_entrega_prometida)
+- **Fecha de entrega comprometida:** {{ $solicitud->fecha_entrega_prometida->format('d/m/Y') }}
+@endif
 - **Solicitante:** {{ $solicitud->creadoPor?->name ?? 'No especificado' }}
 - **Estatus:** {{ $estatusLabels[$solicitud->estatus] ?? $solicitud->estatus }}
 

@@ -10,7 +10,7 @@ class Validador extends Model
 {
     protected $table = 'validadores';
 
-    protected $fillable = ['nombre', 'activo', 'user_id', 'tecnico_id', 'iniciales'];
+    protected $fillable = ['nombre', 'activo', 'user_id', 'tecnico_id', 'iniciales', 'lugar_entrega_id'];
 
     protected $casts = [
         'activo' => 'boolean',
@@ -38,6 +38,16 @@ class Validador extends Model
      * en vez de duplicarlo. `nullable` porque casos como "No aplica" o
      * registros legacy aún sin enlazar a mano se quedan sin técnico real.
      */
+    /**
+     * Sitio que atiende este técnico en Recepción de Proveedor: con valor,
+     * solo puede recibir las líneas cuyo lugar de entrega sea ESE; sin valor,
+     * puede recibir en cualquier sitio.
+     */
+    public function lugarEntrega()
+    {
+        return $this->belongsTo(LugarEntrega::class, 'lugar_entrega_id');
+    }
+
     public function tecnico()
     {
         return $this->belongsTo(SdpTechnician::class, 'tecnico_id');

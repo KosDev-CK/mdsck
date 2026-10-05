@@ -1,4 +1,24 @@
 import './bootstrap';
+import { camaraDisponible, escanearConCamara } from './barcode-scanner';
+
+// Lectura de códigos de barras con la cámara (solo celulares) — ver
+// `barcode-scanner.js`. Los lectores USB no necesitan esto: escriben en el
+// campo enfocado como un teclado.
+window.camaraDisponible = camaraDisponible;
+window.escanearConCamara = escanearConCamara;
+
+// Enter en un campo de número de serie (lo que manda un lector al terminar de
+// escanear) pasa al siguiente número de serie del formulario en vez de
+// enviarlo. Los campos se marcan con `data-serie`.
+window.enfocarSiguienteSerie = (el) => {
+    const campos = [...el.closest('form').querySelectorAll('[data-serie]')];
+    const siguiente = campos[campos.indexOf(el) + 1];
+
+    if (siguiente) {
+        siguiente.focus();
+        siguiente.select?.();
+    }
+};
 
 // Import dinámico (no estático) a propósito: si `charts.js` (que carga
 // ECharts) se importara aquí arriba, Vite lo metería al bundle principal

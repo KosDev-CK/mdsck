@@ -713,6 +713,32 @@ class ComprasTest extends TestCase
         $this->assertSame('CEDA Corregido', $lugar->fresh()->nombre);
     }
 
+    public function test_a_lugar_de_entrega_can_be_mapped_to_an_inventory_location(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ubicacion = \Modules\GestionTI\Models\Ubicacion::create(['nombre' => 'CEDA BODEGA A30']);
+        $lugar = LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('edit', $lugar->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame($ubicacion->id, $lugar->fresh()->ubicacion_id);
+
+        // "Sin ubicación" (select vacío) vuelve a null en vez de reventar la FK.
+        Livewire::test(Compras::class)
+            ->call('setTab', 'lugares_entrega')
+            ->call('edit', $lugar->id)
+            ->set('form.ubicacion_id', '')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertNull($lugar->fresh()->ubicacion_id);
+    }
+
     public function test_can_toggle_activo_on_a_lugar_de_entrega(): void
     {
         $this->actingAs($this->actingUser());

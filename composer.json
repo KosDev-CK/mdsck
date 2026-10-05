@@ -16,6 +16,7 @@
         "livewire/livewire": "^3.6",
         "nwidart/laravel-modules": "^13.0",
         "phpoffice/phpspreadsheet": "^5.9",
+        "picqer/php-barcode-generator": "^3.3",
         "pragmarx/google2fa-laravel": "^3.0",
         "spatie/laravel-permission": "^8.3"
     },

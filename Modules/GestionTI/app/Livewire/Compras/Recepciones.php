@@ -4,6 +4,7 @@ namespace Modules\GestionTI\Livewire\Compras;
 
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -12,13 +13,17 @@ use Livewire\WithPagination;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\Asset;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
+use Modules\GestionTI\Models\EbsArticulo;
+use Modules\GestionTI\Models\EbsRequisition;
 use Modules\GestionTI\Models\EstatusActivo;
+use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Marca;
 use Modules\GestionTI\Models\Modelo;
 use Modules\GestionTI\Models\Recepcion;
 use Modules\GestionTI\Models\RecepcionLinea;
 use Modules\GestionTI\Models\SolicitudProveedor;
 use Modules\GestionTI\Models\SolicitudProveedorLinea;
+use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\TipoEquipo;
 use Modules\GestionTI\Models\Ubicacion;
 use Modules\GestionTI\Models\Validador;
@@ -102,23 +107,145 @@ class Recepciones extends Component
 
     public bool $showModal = false;
 
+    /**
+     * Sitio de entrega que se recibe en esta recepción (una recepción cubre un
+     * solo lugar de entrega). Un técnico con sitio asignado queda fijo en el
+     * suyo; uno sin sitio asignado elige entre los de las líneas pendientes.
+     */
+    public ?int $lugarRecepcionId = null;
+
+    /** Detalle de solo lectura de la SIC/requisición de una línea (mismos partials que "SIC en EBS"). */
+    public bool $showDetalleModal = false;
+
+    public ?int $detalleEbsRequisitionId = null;
+
+    public ?int $detalleSicLocalId = null;
+
+    /**
+     * Solo Administrador: técnico (Validador) por el que se captura la
+     * recepción cuando quien la recibió no pudo hacerlo. Queda como "Recibido
+     * por"; el administrador queda como quien la registró.
+     */
+    public ?int $tecnicoRecibeId = null;
+
+    private ?Validador $validadorCache = null;
+
+    private bool $validadorResuelto = false;
+
+    /** Buscador de "Artículo recibido" (modal pequeño): línea que se está resolviendo y texto de búsqueda. */
+    public bool $showArticuloModal = false;
+
+    public ?int $articuloLineaIndex = null;
+
+    public string $articuloSearch = '';
+
+    /** Resultados que muestra el buscador de artículos (el resto se alcanza buscando). */
+    private const RESULTADOS_ARTICULOS = 10;
+
     protected function rules(): array
     {
+        $fechaSolicitud = $this->selectedSolicitudId
+            ? SolicitudProveedor::find($this->selectedSolicitudId)?->fecha_solicitud?->format('Y-m-d')
+            : null;
+
         return [
             'selectedSolicitudId' => 'required|exists:solicitudes_proveedor,id',
             'form.folio_remision' => 'required|string|max:100',
-            'form.fecha_recepcion' => 'required|date',
-            'form.recibido_por_id' => 'required|exists:validadores,id',
-            'form.ubicacion_id' => 'required|exists:ubicaciones,id',
+            // La fecha real de llegada alimenta el reporte de entregas del
+            // proveedor: ni futura, ni anterior a la fecha de la solicitud.
+            'form.fecha_recepcion' => array_filter(['required', 'date', 'before_or_equal:today', $fechaSolicitud ? "after_or_equal:{$fechaSolicitud}" : null]),
             'form.observaciones' => 'nullable|string',
             'documentoRemision' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
             'lineas.*.cantidad_a_recibir' => 'required|integer|min:0',
         ];
     }
 
+    protected function messages(): array
+    {
+        return [
+            'selectedSolicitudId.required' => 'Selecciona una solicitud.',
+            'form.folio_remision.required' => 'Captura el folio de la remisión del proveedor.',
+            'form.folio_remision.max' => 'El folio de remisión no puede pasar de 100 caracteres.',
+            'form.fecha_recepcion.required' => 'Captura la fecha de recepción.',
+            'form.fecha_recepcion.date' => 'La fecha de recepción no es válida.',
+            'form.fecha_recepcion.before_or_equal' => 'La fecha de recepción no puede ser futura.',
+            'form.fecha_recepcion.after_or_equal' => 'La fecha de recepción no puede ser anterior a la fecha de la solicitud.',
+            'documentoRemision.mimes' => 'La remisión debe ser un PDF, JPG o PNG.',
+            'documentoRemision.max' => 'La remisión no puede pesar más de 5 MB.',
+            'lineas.*.cantidad_a_recibir.required' => 'Captura la cantidad a recibir.',
+            'lineas.*.cantidad_a_recibir.integer' => 'La cantidad a recibir debe ser un número entero.',
+            'lineas.*.cantidad_a_recibir.min' => 'La cantidad a recibir no puede ser negativa.',
+        ];
+    }
+
+    private function esAdministrador(): bool
+    {
+        return (bool) auth()->user()?->hasRole('Administrador');
+    }
+
+    /**
+     * Técnico que recibe: quien tiene la sesión iniciada, validado contra el
+     * catálogo de técnicos (Validador activo con `user_id` = usuario). Un
+     * Administrador puede, además, capturar por otro técnico
+     * (`$tecnicoRecibeId`). `null` si no hay técnico válido.
+     */
+    private function validadorActual(): ?Validador
+    {
+        if (! $this->validadorResuelto) {
+            $this->validadorCache = Validador::with('lugarEntrega')
+                ->where('activo', true)
+                ->when(
+                    $this->esAdministrador() && $this->tecnicoRecibeId,
+                    fn ($q) => $q->whereKey($this->tecnicoRecibeId),
+                    fn ($q) => $q->where('user_id', auth()->id()),
+                )
+                ->first();
+            $this->validadorResuelto = true;
+        }
+
+        return $this->validadorCache;
+    }
+
+    /** ¿Puede este técnico recibir en ese lugar? (con sitio asignado solo el suyo; sin sitio, cualquiera). */
+    private function puedeRecibirEnLugar(?Validador $validador, ?int $lugarId): bool
+    {
+        if ($validador === null || $lugarId === null) {
+            return false;
+        }
+
+        return $validador->lugar_entrega_id === null || (int) $validador->lugar_entrega_id === $lugarId;
+    }
+
     public function updatingSearch(): void
     {
         $this->resetPage();
+    }
+
+    /**
+     * Escaneo del folio de la solicitud (lector de código de barras → texto +
+     * Enter, o cámara del celular): si coincide EXACTO con un folio abre esa
+     * solicitud; si no, avisa y deja el texto en el buscador por si era una
+     * búsqueda parcial.
+     */
+    public function abrirPorCodigo(string $codigo): void
+    {
+        $codigo = trim($codigo);
+
+        if ($codigo === '') {
+            return;
+        }
+
+        $solicitud = SolicitudProveedor::where('folio', $codigo)->first();
+
+        if ($solicitud === null) {
+            $this->search = $codigo;
+            session()->flash('error', "No se encontró ninguna solicitud con el folio \"{$codigo}\".");
+
+            return;
+        }
+
+        $this->search = '';
+        $this->abrirSolicitud($solicitud->id);
     }
 
     public function updatingEstatusFiltro(): void
@@ -143,6 +270,28 @@ class Recepciones extends Component
      */
     public function updated($name, $value): void
     {
+        if ($name === 'tecnicoRecibeId') {
+            $this->tecnicoRecibeId = $this->esAdministrador() && $value !== '' && $value !== null ? (int) $value : null;
+            $this->validadorResuelto = false;
+            $this->resolverLugarPorDefecto();
+            $this->aplicarLugarRecepcion();
+
+            return;
+        }
+
+        if ($name === 'lugarRecepcionId') {
+            $this->lugarRecepcionId = $value === '' || $value === null ? null : (int) $value;
+
+            // Un técnico con sitio asignado no puede cambiarlo.
+            if (! $this->puedeRecibirEnLugar($this->validadorActual(), $this->lugarRecepcionId)) {
+                $this->lugarRecepcionId = $this->validadorActual()?->lugar_entrega_id;
+            }
+
+            $this->aplicarLugarRecepcion();
+
+            return;
+        }
+
         if (preg_match('/^lineas\.(\d+)\.cantidad_a_recibir$/', $name, $m)) {
             $this->clampAndResizeLinea((int) $m[1]);
         }
@@ -171,12 +320,125 @@ class Recepciones extends Component
             ? ArticuloSolicitud::find($this->lineas[$index]['articulo_id'])
             : null;
 
+        // Lo inventariable lo define el artículo REAL recibido (el de la
+        // solicitud suele ser un genérico no inventariable). Sin artículo
+        // elegido se vuelve a lo que traía la línea.
+        $this->lineas[$index]['es_activo_inventariable'] = $articulo !== null
+            ? (bool) $articulo->es_inventariable
+            : (bool) ($this->lineas[$index]['es_activo_inventariable_original'] ?? false);
+        $this->ajustarUnidades($index);
+
         $this->lineas[$index]['articulo_tipo_equipo_id'] = $articulo?->tipo_equipo_id;
         $this->lineas[$index]['articulo_marca_id'] = $articulo?->marca_id;
         $this->lineas[$index]['articulo_modelo_id'] = $articulo?->modelo_id;
         $this->lineas[$index]['articulo_procesador'] = $articulo?->procesador?->nombre;
         $this->lineas[$index]['articulo_ram'] = $articulo?->ram?->nombre;
         $this->lineas[$index]['articulo_almacenamiento'] = $articulo?->almacenamiento?->nombre;
+    }
+
+    /** Artículo con el que se pidió la línea, leído de la BD (no del estado del cliente). */
+    private function articuloSolicitadoDeLinea(int $index): ?ArticuloSolicitud
+    {
+        $lineaId = $this->lineas[$index]['solicitud_proveedor_linea_id'] ?? null;
+
+        return $lineaId ? SolicitudProveedorLinea::with('articulo')->find($lineaId)?->articulo : null;
+    }
+
+    /**
+     * Artículos que se pueden elegir como "recibido" en una línea: activos, sin
+     * los genéricos (esos son solo para pedir), y del MISMO tipo de equipo que
+     * el artículo solicitado (si se pidió una laptop, solo laptops; si una PC,
+     * solo PCs). Si el solicitado no tiene tipo de equipo se acota por su
+     * categoría, y si tampoco la tiene no se acota.
+     */
+    private function consultaArticulosPermitidos(int $index)
+    {
+        $genericos = $this->idsArticulosGenericos();
+        $solicitado = $this->articuloSolicitadoDeLinea($index);
+
+        return ArticuloSolicitud::query()
+            ->where('activo', true)
+            ->where(fn ($q) => $q->whereNotIn('id', $genericos)->orWhere('es_inventariable', true))
+            ->when($solicitado?->tipo_equipo_id, fn ($q, $tipo) => $q->where('tipo_equipo_id', $tipo))
+            ->when(! $solicitado?->tipo_equipo_id && $solicitado?->categoria_id, fn ($q) => $q->where('categoria_id', $solicitado->categoria_id));
+    }
+
+    private function articuloPermitido(int $index, int $articuloId): bool
+    {
+        $solicitado = $this->articuloSolicitadoDeLinea($index);
+
+        if ($solicitado !== null && $solicitado->id === $articuloId && ! $this->esArticuloGenerico($solicitado)) {
+            return true;
+        }
+
+        return $this->consultaArticulosPermitidos($index)->whereKey($articuloId)->exists();
+    }
+
+    public function abrirBuscadorArticulo(int $index): void
+    {
+        if (! isset($this->lineas[$index])) {
+            return;
+        }
+
+        $this->articuloLineaIndex = $index;
+        $this->articuloSearch = '';
+        $this->showArticuloModal = true;
+    }
+
+    public function cerrarBuscadorArticulo(): void
+    {
+        $this->showArticuloModal = false;
+        $this->articuloLineaIndex = null;
+        $this->articuloSearch = '';
+    }
+
+    public function elegirArticulo(int $articuloId): void
+    {
+        $index = $this->articuloLineaIndex;
+
+        if ($index === null || ! isset($this->lineas[$index]) || ! $this->articuloPermitido($index, $articuloId)) {
+            return;
+        }
+
+        $this->lineas[$index]['articulo_id'] = $articuloId;
+        $this->recalcArticuloDerivedFields($index);
+        $this->cerrarBuscadorArticulo();
+    }
+
+    /** "Sin artículo": solo para líneas que no se pidieron con un artículo genérico. */
+    public function quitarArticulo(): void
+    {
+        $index = $this->articuloLineaIndex;
+
+        if ($index === null || ! isset($this->lineas[$index]) || ! empty($this->lineas[$index]['articulo_generico'])) {
+            return;
+        }
+
+        $this->lineas[$index]['articulo_id'] = null;
+        $this->recalcArticuloDerivedFields($index);
+        $this->cerrarBuscadorArticulo();
+    }
+
+    /**
+     * Deja el arreglo `unidades` de la línea con una fila por unidad a recibir
+     * si es inventariable, o vacío si no lo es.
+     */
+    private function ajustarUnidades(int $index): void
+    {
+        if (! $this->lineas[$index]['es_activo_inventariable']) {
+            $this->lineas[$index]['unidades'] = [];
+
+            return;
+        }
+
+        $cantidad = max(0, (int) ($this->lineas[$index]['cantidad_a_recibir'] ?? 0));
+        $unidades = $this->lineas[$index]['unidades'] ?? [];
+
+        while (count($unidades) < $cantidad) {
+            $unidades[] = ['numero_serie' => '', 'service_tag' => ''];
+        }
+
+        $this->lineas[$index]['unidades'] = array_slice($unidades, 0, $cantidad);
     }
 
     private function clampAndResizeLinea(int $index): void
@@ -220,18 +482,24 @@ class Recepciones extends Component
         $this->form = [
             'folio_remision' => '',
             'fecha_recepcion' => now()->format('Y-m-d'),
-            'recibido_por_id' => null,
-            'ubicacion_id' => null,
             'observaciones' => null,
         ];
         $this->selectedSolicitudId = $solicitud->id;
         $this->lineas = [];
+        $this->lugarRecepcionId = null;
+        // Administrador: arranca como él mismo si es técnico; si no, debe elegir al técnico.
+        $this->tecnicoRecibeId = $this->esAdministrador()
+            ? Validador::where('activo', true)->where('user_id', auth()->id())->value('id')
+            : null;
+        $this->validadorResuelto = false;
         $this->documentoRemision = null;
         $this->documentoRemisionVinculado = null;
         $this->resetValidation();
 
         if ($this->admiteRecepcion($solicitud)) {
             $this->loadLineas();
+            $this->resolverLugarPorDefecto();
+            $this->aplicarLugarRecepcion();
         }
 
         $this->showModal = true;
@@ -243,9 +511,91 @@ class Recepciones extends Component
         $this->form = [];
         $this->selectedSolicitudId = null;
         $this->lineas = [];
+        $this->lugarRecepcionId = null;
+        $this->tecnicoRecibeId = null;
+        $this->validadorResuelto = false;
         $this->documentoRemision = null;
         $this->documentoRemisionVinculado = null;
         $this->resetValidation();
+    }
+
+    /**
+     * Sitio que se recibe por defecto: el del técnico si tiene uno asignado; si
+     * no, el único lugar de entrega con líneas pendientes (si hay varios, lo
+     * elige él).
+     */
+    private function resolverLugarPorDefecto(): void
+    {
+        $validador = $this->validadorActual();
+
+        if ($validador?->lugar_entrega_id) {
+            $this->lugarRecepcionId = (int) $validador->lugar_entrega_id;
+
+            return;
+        }
+
+        $lugares = collect($this->lineas)
+            ->filter(fn ($linea) => (int) $linea['cantidad_pendiente'] > 0 && ! empty($linea['lugar_entrega_id']))
+            ->pluck('lugar_entrega_id')
+            ->unique()
+            ->values();
+
+        $this->lugarRecepcionId = $lugares->count() === 1 ? (int) $lugares->first() : null;
+    }
+
+    /**
+     * Marca qué líneas se pueden recibir ahora (las del sitio elegido, con
+     * pendiente y que el técnico puede recibir) y deja el resto en 0: la
+     * cantidad a recibir de una línea de otro sitio nunca es editable.
+     */
+    private function aplicarLugarRecepcion(): void
+    {
+        $validador = $this->validadorActual();
+
+        foreach ($this->lineas as $i => $linea) {
+            $recibible = (int) $linea['cantidad_pendiente'] > 0
+                && ! empty($linea['lugar_entrega_id'])
+                && $this->lugarRecepcionId !== null
+                && (int) $linea['lugar_entrega_id'] === $this->lugarRecepcionId
+                && $this->puedeRecibirEnLugar($validador, $this->lugarRecepcionId);
+
+            $this->lineas[$i]['recibible'] = $recibible;
+            $this->lineas[$i]['cantidad_a_recibir'] = $recibible ? (int) $linea['cantidad_pendiente'] : 0;
+            $this->ajustarUnidades($i);
+        }
+    }
+
+    /**
+     * Detalle de solo lectura de la SIC o requisición de EBS de una línea —
+     * mismos partials que "SIC en EBS" / "Solicitud a Proveedores".
+     */
+    public function openSicDetalle(int $sicId = 0, int $ebsRequisitionId = 0): void
+    {
+        $sicId = $sicId ?: null;
+        $ebsRequisitionId = $ebsRequisitionId ?: null;
+
+        $ebsResuelta = $ebsRequisitionId;
+
+        if (! $ebsResuelta && $sicId) {
+            $ebsResuelta = SolicitudSicBorrador::find($sicId)?->ebs_requisition_id;
+        }
+
+        if ($ebsResuelta) {
+            $this->detalleEbsRequisitionId = $ebsResuelta;
+            $this->detalleSicLocalId = null;
+            $this->showDetalleModal = true;
+        } elseif ($sicId) {
+            $this->detalleSicLocalId = $sicId;
+            $this->detalleEbsRequisitionId = null;
+            $this->showDetalleModal = true;
+        }
+    }
+
+    public function closeDetalle(): void
+    {
+        $this->showDetalleModal = false;
+        $this->detalleEbsRequisitionId = null;
+        $this->detalleSicLocalId = null;
     }
 
     /**
@@ -399,6 +749,8 @@ class Recepciones extends Component
             'lineas.articulo.ram',
             'lineas.articulo.almacenamiento',
             'lineas.sic',
+            'lineas.ebsRequisition',
+            'lineas.lugarEntrega',
         ])->find($this->selectedSolicitudId);
 
         if (! $solicitud) {
@@ -418,12 +770,22 @@ class Recepciones extends Component
                 // solicitud completa.
                 'sic_id' => $linea->sic_id,
                 'sic_folio' => $linea->sic?->folio_sic,
+                'ebs_requisition_id' => $linea->ebs_requisition_id,
+                // Folio a mostrar junto al artículo (SIC local, requisición de EBS directa o folio capturado a mano).
+                'sic_display' => $linea->folioSicDisplay(),
+                'lugar_entrega_id' => $linea->lugar_entrega_id,
+                'lugar_nombre' => $linea->lugarEntrega?->nombre,
+                'recibible' => false,
                 'descripcion' => $articulo?->descripcion ?? $linea->descripcion_libre,
                 'cantidad_solicitada' => $linea->cantidad_solicitada,
                 'cantidad_ya_recibida' => $linea->cantidad_recibida,
                 'cantidad_pendiente' => $pendiente,
                 'cantidad_a_recibir' => $pendiente,
-                'es_activo_inventariable' => (bool) $linea->es_activo_inventariable,
+                // El atributo del artículo manda: la bandera guardada en la línea
+                // es una foto del momento de la solicitud, y si el artículo se
+                // marcó inventariable después, la recepción debe pedir serie,
+                // marca, etc. (la bandera de la línea se respeta si ya era sí).
+                'es_activo_inventariable' => (bool) $linea->es_activo_inventariable || (bool) $articulo?->es_inventariable,
                 // "Artículo recibido" — precargado del que traía la
                 // Solicitud a Proveedor, pero editable: lo realmente
                 // recibido puede diferir de lo solicitado (sustitución del
@@ -431,6 +793,11 @@ class Recepciones extends Component
                 // derivados de solo-lectura de ESTE valor, recalculados por
                 // `recalcArticuloDerivedFields()` si el usuario lo cambia.
                 'articulo_id' => $linea->articulo_id,
+                'articulo_solicitado_id' => $linea->articulo_id,
+                'es_activo_inventariable_original' => (bool) $linea->es_activo_inventariable,
+                // Artículo genérico (estándar mapeado desde EBS y no inventariable):
+                // en la recepción es obligatorio elegir el artículo real.
+                'articulo_generico' => $this->esArticuloGenerico($articulo),
                 'articulo_tipo_equipo_id' => $articulo?->tipo_equipo_id,
                 'articulo_marca_id' => $articulo?->marca_id,
                 'articulo_modelo_id' => $articulo?->modelo_id,
@@ -464,6 +831,25 @@ class Recepciones extends Component
     {
         $totalARecibir = 0;
 
+        $validador = $this->validadorActual();
+        $lugar = $this->lugarRecepcionId ? LugarEntrega::find($this->lugarRecepcionId) : null;
+
+        if ($validador === null) {
+            $this->addError('recibido_por', $this->esAdministrador()
+                ? 'Elige el técnico que recibió.'
+                : 'Tu usuario no está dado de alta como técnico receptor: pide que lo vinculen en Catálogos de Inventario → Validador.');
+        } elseif ($lugar === null) {
+            $this->addError('lugarRecepcionId', 'Elige el sitio de entrega que estás recibiendo.');
+        } elseif (! $this->puedeRecibirEnLugar($validador, $lugar->id)) {
+            $this->addError('lugarRecepcionId', "No tienes asignado el sitio {$lugar->nombre}: solo puedes recibir en {$validador->lugarEntrega?->nombre}.");
+        } elseif (! $lugar->ubicacion_id) {
+            $this->addError('lugarRecepcionId', "El sitio {$lugar->nombre} no tiene ubicación de inventario configurada (Catálogos de Compras → Lugar de entrega).");
+        }
+
+        // Lugar real de cada línea, de la BD (no del cliente).
+        $lugarPorLinea = SolicitudProveedorLinea::whereIn('id', collect($this->lineas)->pluck('solicitud_proveedor_linea_id'))
+            ->pluck('lugar_entrega_id', 'id');
+
         foreach ($this->lineas as $i => $linea) {
             $cantidad = (int) ($linea['cantidad_a_recibir'] ?? 0);
             $pendiente = (int) ($linea['cantidad_pendiente'] ?? 0);
@@ -479,6 +865,22 @@ class Recepciones extends Component
             }
 
             $totalARecibir += $cantidad;
+
+            if ($lugar !== null && (int) ($lugarPorLinea[$linea['solicitud_proveedor_linea_id']] ?? 0) !== $lugar->id) {
+                $this->addError("lineas.$i.cantidad_a_recibir", 'Esta línea se entrega en otro sitio: la recibe el técnico de ese sitio.');
+            }
+
+            if (! empty($linea['articulo_id']) && ! $this->articuloPermitido($i, (int) $linea['articulo_id'])) {
+                $this->addError("lineas.$i.articulo_id", 'El artículo elegido no corresponde al tipo de equipo solicitado.');
+            }
+
+            // Se pidió con un artículo genérico y no se cambió por el real.
+            // Se recalcula del lado del servidor, no se confía en el cliente.
+            if (! empty($linea['articulo_solicitado_id'])
+                && (int) ($linea['articulo_id'] ?? 0) === (int) $linea['articulo_solicitado_id']
+                && $this->esArticuloGenerico(ArticuloSolicitud::find($linea['articulo_solicitado_id']))) {
+                $this->addError("lineas.$i.articulo_id", 'Elige el artículo real que llegó: la solicitud se hizo con un artículo genérico.');
+            }
 
             if (! $linea['es_activo_inventariable']) {
                 continue;
@@ -505,11 +907,47 @@ class Recepciones extends Component
             }
         }
 
+        // Un mismo número de serie no puede capturarse dos veces en la recepción
+        // (típico al escanear dos veces la misma caja).
+        $vistos = [];
+        foreach ($this->lineas as $i => $linea) {
+            if ((int) ($linea['cantidad_a_recibir'] ?? 0) <= 0 || empty($linea['es_activo_inventariable'])) {
+                continue;
+            }
+
+            foreach ($linea['unidades'] ?? [] as $u => $unidad) {
+                $serie = mb_strtoupper(trim((string) ($unidad['numero_serie'] ?? '')));
+
+                if ($serie === '') {
+                    continue;
+                }
+
+                if (isset($vistos[$serie])) {
+                    $this->addError("lineas.$i.unidades.$u.numero_serie", 'Este número de serie ya se capturó en otra unidad de esta recepción.');
+                }
+
+                $vistos[$serie] = true;
+            }
+        }
+
         if (empty($this->lineas)) {
             $this->addError('lineas', 'Selecciona una solicitud a proveedor con líneas.');
         } elseif ($totalARecibir === 0) {
             $this->addError('lineas', 'Captura una cantidad mayor a 0 en al menos una línea.');
         }
+    }
+
+    /** Artículos estándar a los que se mapean los ítems de EBS (`EbsArticulo`). */
+    private function idsArticulosGenericos(): array
+    {
+        return EbsArticulo::whereNotNull('articulo_id')->pluck('articulo_id')->all();
+    }
+
+    private function esArticuloGenerico(?ArticuloSolicitud $articulo): bool
+    {
+        return $articulo !== null
+            && ! $articulo->es_inventariable
+            && in_array($articulo->id, $this->idsArticulosGenericos(), true);
     }
 
     private function estatusIdPorCodigo(string $codigo): int
@@ -540,7 +978,11 @@ class Recepciones extends Component
             return;
         }
 
-        DB::transaction(function () use ($solicitud) {
+        $validador = $this->validadorActual();
+        $lugar = LugarEntrega::findOrFail($this->lugarRecepcionId);
+        $ubicacionId = $lugar->ubicacion_id;
+
+        DB::transaction(function () use ($solicitud, $validador, $lugar, $ubicacionId) {
             // Arranca siempre de un max(codigo) fresco contra BD — ver nota
             // en Asset::resetCodigoSequenceCache().
             Asset::resetCodigoSequenceCache();
@@ -549,8 +991,10 @@ class Recepciones extends Component
                 'solicitud_proveedor_id' => $solicitud->id,
                 'folio_remision' => $this->form['folio_remision'],
                 'fecha_recepcion' => $this->form['fecha_recepcion'],
-                'recibido_por_id' => $this->form['recibido_por_id'],
-                'ubicacion_id' => $this->form['ubicacion_id'],
+                'recibido_por_id' => $validador->id,
+                'ubicacion_id' => $ubicacionId,
+                'lugar_entrega_id' => $lugar->id,
+                'registrado_por_user_id' => auth()->id(),
                 'observaciones' => $this->form['observaciones'] !== '' ? $this->form['observaciones'] : null,
             ]);
 
@@ -632,7 +1076,7 @@ class Recepciones extends Component
                             'fecha_alta_stock' => $this->form['fecha_recepcion'],
                             'fecha_inicio_garantia' => $linea['fecha_inicio_garantia'] ?: null,
                             'fecha_fin_garantia' => $linea['fecha_fin_garantia'] ?: null,
-                            'ubicacion_actual_id' => $this->form['ubicacion_id'],
+                            'ubicacion_actual_id' => $ubicacionId,
                             'sic_reservada_id' => $sicIdLinea,
                             'proyecto_presupuesto_id' => $proyectoPresupuestoId,
                             'estatus_id' => $estatusInventariableId,
@@ -700,6 +1144,56 @@ class Recepciones extends Component
         );
     }
 
+    /**
+     * Texto en minúsculas, sin acentos y SIN separadores (espacios, guiones,
+     * puntos...) para comparar de forma tolerante: "20 RV", "20-rv" y "20rv"
+     * quedan iguales.
+     */
+    private function normalizarBusqueda(string $texto): string
+    {
+        return preg_replace('/[^a-z0-9]+/', '', mb_strtolower(Str::ascii($texto)));
+    }
+
+    /**
+     * Búsqueda tolerante de artículos: cada palabra escrita debe aparecer en
+     * algún punto de código + descripción + marca + modelo, en cualquier orden
+     * y sin importar mayúsculas, acentos ni separadores. Se resuelve en PHP
+     * sobre el catálogo ya acotado por tipo de equipo (unos cientos de filas
+     * con 3 columnas), que es más rápido y portable que armar LIKE/REPLACE por
+     * palabra en SQL. Primero salen los que coinciden por marca/modelo.
+     */
+    private function buscarArticulos(int $index)
+    {
+        $palabras = collect(preg_split('/\s+/', trim($this->articuloSearch)))
+            ->map(fn ($palabra) => $this->normalizarBusqueda((string) $palabra))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $consulta = $this->consultaArticulosPermitidos($index)
+            ->with(['marca:id,nombre', 'modelo:id,nombre'])
+            ->orderBy('descripcion');
+
+        if ($palabras->isEmpty()) {
+            return $consulta->limit(self::RESULTADOS_ARTICULOS + 1)->get();
+        }
+
+        return $consulta->get()
+            ->map(function ($articulo) use ($palabras) {
+                $marcaModelo = $this->normalizarBusqueda($articulo->marca?->nombre.' '.$articulo->modelo?->nombre);
+                $todo = $this->normalizarBusqueda($articulo->codigo.' '.$articulo->descripcion).$marcaModelo;
+
+                $articulo->coincide = $palabras->every(fn ($palabra) => str_contains($todo, $palabra));
+                $articulo->puntos = $palabras->filter(fn ($palabra) => str_contains($marcaModelo, $palabra))->count();
+
+                return $articulo;
+            })
+            ->filter(fn ($articulo) => $articulo->coincide)
+            ->sortByDesc('puntos')
+            ->take(self::RESULTADOS_ARTICULOS + 1)
+            ->values();
+    }
+
     public function render()
     {
         $busqueda = $this->search;
@@ -731,17 +1225,42 @@ class Recepciones extends Component
             ? SolicitudProveedor::with([
                 'vendor',
                 'lineas.articulo',
-                'recepciones' => fn ($q) => $q->with(['recibidoPor', 'documentoRemision'])->orderByDesc('fecha_recepcion')->orderByDesc('id'),
+                'recepciones' => fn ($q) => $q->with(['recibidoPor', 'registradoPor', 'documentoRemision'])->orderByDesc('fecha_recepcion')->orderByDesc('id'),
             ])->find($this->selectedSolicitudId)
             : null;
 
         return view('gestionti::livewire.compras.recepciones', [
             'solicitudes' => $solicitudes,
             'solicitudSeleccionada' => $solicitudSeleccionada,
-            'puedeRecibir' => $this->admiteRecepcion($solicitudSeleccionada),
-            'validadorOptions' => Validador::where('activo', true)->orderBy('nombre')->get(),
-            'ubicacionOptions' => Ubicacion::where('activo', true)->orderBy('nombre')->get(),
-            'articuloOptions' => ArticuloSolicitud::where('activo', true)->where('es_inventariable', true)->orderBy('codigo')->get(),
+            'admiteRecepcion' => $this->admiteRecepcion($solicitudSeleccionada),
+            'validadorActual' => $this->validadorActual(),
+            'esAdministrador' => $this->esAdministrador(),
+            // Técnicos por los que un administrador puede capturar: los ya configurados (con usuario o con sede).
+            'tecnicosOptions' => $this->esAdministrador()
+                ? Validador::with('lugarEntrega')->where('activo', true)
+                    ->where(fn ($q) => $q->whereNotNull('user_id')->orWhereNotNull('lugar_entrega_id'))
+                    ->orderBy('nombre')->get()
+                : collect(),
+            'puedeRecibir' => $this->admiteRecepcion($solicitudSeleccionada) && $this->validadorActual() !== null,
+            'lugaresRecepcion' => LugarEntrega::whereIn('id', collect($this->lineas)->pluck('lugar_entrega_id')->filter()->unique())->orderBy('nombre')->get(),
+            'ebsEstatusColors' => ['APPROVED' => 'emerald', 'REJECTED' => 'red', 'IN PROCESS' => 'indigo'],
+            'detalleEbsRequisicion' => $this->showDetalleModal && $this->detalleEbsRequisitionId
+                ? EbsRequisition::with([
+                    'lines', 'notes',
+                    'solicitudSicBorrador.ticket',
+                    'solicitudSicBorrador.solicitudProveedorLineas.solicitud',
+                    'solicitudProveedorLineas.solicitud',
+                ])->find($this->detalleEbsRequisitionId)
+                : null,
+            'detalleSicLocal' => $this->showDetalleModal && $this->detalleSicLocalId
+                ? SolicitudSicBorrador::with(['empleado', 'ticket', 'tipoEquipo', 'articulo.categoria', 'centroCosto', 'solicitudProveedorLineas.solicitud'])->find($this->detalleSicLocalId)
+                : null,
+            // Etiquetas de los artículos ya elegidos en las líneas (el select largo
+            // se sustituyó por un buscador).
+            'articulosElegidos' => ArticuloSolicitud::whereIn('id', collect($this->lineas)->pluck('articulo_id')->filter()->unique())->get()->keyBy('id'),
+            'resultadosArticulos' => $this->showArticuloModal && $this->articuloLineaIndex !== null && isset($this->lineas[$this->articuloLineaIndex])
+                ? $this->buscarArticulos($this->articuloLineaIndex)
+                : collect(),
             'marcaOptions' => Marca::where('activo', true)->orderBy('nombre')->get(),
             'modeloOptions' => Modelo::where('activo', true)->orderBy('nombre')->get(),
             'tipoEquipoOptions' => TipoEquipo::where('activo', true)->orderBy('nombre')->get(),
