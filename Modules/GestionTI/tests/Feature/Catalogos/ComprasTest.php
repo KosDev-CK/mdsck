@@ -765,4 +765,88 @@ class ComprasTest extends TestCase
 
         $this->assertDatabaseHas('lugares_entrega', ['id' => $lugar->id]);
     }
+
+    // --- tab "Artículos" — referencias al eliminar/fusionar -------------
+    // Antes `mergeReferences` estaba vacío: eliminar o fusionar dejaba en
+    // blanco (nullOnDelete) Assets/SICs/líneas/recepciones/mapeos EBS.
+
+    private function articuloEnUso(string $codigo): array
+    {
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => $codigo,
+            'descripcion' => "Artículo {$codigo}",
+            'unidad_medida' => 'pieza',
+        ]);
+
+        $vendor = Proveedor::create(['nombre_comercial' => "Prov {$codigo}", 'razon_social' => "Prov {$codigo} S.A."]);
+        $solicitud = SolicitudProveedor::create([
+            'folio' => "SP-{$codigo}",
+            'vendor_id' => $vendor->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $linea = $solicitud->lineas()->create([
+            'articulo_id' => $articulo->id,
+            'cantidad_solicitada' => 1,
+        ]);
+        $ebs = EbsArticulo::create(['ebs_item_id' => random_int(100000, 999999), 'articulo_id' => $articulo->id]);
+
+        return [$articulo, $linea, $ebs];
+    }
+
+    public function test_cannot_delete_an_articulo_referenced_elsewhere(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        [$articulo, $linea, $ebs] = $this->articuloEnUso('ART-EN-USO');
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->call('delete', $articulo->id)
+            ->assertSee('No se puede eliminar');
+
+        $this->assertDatabaseHas('articulos_solicitud', ['id' => $articulo->id]);
+        $this->assertSame($articulo->id, $linea->fresh()->articulo_id);
+        $this->assertSame($articulo->id, $ebs->fresh()->articulo_id);
+    }
+
+    public function test_can_delete_an_articulo_without_dependents(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $articulo = ArticuloSolicitud::create([
+            'codigo' => 'ART-LIBRE',
+            'descripcion' => 'Artículo sin uso',
+            'unidad_medida' => 'pieza',
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->call('delete', $articulo->id);
+
+        $this->assertDatabaseMissing('articulos_solicitud', ['id' => $articulo->id]);
+    }
+
+    public function test_merging_articulos_repoints_every_reference_to_the_kept_one(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        [$duplicado, $linea, $ebs] = $this->articuloEnUso('ART-DUP');
+        $conservado = ArticuloSolicitud::create([
+            'codigo' => 'ART-KEEP',
+            'descripcion' => 'Artículo que se conserva',
+            'unidad_medida' => 'pieza',
+        ]);
+
+        Livewire::test(Compras::class)
+            ->call('setTab', 'articulos_solicitud')
+            ->set('mergeDeleteId', $duplicado->id)
+            ->set('mergeKeepId', $conservado->id)
+            ->call('confirmMerge')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseMissing('articulos_solicitud', ['id' => $duplicado->id]);
+        $this->assertSame($conservado->id, $linea->fresh()->articulo_id);
+        $this->assertSame($conservado->id, $ebs->fresh()->articulo_id);
+    }
 }

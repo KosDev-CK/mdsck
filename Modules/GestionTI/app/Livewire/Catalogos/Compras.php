@@ -20,7 +20,9 @@ use Modules\GestionTI\Models\Procesador;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\Ram;
+use Modules\GestionTI\Models\RecepcionLinea;
 use Modules\GestionTI\Models\SolicitudProveedorLinea;
+use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\TipoEquipo;
 
 #[Layout('layouts.app')]
@@ -90,10 +92,17 @@ class Compras extends Component
                 ],
                 'orderBy' => 'codigo',
                 'searchColumns' => ['codigo', 'descripcion'],
-                // Ninguna otra tabla del módulo tiene FK hacia
-                // articulos_solicitud todavía — fusionar solo elimina el
-                // duplicado, sin reasignar nada.
-                'mergeReferences' => [],
+                // Todas estas tablas tienen FK nullOnDelete hacia
+                // articulos_solicitud: sin reasignar, eliminar el artículo
+                // las dejaría en blanco sin aviso (se pierde la trazabilidad
+                // del activo/solicitud/recepción).
+                'mergeReferences' => [
+                    ['model' => Asset::class, 'column' => 'articulo_id'],
+                    ['model' => SolicitudSicBorrador::class, 'column' => 'articulo_id'],
+                    ['model' => SolicitudProveedorLinea::class, 'column' => 'articulo_id'],
+                    ['model' => RecepcionLinea::class, 'column' => 'articulo_id'],
+                    ['model' => EbsArticulo::class, 'column' => 'articulo_id'],
+                ],
             ],
             'categorias' => [
                 'label' => 'Categoría',
