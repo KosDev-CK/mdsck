@@ -96,6 +96,10 @@ class Recepciones extends Component
     #[Url(as: 'search')]
     public string $search = '';
 
+    /** Filtro del grid: '' = todas, 'pendientes' = solicitada + parcialmente recibida, o un estatus puntual de SolicitudProveedor. */
+    #[Url(as: 'estatus')]
+    public string $estatusFiltro = '';
+
     public bool $showModal = false;
 
     protected function rules(): array
@@ -117,9 +121,18 @@ class Recepciones extends Component
         $this->resetPage();
     }
 
-    public function updatedSelectedSolicitudId(): void
+    public function updatingEstatusFiltro(): void
     {
-        $this->loadLineas();
+        $this->resetPage();
+    }
+
+    /** Una solicitud solo admite recepciones nuevas mientras está pendiente de recibir completa. */
+    private function admiteRecepcion(?SolicitudProveedor $solicitud): bool
+    {
+        return $solicitud !== null && in_array($solicitud->estatus, [
+            SolicitudProveedor::ESTATUS_SOLICITADA,
+            SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA,
+        ], true);
     }
 
     /**
@@ -195,8 +208,15 @@ class Recepciones extends Component
         $this->lineas[$index]['unidades'] = $unidades;
     }
 
-    public function create(): void
+    /**
+     * Abre la solicitud elegida en el grid: muestra su historial de
+     * recepciones y, si todavía admite recepciones (solicitada o
+     * parcialmente recibida), el formulario para registrar la siguiente.
+     */
+    public function abrirSolicitud(int $id): void
     {
+        $solicitud = SolicitudProveedor::findOrFail($id);
+
         $this->form = [
             'folio_remision' => '',
             'fecha_recepcion' => now()->format('Y-m-d'),
@@ -204,11 +224,16 @@ class Recepciones extends Component
             'ubicacion_id' => null,
             'observaciones' => null,
         ];
-        $this->selectedSolicitudId = null;
+        $this->selectedSolicitudId = $solicitud->id;
         $this->lineas = [];
         $this->documentoRemision = null;
         $this->documentoRemisionVinculado = null;
         $this->resetValidation();
+
+        if ($this->admiteRecepcion($solicitud)) {
+            $this->loadLineas();
+        }
+
         $this->showModal = true;
     }
 
@@ -509,6 +534,12 @@ class Recepciones extends Component
 
         $solicitud = SolicitudProveedor::with('lineas')->findOrFail($this->selectedSolicitudId);
 
+        if (! $this->admiteRecepcion($solicitud)) {
+            $this->addError('selectedSolicitudId', 'Esta solicitud ya no admite recepciones (estatus: '.$solicitud->estatus.').');
+
+            return;
+        }
+
         DB::transaction(function () use ($solicitud) {
             // Arranca siempre de un max(codigo) fresco contra BD — ver nota
             // en Asset::resetCodigoSequenceCache().
@@ -671,21 +702,43 @@ class Recepciones extends Component
 
     public function render()
     {
-        $records = Recepcion::query()
-            ->with(['solicitudProveedor.vendor', 'recibidoPor', 'documentoRemision'])
-            ->when($this->search !== '', function ($q) {
-                $q->where('folio_remision', 'like', "%{$this->search}%")
-                    ->orWhereHas('solicitudProveedor', fn ($q) => $q->where('folio', 'like', "%{$this->search}%"));
-            })
-            ->orderByDesc('fecha_recepcion')
-            ->paginate(10);
+        $busqueda = $this->search;
 
-        return view('gestionti::livewire.compras.recepciones', [
-            'records' => $records,
-            'solicitudOptions' => SolicitudProveedor::whereIn('estatus', [
+        $solicitudes = SolicitudProveedor::query()
+            ->with('vendor')
+            ->withCount('recepciones')
+            ->withSum('lineas as total_solicitado', 'cantidad_solicitada')
+            ->withSum('lineas as total_recibido', 'cantidad_recibida')
+            ->when($busqueda !== '', function ($q) use ($busqueda) {
+                $q->where(function ($q) use ($busqueda) {
+                    $q->where('folio', 'like', "%{$busqueda}%")
+                        ->orWhereHas('vendor', fn ($q) => $q->where('nombre_comercial', 'like', "%{$busqueda}%"))
+                        ->orWhereHas('recepciones', fn ($q) => $q->where('folio_remision', 'like', "%{$busqueda}%"));
+                });
+            })
+            ->when($this->estatusFiltro === 'pendientes', fn ($q) => $q->whereIn('estatus', [
                 SolicitudProveedor::ESTATUS_SOLICITADA,
                 SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA,
-            ])->with('vendor')->orderByDesc('fecha_solicitud')->get(),
+            ]))
+            ->when($this->estatusFiltro !== '' && $this->estatusFiltro !== 'pendientes', fn ($q) => $q->where('estatus', $this->estatusFiltro))
+            // Las pendientes de recibir primero, luego por fecha.
+            ->orderByRaw("CASE WHEN estatus IN ('solicitada', 'parcialmente_recibida') THEN 0 ELSE 1 END")
+            ->orderByDesc('fecha_solicitud')
+            ->orderByDesc('id')
+            ->paginate(10);
+
+        $solicitudSeleccionada = $this->selectedSolicitudId
+            ? SolicitudProveedor::with([
+                'vendor',
+                'lineas.articulo',
+                'recepciones' => fn ($q) => $q->with(['recibidoPor', 'documentoRemision'])->orderByDesc('fecha_recepcion')->orderByDesc('id'),
+            ])->find($this->selectedSolicitudId)
+            : null;
+
+        return view('gestionti::livewire.compras.recepciones', [
+            'solicitudes' => $solicitudes,
+            'solicitudSeleccionada' => $solicitudSeleccionada,
+            'puedeRecibir' => $this->admiteRecepcion($solicitudSeleccionada),
             'validadorOptions' => Validador::where('activo', true)->orderBy('nombre')->get(),
             'ubicacionOptions' => Ubicacion::where('activo', true)->orderBy('nombre')->get(),
             'articuloOptions' => ArticuloSolicitud::where('activo', true)->where('es_inventariable', true)->orderBy('codigo')->get(),

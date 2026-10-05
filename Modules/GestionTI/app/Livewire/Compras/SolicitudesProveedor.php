@@ -341,7 +341,7 @@ class SolicitudesProveedor extends Component
         $this->sicSearch = '';
         $this->soloSeleccionadas = false;
         $this->resetPage(self::PAGINADOR_SICS);
-        unset($this->pool);
+        unset($this->pool, $this->restringidaASusSics);
         $this->resetValidation();
     }
 
@@ -553,6 +553,19 @@ class SolicitudesProveedor extends Component
     }
 
     /**
+     * Solicitud ya enviada al proveedor que se está editando (solo un
+     * Administrador puede, ver `puedeEditar()`): ya no admite SICs/EBS nuevas,
+     * únicamente las que se asignaron originalmente. Se lee de la BD (no de
+     * estado del cliente) para que no se pueda manipular desde el navegador.
+     */
+    #[Computed]
+    public function restringidaASusSics(): bool
+    {
+        return $this->editingId !== null
+            && SolicitudProveedor::whereKey($this->editingId)->whereNotNull('enviada_at')->exists();
+    }
+
+    /**
      * El pool completo (punto central del diseño): una fila por cada SIC
      * local elegible (`sicPickerOptions()`) y por cada requisición de EBS
      * elegible sin SIC local (`ebsPickerOptions()`), ordenadas de la más
@@ -575,7 +588,11 @@ class SolicitudesProveedor extends Component
     {
         $filas = collect();
 
-        foreach ($this->sicPickerOptions() as $sic) {
+        // Solicitud ya enviada: no se ofrecen SICs/EBS nuevas — el pool queda
+        // solo con las líneas guardadas (se inyectan más abajo).
+        $candidatas = $this->restringidaASusSics;
+
+        foreach ($candidatas ? [] : $this->sicPickerOptions() as $sic) {
             $filas->push($this->filaDePool(
                 'sic',
                 $sic->id,
@@ -586,7 +603,7 @@ class SolicitudesProveedor extends Component
             ));
         }
 
-        foreach ($this->ebsPickerOptions() as ['requisicion' => $ebsRequisicion, 'articulo' => $articulo]) {
+        foreach ($candidatas ? [] : $this->ebsPickerOptions() as ['requisicion' => $ebsRequisicion, 'articulo' => $articulo]) {
             $filas->push($this->filaDePool(
                 'ebs',
                 $ebsRequisicion->id,
@@ -789,6 +806,10 @@ class SolicitudesProveedor extends Component
                     continue;
                 }
 
+                if (empty($linea['lugar_entrega_id'])) {
+                    $this->addError("$conjunto.$clave.lugar_entrega_id", 'Elige el lugar de entrega.');
+                }
+
                 $tieneArticulo = ! empty($linea['articulo_id']);
                 $tieneDescripcion = trim((string) ($linea['descripcion_libre'] ?? '')) !== '';
 
@@ -800,6 +821,31 @@ class SolicitudesProveedor extends Component
                         : 'Elige un artículo del catálogo o captura una descripción libre.');
                 }
             }
+        }
+    }
+
+    /**
+     * Solicitud ya enviada: solo se conservan las SICs/EBS asignadas
+     * originalmente — se rechaza cualquier SIC/EBS o línea manual de SIC nueva
+     * (defensa del servidor; la UI ya no las ofrece).
+     */
+    private function validateSinOrigenesNuevos(): void
+    {
+        if (! $this->restringidaASusSics) {
+            return;
+        }
+
+        $originales = SolicitudProveedorLinea::where('solicitud_id', $this->editingId)->get()
+            ->map(fn ($linea) => $this->claveDeLinea($linea))
+            ->filter()
+            ->all();
+
+        $nuevas = collect(array_keys($this->seleccion))->reject(fn ($clave) => in_array($clave, $originales, true));
+        $manualesNuevas = $this->origen === 'sic'
+            && collect($this->lineasManuales)->contains(fn ($linea) => empty($linea['id']) && ! $this->esLineaEnBlancoSinTocar($linea));
+
+        if ($nuevas->isNotEmpty() || $manualesNuevas) {
+            $this->addError('lineas', 'Esta solicitud ya se envió al proveedor: no se pueden agregar SICs nuevas, solo conservar las asignadas originalmente.');
         }
     }
 
@@ -875,6 +921,7 @@ class SolicitudesProveedor extends Component
         $this->validate($this->rules());
         $this->validateOrigenUnico();
         $this->validateLineas();
+        $this->validateSinOrigenesNuevos();
         $this->validateAlMenosUnaLinea();
 
         if ($this->getErrorBag()->isNotEmpty()) {
@@ -977,6 +1024,12 @@ class SolicitudesProveedor extends Component
             return;
         }
 
+        if ($record->lineas->contains(fn ($linea) => empty($linea->lugar_entrega_id))) {
+            session()->flash('error', 'Todas las líneas deben tener lugar de entrega antes de enviar — edita la solicitud y captúralo.');
+
+            return;
+        }
+
         Mail::to($record->vendor->contacto_correo)->send(new SolicitudProveedorMail($record));
 
         if (! $record->enviada_at) {
@@ -1046,6 +1099,7 @@ class SolicitudesProveedor extends Component
         if ($this->showForm) {
             $data += [
                 'sics' => $this->origen === 'sic' ? $this->sicsPaginadas() : null,
+                'restringidaASusSics' => $this->restringidaASusSics,
                 'erroresLineas' => $this->erroresDeLineas(),
                 'vendorOptions' => Proveedor::where('activo', true)->orderBy('nombre_comercial')->get(),
                 'ticketOptions' => Ticket::orderByDesc('fecha')->get(),

@@ -176,9 +176,15 @@
                     <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">SICs y requisiciones disponibles</h3>
+                            @if ($restringidaASusSics)
+                                <p class="mt-1 max-w-4xl text-xs text-gray-500 dark:text-gray-400">
+                                    Esta solicitud ya se envió al proveedor: solo se muestran las SICs/requisiciones asignadas originalmente. No se pueden agregar SICs nuevas.
+                                </p>
+                            @else
                             <p class="mt-1 max-w-4xl text-xs text-gray-500 dark:text-gray-400">
-                                Solo aparecen SICs autorizadas, de una categoría marcada como "Va a Compras" (pestaña "Categoría" de Catálogos de Compras) y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra". Marca una o más: sus campos se vuelven editables en la misma fila. La selección se conserva al cambiar de página o al buscar.
+                                Solo aparecen SICs autorizadas, de una categoría marcada como "Va a Compras" (pestaña "Categoría" de Catálogos de Compras) y que ninguna otra solicitud haya recogido todavía — más requisiciones de EBS que nunca tuvieron SIC local, aprobadas y con su artículo mapeado de una categoría "va a Compra". Marca una o más: sus campos se vuelven editables en la misma fila. La selección se conserva al cambiar de página o al buscar. El lugar de entrega es obligatorio en cada línea.
                             </p>
+                            @endif
                         </div>
                         <x-ui.badge color="indigo">{{ count($seleccion) }} {{ count($seleccion) === 1 ? 'seleccionada' : 'seleccionadas' }}</x-ui.badge>
                     </div>
@@ -214,7 +220,7 @@
                                     <th class="px-2 py-2 font-medium">Artículo</th>
                                     <th class="px-2 py-2 font-medium">Cantidad</th>
                                     <th class="px-2 py-2 font-medium">P. Unit.</th>
-                                    <th class="px-2 py-2 font-medium">Lugar de entrega</th>
+                                    <th class="px-2 py-2 font-medium">Lugar de entrega <span class="text-danger">*</span></th>
                                     <th class="px-2 py-2 font-medium">Observaciones</th>
                                     <th class="px-2 py-2 text-center font-medium">Inventariable</th>
                                 </tr>
@@ -289,8 +295,8 @@
                                         </td>
                                         <td class="px-2 py-1.5">
                                             @if ($sel)
-                                                <x-ui.select wire:model="seleccion.{{ $clave }}.lugar_entrega_id" class="h-9 {{ $err('lugar_entrega_id') }}">
-                                                    <option value="">Sin asignar</option>
+                                                <x-ui.select wire:model="seleccion.{{ $clave }}.lugar_entrega_id" class="h-9 {{ $err('lugar_entrega_id') }}" title="{{ $errors->first('seleccion.'.$clave.'.lugar_entrega_id') }}">
+                                                    <option value="">Selecciona...</option>
                                                     @foreach ($lugarEntregaOptions as $lugar)
                                                         <option value="{{ $lugar->id }}">{{ $lugar->nombre }}</option>
                                                     @endforeach
@@ -346,9 +352,11 @@
                             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Para una SIC que aún no existe como registro: captura el folio a mano y el artículo.</p>
                         @endif
                     </div>
-                    <x-ui.button type="button" variant="secondary" size="sm" wire:click="addLinea">
-                        + Agregar línea{{ $origen === 'sic' ? ' manual (sin SIC real)' : '' }}
-                    </x-ui.button>
+                    @unless ($restringidaASusSics && $origen === 'sic')
+                        <x-ui.button type="button" variant="secondary" size="sm" wire:click="addLinea">
+                            + Agregar línea{{ $origen === 'sic' ? ' manual (sin SIC real)' : '' }}
+                        </x-ui.button>
+                    @endunless
                 </div>
 
                 @if (empty($lineasManuales))
@@ -376,7 +384,7 @@
                                     <th class="px-2 py-2 font-medium">Artículo</th>
                                     <th class="px-2 py-2 font-medium">Cantidad</th>
                                     <th class="px-2 py-2 font-medium">P. Unit.</th>
-                                    <th class="px-2 py-2 font-medium">Lugar de entrega</th>
+                                    <th class="px-2 py-2 font-medium">Lugar de entrega <span class="text-danger">*</span></th>
                                     <th class="px-2 py-2 font-medium">Observaciones</th>
                                     <th class="px-2 py-2 text-center font-medium">Inventariable</th>
                                     <th class="px-2 py-2"></th>
@@ -409,7 +417,7 @@
                                         </td>
                                         <td class="px-2 py-1.5">
                                             <x-ui.select name="lineasManuales.{{ $i }}.lugar_entrega_id" wire:model="lineasManuales.{{ $i }}.lugar_entrega_id">
-                                                <option value="">Sin asignar</option>
+                                                <option value="">Selecciona...</option>
                                                 @foreach ($lugarEntregaOptions as $lugar)
                                                     <option value="{{ $lugar->id }}">{{ $lugar->nombre }}</option>
                                                 @endforeach

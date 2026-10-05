@@ -6,6 +6,7 @@ use App\Models\Screen;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
 use Modules\GestionTI\Mail\SolicitudProveedorMail;
@@ -31,6 +32,31 @@ use Tests\TestCase;
 class SolicitudesProveedorTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // El lugar de entrega es obligatorio por línea: `conLugar()` se lo pone
+        // a toda línea con contenido que no lo traiga, para que los tests que
+        // no tratan de eso no tengan que repetirlo (las manuales en blanco se
+        // dejan intactas porque el componente las descarta al guardar).
+        Testable::macro('conLugar', function () {
+            $lugarId = LugarEntrega::query()->value('id');
+
+            foreach (['seleccion', 'lineasManuales'] as $conjunto) {
+                foreach ($this->get($conjunto) ?? [] as $clave => $linea) {
+                    $sinContenido = empty($linea['articulo_id']) && empty($linea['descripcion_libre']) && empty($linea['folio_sic_manual']) && empty($linea['id']);
+
+                    if (! $sinContenido && empty($linea['lugar_entrega_id'])) {
+                        $this->set("$conjunto.$clave.lugar_entrega_id", $lugarId);
+                    }
+                }
+            }
+
+            return $this;
+        });
+    }
 
     private function actingUser(): User
     {
@@ -225,7 +251,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('addLinea')
             ->set('lineasManuales.1.descripcion_libre', 'Cable HDMI especial')
             ->set('lineasManuales.1.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('solicitudes_proveedor', [
@@ -269,7 +295,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->set('lineasManuales.0.articulo_id', $inventariable->id)
             ->set('lineasManuales.1.articulo_id', $consumible->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-INV-001')->firstOrFail();
@@ -327,7 +353,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->set('lineasManuales.0.descripcion_libre', 'Línea 1')
             ->set('lineasManuales.0.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
@@ -351,7 +377,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('lineasManuales.0.articulo_id', $articulo->id)
             ->set('lineasManuales.0.descripcion_libre', 'Descripción libre también capturada')
             ->set('lineasManuales.0.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['lineasManuales.0.articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-TEST-002']);
@@ -371,7 +397,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->set('lineasManuales.0.observaciones_especificaciones', 'Solo una nota, sin artículo ni descripción')
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['lineasManuales.0.articulo_id']);
     }
 
@@ -388,7 +414,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->call('addLinea')
             ->call('removeLinea', 0)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['lineas']);
     }
 
@@ -409,7 +435,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('toggleSeleccion', 's'.$sic->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id);
 
-        $component->call('save')->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
+        $component->conLugar()->call('save')->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
     }
 
     public function test_can_edit_an_existing_solicitud_and_its_lines(): void
@@ -436,7 +462,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('addLinea')
             ->set('lineasManuales.1.descripcion_libre', 'Extra')
             ->set('lineasManuales.1.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud->refresh();
@@ -522,7 +548,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
             ->set('lineasManuales.0.descripcion_libre', 'Laptop para gerente de centro')
             ->set('lineasManuales.0.cantidad_solicitada', 2)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('solicitudes_proveedor', [
@@ -577,7 +603,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('toggleSeleccion', 's'.$sic->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
             ->set("seleccion.s{$sic->id}.cantidad_solicitada", 2)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-PROYECTO-003']);
@@ -647,7 +673,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 's'.$sic->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
@@ -707,7 +733,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 's'.$sicUno->id)
             ->call('toggleSeleccion', 's'.$sicDos->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-MULTI')->firstOrFail();
@@ -731,7 +757,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('lineasManuales.0.folio_sic_manual', 'SIC-A-MANO-001')
             ->set('lineasManuales.0.descripcion_libre', 'Laptop capturada a mano, SIC aún sin registro')
             ->set('lineasManuales.0.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-MANUAL')->firstOrFail();
@@ -757,7 +783,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 's'.$sic->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-SIC-EDIT')->firstOrFail();
@@ -870,7 +896,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('lineasManuales.0.articulo_id', $articulo->id)
             ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->set('lineasManuales.0.observaciones_especificaciones', 'Con teclado en español')
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('solicitud_proveedor_lineas', [
@@ -899,7 +925,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->set('lineasManuales.0.articulo_id', $articulo->id)
             ->set('lineasManuales.0.cantidad_solicitada', 1)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('solicitudes_proveedor', [
@@ -1021,7 +1047,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->call('save');
+            ->conLugar()->call('save');
         $this->assertSame('SP-BLOQUEO-001', $solicitud->fresh()->folio);
 
         Livewire::test(SolicitudesProveedor::class)->call('cancelarSolicitud', $solicitud->id);
@@ -1047,7 +1073,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('edit', $solicitud->id)
             ->assertSet('showForm', true)
             ->set('lineasManuales.0.cantidad_solicitada', 9)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $this->assertDatabaseHas('solicitud_proveedor_lineas', [
@@ -1267,7 +1293,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-EBS-DIRECTO-001')->firstOrFail();
@@ -1335,7 +1361,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-EBS-EDIT')->firstOrFail();
@@ -1365,7 +1391,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('lineasManuales.0.articulo_id', $articulo->id)
             ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->set('lineasManuales.0.lugar_entrega_id', $lugar->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-LUGAR-001')->firstOrFail();
@@ -1378,7 +1404,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->assertSame($lugar->id, $component->get('lineasManuales.0.lugar_entrega_id'));
     }
 
-    public function test_a_line_without_a_lugar_de_entrega_persists_it_as_null(): void
+    public function test_a_line_without_a_lugar_de_entrega_is_rejected(): void
     {
         $this->actingAs($this->actingUser());
         $vendor = $this->proveedor();
@@ -1394,13 +1420,152 @@ class SolicitudesProveedorTest extends TestCase
             ->set('lineasManuales.0.articulo_id', $articulo->id)
             ->set('lineasManuales.0.cantidad_solicitada', 1)
             ->call('save')
+            ->assertHasErrors(['lineasManuales.0.lugar_entrega_id']);
+
+        $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-LUGAR-002']);
+    }
+
+    public function test_a_selected_sic_row_without_a_lugar_de_entrega_is_rejected(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sic = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-LUGAR-003')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 's'.$sic->id)
+            ->call('save')
+            ->assertHasErrors(['seleccion.s'.$sic->id.'.lugar_entrega_id']);
+    }
+
+    // --- Solicitud ya enviada: no admite SICs nuevas ------------------------
+
+    private function solicitudEnviadaConUnaSic(): array
+    {
+        $this->marcarCategoriaComoCompra();
+        $vendor = $this->proveedor();
+        $sicAsignada = $this->crearSicAutorizada('laptops_desktops');
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.folio', 'SP-ENVIADA-001')
+            ->set('form.vendor_id', $vendor->id)
+            ->set('form.fecha_solicitud', '2026-09-01')
+            ->set('form.tipo_solicitud', 'regular')
+            ->call('toggleSeleccion', 's'.$sicAsignada->id)
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
-        $solicitud = SolicitudProveedor::where('folio', 'SP-LUGAR-002')->firstOrFail();
-        $this->assertDatabaseHas('solicitud_proveedor_lineas', [
-            'solicitud_id' => $solicitud->id,
-            'lugar_entrega_id' => null,
+        $solicitud = SolicitudProveedor::where('folio', 'SP-ENVIADA-001')->firstOrFail();
+
+        return [$solicitud, $sicAsignada];
+    }
+
+    public function test_editing_an_unsent_solicitud_still_offers_new_sics(): void
+    {
+        $this->actingAs($this->actingUser());
+        [$solicitud, $sicAsignada] = $this->solicitudEnviadaConUnaSic();
+        $otra = $this->crearSicAutorizada('laptops_desktops');
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+
+        $claves = $this->clavesDelPool($component);
+        $this->assertContains('s'.$sicAsignada->id, $claves);
+        $this->assertContains('s'.$otra->id, $claves);
+    }
+
+    public function test_editing_a_sent_solicitud_only_shows_its_originally_assigned_sics(): void
+    {
+        $admin = $this->actingUser();
+        $admin->assignRole(Role::firstOrCreate(['name' => 'Administrador']));
+        $this->actingAs($admin);
+
+        [$solicitud, $sicAsignada] = $this->solicitudEnviadaConUnaSic();
+        $otra = $this->crearSicAutorizada('laptops_desktops');
+        $solicitud->update(['enviada_at' => now()]);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+
+        $this->assertSame(['s'.$sicAsignada->id], $this->clavesDelPool($component));
+        $this->assertTrue($component->viewData('restringidaASusSics'));
+
+        // Marcar una SIC que no es de la solicitud no tiene efecto.
+        $component->call('toggleSeleccion', 's'.$otra->id);
+        $this->assertArrayNotHasKey('s'.$otra->id, $component->get('seleccion'));
+    }
+
+    public function test_a_sent_solicitud_rejects_new_sics_and_manual_sic_lines_even_if_forced_from_the_client(): void
+    {
+        $admin = $this->actingUser();
+        $admin->assignRole(Role::firstOrCreate(['name' => 'Administrador']));
+        $this->actingAs($admin);
+
+        [$solicitud, $sicAsignada] = $this->solicitudEnviadaConUnaSic();
+        $otra = $this->crearSicAutorizada('laptops_desktops');
+        $solicitud->update(['enviada_at' => now()]);
+
+        // SIC ajena forzada directamente en el estado del componente.
+        $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
+        $filaAjena = $component->get('seleccion.s'.$sicAsignada->id);
+        $filaAjena['sic_id'] = $otra->id;
+        $component->set('seleccion.s'.$otra->id, $filaAjena)
+            ->call('save')
+            ->assertHasErrors(['lineas']);
+
+        // Línea manual de SIC nueva.
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('edit', $solicitud->id)
+            ->call('addLinea')
+            ->set('lineasManuales.0.folio_sic_manual', 'SIC-NUEVA')
+            ->set('lineasManuales.0.descripcion_libre', 'Algo nuevo')
+            ->conLugar()->call('save')
+            ->assertHasErrors(['lineas']);
+
+        $this->assertSame(1, $solicitud->lineas()->count());
+    }
+
+    public function test_a_sent_solicitud_can_still_be_saved_keeping_its_original_sics(): void
+    {
+        $admin = $this->actingUser();
+        $admin->assignRole(Role::firstOrCreate(['name' => 'Administrador']));
+        $this->actingAs($admin);
+
+        [$solicitud, $sicAsignada] = $this->solicitudEnviadaConUnaSic();
+        $solicitud->update(['enviada_at' => now()]);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('edit', $solicitud->id)
+            ->set('seleccion.s'.$sicAsignada->id.'.cantidad_solicitada', 7)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(7, $solicitud->lineas()->first()->cantidad_solicitada);
+    }
+
+    public function test_enviar_a_proveedor_is_blocked_when_a_line_has_no_lugar_de_entrega(): void
+    {
+        Mail::fake();
+        $this->actingAs($this->actingUser());
+
+        $vendor = $this->proveedor();
+        $vendor->update(['contacto_correo' => 'proveedor@example.com']);
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-SIN-LUGAR',
+            'vendor_id' => $vendor->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
         ]);
+        $solicitud->lineas()->create(['articulo_id' => $this->articulo()->id, 'cantidad_solicitada' => 1]);
+
+        Livewire::test(SolicitudesProveedor::class)->call('enviarAProveedor', $solicitud->id);
+
+        Mail::assertNothingSent();
+        $this->assertNull($solicitud->fresh()->enviada_at);
     }
 
     /** La pantalla renderiza sin error con la tabla compacta de líneas, origen SIC y proyecto. */
@@ -1429,7 +1594,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.tipo_solicitud', 'regular')
             ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
 
         $this->assertDatabaseMissing('solicitudes_proveedor', ['folio' => 'SP-ORIGEN-EBS']);
@@ -1561,7 +1726,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('gotoPage', 2, 'sicsPage')
             ->call('toggleSeleccion', 's'.$sics[19]->id)
             ->set('seleccion.s'.$sics[19]->id.'.cantidad_solicitada', 4)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors()
             ->assertSet('showForm', false);
 
@@ -1584,7 +1749,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->formularioBasico($component, 'SP-CLAVE-001', $vendor->id)
             ->call('toggleSeleccion', 's'.$sicReal->id)
             ->set('seleccion.s'.$sicReal->id.'.sic_id', $otra->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-CLAVE-001')->firstOrFail();
@@ -1633,7 +1798,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->formularioBasico($component, 'SP-BLANCO-001', $vendor->id)
             ->call('toggleSeleccion', 's'.$sic->id)
             ->call('addLinea')
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-BLANCO-001')->firstOrFail();
@@ -1659,7 +1824,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('addLinea')
             ->set('lineasManuales.0.folio_sic_manual', 'SIC-MANUAL-9')
             ->set('lineasManuales.0.descripcion_libre', 'Cable especial')
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-MIXTA-001')->firstOrFail();
@@ -1676,7 +1841,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->assertSame('SIC-MANUAL-9', $edicion->get('lineasManuales.0.folio_sic_manual'));
 
         // Quitar una fila de la selección y guardar borra su línea.
-        $edicion->call('toggleSeleccion', 'e'.$ebs->id)->call('save')->assertHasNoErrors();
+        $edicion->call('toggleSeleccion', 'e'.$ebs->id)->conLugar()->call('save')->assertHasNoErrors();
         $this->assertCount(2, $solicitud->fresh()->lineas);
         $this->assertDatabaseMissing('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'ebs_requisition_id' => $ebs->id]);
     }
@@ -1692,7 +1857,7 @@ class SolicitudesProveedorTest extends TestCase
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
         $this->formularioBasico($component, 'SP-HUERFANA-001', $vendor->id)
             ->call('toggleSeleccion', 's'.$sic->id)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasNoErrors();
 
         // La categoría deja de ir a Compra: la SIC ya no cumple el criterio.
@@ -1705,7 +1870,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->assertArrayHasKey('s'.$sic->id, $edicion->get('seleccion'));
         $this->assertSame(['s'.$sic->id], $edicion->viewData('sics')->pluck('clave')->all());
 
-        $edicion->call('save')->assertHasNoErrors();
+        $edicion->conLugar()->call('save')->assertHasNoErrors();
         $this->assertCount(1, $solicitud->fresh()->lineas);
     }
 
@@ -1753,7 +1918,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->formularioBasico($component, 'SP-ERR-PAG-001', $vendor->id)
             ->call('toggleSeleccion', $clave)
             ->set("seleccion.$clave.cantidad_solicitada", 0)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(["seleccion.$clave.cantidad_solicitada"])
             ->assertSet('showForm', true)
             ->assertSee('Hay 1 línea con errores')
@@ -1773,7 +1938,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->formularioBasico($component, 'SP-SIN-ART-001', $vendor->id)
             ->call('toggleSeleccion', 's'.$sic->id)
             ->set('seleccion.s'.$sic->id.'.articulo_id', null)
-            ->call('save')
+            ->conLugar()->call('save')
             ->assertHasErrors(['seleccion.s'.$sic->id.'.articulo_id']);
     }
 

@@ -336,6 +336,7 @@ class EndToEndFlowTest extends TestCase
             ->set('lineasManuales.0.articulo_id', $articuloCatalogo->id)
             ->set('lineasManuales.0.cantidad_solicitada', 2)
             ->set('lineasManuales.0.precio_unitario_cotizado', 15000)
+            ->set('lineasManuales.0.lugar_entrega_id', \Modules\GestionTI\Models\LugarEntrega::query()->value('id'))
             ->call('save')
             ->assertHasNoErrors();
 
@@ -361,8 +362,7 @@ class EndToEndFlowTest extends TestCase
         // Recepción de Proveedor — genera los Asset reales.
         // ==============================================================
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitudProveedor->id)
+            ->call('abrirSolicitud', $solicitudProveedor->id)
             ->set('form.folio_remision', 'REM-E2E-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)

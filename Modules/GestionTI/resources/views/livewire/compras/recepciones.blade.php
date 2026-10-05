@@ -28,9 +28,6 @@
             'facturada' => 'emerald',
             'cancelada' => 'red',
         ];
-        $solicitudSeleccionada = $selectedSolicitudId
-            ? $solicitudOptions->firstWhere('id', $selectedSolicitudId)
-            : null;
     @endphp
 
     <x-ui.card padding="p-5">
@@ -38,59 +35,114 @@
             <input
                 wire:model.live.debounce.300ms="search"
                 type="search"
-                placeholder="Buscar por folio de remisión o de solicitud..."
-                class="w-full sm:w-80 rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                placeholder="Buscar por folio de solicitud, proveedor o folio de remisión..."
+                class="w-full sm:w-96 rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
             >
-            <x-ui.button wire:click="create">Nuevo</x-ui.button>
+            <select
+                wire:model.live="estatusFiltro"
+                aria-label="Filtrar por estatus"
+                class="rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+            >
+                <option value="">Todas</option>
+                <option value="pendientes">Pendientes de recibir</option>
+                <option value="solicitada">Solicitadas</option>
+                <option value="parcialmente_recibida">Parcialmente recibidas</option>
+                <option value="recibida">Recibidas</option>
+                <option value="facturada">Facturadas</option>
+                <option value="cancelada">Canceladas</option>
+            </select>
         </div>
 
-        <x-ui.table :headers="['Folio remisión', 'Solicitud a proveedor', 'Fecha', 'Recibido por', 'Estatus (solicitud)', 'Acciones']" :empty="$records->isEmpty()" empty-description="Registra la primera recepción con el botón Nuevo.">
-            @foreach ($records as $record)
-                <tr wire:key="recepcion-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
-                    <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->folio_remision }}</td>
-                    <td class="py-2">{{ $record->solicitudProveedor?->folio }} — {{ $record->solicitudProveedor?->vendor?->nombre_comercial }}</td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->fecha_recepcion?->format('d/m/Y') }}</td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->recibidoPor?->nombre }}</td>
+        <x-ui.table :headers="['Solicitud', 'Proveedor', 'Fecha', 'Estatus', 'Recibido', 'Recepciones', '']" :empty="$solicitudes->isEmpty()" empty-description="No hay solicitudes a proveedor con ese filtro.">
+            @foreach ($solicitudes as $solicitud)
+                @php
+                    $admite = in_array($solicitud->estatus, ['solicitada', 'parcialmente_recibida'], true);
+                @endphp
+                <tr
+                    wire:key="solicitud-{{ $solicitud->id }}"
+                    wire:click="abrirSolicitud({{ $solicitud->id }})"
+                    class="cursor-pointer border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors"
+                >
+                    <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $solicitud->folio }}</td>
+                    <td class="py-2">{{ $solicitud->vendor?->nombre_comercial }}</td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $solicitud->fecha_solicitud?->format('d/m/Y') }}</td>
                     <td class="py-2">
-                        @php($estatusSolicitud = $record->solicitudProveedor?->estatus)
-                        <x-ui.badge :color="$estatusColors[$estatusSolicitud] ?? 'gray'">{{ $estatusLabels[$estatusSolicitud] ?? $estatusSolicitud }}</x-ui.badge>
+                        <x-ui.badge :color="$estatusColors[$solicitud->estatus] ?? 'gray'">{{ $estatusLabels[$solicitud->estatus] ?? $solicitud->estatus }}</x-ui.badge>
                     </td>
-                    <td class="py-2 whitespace-nowrap">
-                        <x-ui.row-actions>
-                            <x-ui.icon-button type="button" wire:click="exportActaPdf({{ $record->id }})" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
-
-                            @if ($record->documentoRemision)
-                                <x-ui.icon-button tag="a" :href="$record->documentoRemision->url()" target="_blank" icon="heroicon-o-eye" title="Ver remisión" />
-                                <x-ui.icon-button
-                                    type="button"
-                                    wire:click="quitarRemision({{ $record->id }})"
-                                    wire:confirm="¿Quitar la remisión vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta recepción."
-                                    icon="heroicon-o-link-slash"
-                                    title="Quitar"
-                                    variant="danger"
-                                />
-                            @else
-                                <x-ui.icon-button type="button" wire:click="openAttach({{ $record->id }})" icon="heroicon-o-paper-clip" title="Adjuntar remisión" />
-                            @endif
-                        </x-ui.row-actions>
-                    </td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{{ (int) $solicitud->total_recibido }} de {{ (int) $solicitud->total_solicitado }}</td>
+                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $solicitud->recepciones_count }}</td>
+                    <td class="py-2 whitespace-nowrap text-right text-sm font-medium text-primary">{{ $admite ? 'Recibir' : 'Ver' }}</td>
                 </tr>
             @endforeach
         </x-ui.table>
 
-        <div class="mt-4">{{ $records->links() }}</div>
+        <div class="mt-4">{{ $solicitudes->links() }}</div>
     </x-ui.card>
 
-    <x-ui.modal model="showModal" title="Nueva recepción de proveedor" max-width="max-w-4xl">
+    <x-ui.modal model="showModal" :title="'Recepción — '.($solicitudSeleccionada?->folio ?? '')" max-width="max-w-4xl">
         <form wire:submit="save" class="space-y-4">
-            <x-ui.select label="Solicitud a proveedor" name="selectedSolicitudId" wire:model.live="selectedSolicitudId">
-                <option value="">Selecciona...</option>
-                @foreach ($solicitudOptions as $solicitud)
-                    <option value="{{ $solicitud->id }}">{{ $solicitud->folio }} — {{ $solicitud->vendor?->nombre_comercial }}</option>
-                @endforeach
-            </x-ui.select>
-
             @if ($solicitudSeleccionada)
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-300">
+                    <span><strong>Proveedor:</strong> {{ $solicitudSeleccionada->vendor?->nombre_comercial }}</span>
+                    <span><strong>Fecha de solicitud:</strong> {{ $solicitudSeleccionada->fecha_solicitud?->format('d/m/Y') }}</span>
+                    <x-ui.badge :color="$estatusColors[$solicitudSeleccionada->estatus] ?? 'gray'">{{ $estatusLabels[$solicitudSeleccionada->estatus] ?? $solicitudSeleccionada->estatus }}</x-ui.badge>
+                </div>
+
+                @error('selectedSolicitudId')
+                    <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+
+                <div>
+                    <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recepciones registradas</p>
+                    @forelse ($solicitudSeleccionada->recepciones as $recepcion)
+                        <div wire:key="recepcion-{{ $recepcion->id }}" class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 py-2 text-sm">
+                            <div>
+                                <span class="font-medium text-gray-900 dark:text-gray-100">{{ $recepcion->folio_remision }}</span>
+                                <span class="text-gray-500 dark:text-gray-400"> · {{ $recepcion->fecha_recepcion?->format('d/m/Y') }} · {{ $recepcion->recibidoPor?->nombre }}</span>
+                            </div>
+                            <x-ui.row-actions>
+                                <x-ui.icon-button type="button" wire:click="exportActaPdf({{ $recepcion->id }})" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
+
+                                @if ($recepcion->documentoRemision)
+                                    <x-ui.icon-button tag="a" :href="$recepcion->documentoRemision->url()" target="_blank" icon="heroicon-o-eye" title="Ver remisión" />
+                                    <x-ui.icon-button
+                                        type="button"
+                                        wire:click="quitarRemision({{ $recepcion->id }})"
+                                        wire:confirm="¿Quitar la remisión vinculada? El archivo no se borra de SharePoint/disco, solo se desvincula de esta recepción."
+                                        icon="heroicon-o-link-slash"
+                                        title="Quitar"
+                                        variant="danger"
+                                    />
+                                @else
+                                    <x-ui.icon-button type="button" wire:click="openAttach({{ $recepcion->id }})" icon="heroicon-o-paper-clip" title="Adjuntar remisión" />
+                                @endif
+                            </x-ui.row-actions>
+                        </div>
+                    @empty
+                        <p class="text-sm text-gray-500 dark:text-gray-400">Todavía no se registra ninguna recepción de esta solicitud.</p>
+                    @endforelse
+                </div>
+
+                @unless ($puedeRecibir)
+                    <x-ui.alert variant="info">
+                        Esta solicitud está en estatus "{{ $estatusLabels[$solicitudSeleccionada->estatus] ?? $solicitudSeleccionada->estatus }}" y ya no admite recepciones nuevas.
+                    </x-ui.alert>
+
+                    <div>
+                        <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Líneas de la solicitud</p>
+                        @foreach ($solicitudSeleccionada->lineas as $lineaSolicitud)
+                            <div wire:key="resumen-linea-{{ $lineaSolicitud->id }}" class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 py-2 text-sm">
+                                <span class="text-gray-900 dark:text-gray-100">{{ $lineaSolicitud->articulo?->descripcion ?? $lineaSolicitud->descripcion_libre }}</span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">Solicitado: {{ $lineaSolicitud->cantidad_solicitada }} · Recibido: {{ $lineaSolicitud->cantidad_recibida }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endunless
+            @endif
+
+            @if ($solicitudSeleccionada && $puedeRecibir)
+                <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">Registrar nueva recepción</p>
+
                 @if (collect($lineas)->pluck('sic_id')->filter()->isNotEmpty())
                     <x-ui.alert variant="info">
                         Una o más líneas de esta solicitud tienen una SIC asociada — los activos inventariables de esas líneas quedarán <strong>reservados</strong> contra su SIC correspondiente, en vez de libres en stock (ver el detalle en cada línea abajo).
@@ -235,8 +287,10 @@
             @endif
 
             <div class="flex justify-end gap-2">
-                <x-ui.button type="button" variant="secondary" wire:click="cancel">Cancelar</x-ui.button>
-                <x-ui.button type="submit">Guardar</x-ui.button>
+                <x-ui.button type="button" variant="secondary" wire:click="cancel">{{ $puedeRecibir ? 'Cancelar' : 'Cerrar' }}</x-ui.button>
+                @if ($puedeRecibir)
+                    <x-ui.button type="submit">Guardar</x-ui.button>
+                @endif
             </div>
         </form>
     </x-ui.modal>

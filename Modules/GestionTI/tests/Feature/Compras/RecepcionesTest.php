@@ -128,22 +128,92 @@ class RecepcionesTest extends TestCase
         $this->actingAs($user)->get('/recepciones')->assertForbidden();
     }
 
-    public function test_solicitud_options_are_filtered_to_receivable_statuses_only(): void
+    public function test_grid_lists_every_solicitud_with_the_pending_ones_first(): void
     {
         $this->actingAs($this->actingUser());
         $this->estatusEnStock();
 
-        $solicitada = $this->solicitudConLineaInventariable();
-        $parcial = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA]);
         $recibida = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_RECIBIDA]);
         $cancelada = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_CANCELADA]);
+        $solicitada = $this->solicitudConLineaInventariable();
+        $parcial = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA]);
 
-        $ids = Livewire::test(Recepciones::class)->viewData('solicitudOptions')->pluck('id')->all();
+        $ids = Livewire::test(Recepciones::class)->viewData('solicitudes')->pluck('id')->all();
+
+        foreach ([$recibida, $cancelada, $solicitada, $parcial] as $solicitud) {
+            $this->assertContains($solicitud->id, $ids);
+        }
+
+        $posicion = array_flip($ids);
+        $this->assertLessThan($posicion[$recibida->id], $posicion[$solicitada->id]);
+        $this->assertLessThan($posicion[$recibida->id], $posicion[$parcial->id]);
+        $this->assertLessThan($posicion[$cancelada->id], $posicion[$solicitada->id]);
+    }
+
+    public function test_grid_can_be_filtered_to_pending_solicitudes(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+
+        $recibida = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_RECIBIDA]);
+        $solicitada = $this->solicitudConLineaInventariable();
+
+        $ids = Livewire::test(Recepciones::class)
+            ->set('estatusFiltro', 'pendientes')
+            ->viewData('solicitudes')->pluck('id')->all();
 
         $this->assertContains($solicitada->id, $ids);
-        $this->assertContains($parcial->id, $ids);
         $this->assertNotContains($recibida->id, $ids);
-        $this->assertNotContains($cancelada->id, $ids);
+    }
+
+    public function test_opening_a_received_solicitud_shows_its_history_but_does_not_allow_a_new_reception(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+
+        $solicitud = $this->solicitudConLineaInventariable(['estatus' => SolicitudProveedor::ESTATUS_RECIBIDA]);
+        $solicitud->recepciones()->create([
+            'folio_remision' => 'REM-HISTORIAL-1',
+            'fecha_recepcion' => '2026-09-01',
+            'recibido_por_id' => $validador->id,
+            'ubicacion_id' => $ubicacion->id,
+        ]);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->assertSet('showModal', true)
+            ->assertSet('lineas', [])
+            ->assertSee('REM-HISTORIAL-1')
+            ->assertSee('ya no admite recepciones nuevas');
+
+        $this->assertFalse($component->viewData('puedeRecibir'));
+
+        $component
+            ->set('form.folio_remision', 'REM-NO-DEBE-GUARDAR')
+            ->set('form.fecha_recepcion', '2026-09-02')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->call('save');
+
+        $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-NO-DEBE-GUARDAR']);
+    }
+
+    public function test_opening_a_pending_solicitud_loads_its_lines_for_reception(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->assertSet('showModal', true)
+            ->assertSet('selectedSolicitudId', $solicitud->id);
+
+        $this->assertTrue($component->viewData('puedeRecibir'));
+        $this->assertNotEmpty($component->get('lineas'));
     }
 
     public function test_receiving_an_inventariable_line_creates_assets_with_sequential_codigo_and_no_collision_with_historical_import(): void
@@ -166,8 +236,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -229,8 +298,7 @@ class RecepcionesTest extends TestCase
         $solicitud = $this->solicitudConLineaInventariable([], ['sic_id' => $sic->id, 'cantidad_solicitada' => 1]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-SIC-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -257,8 +325,7 @@ class RecepcionesTest extends TestCase
         $solicitud = $this->solicitudConLineaInventariable([], ['cantidad_solicitada' => 1]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-NOSIC-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -335,8 +402,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-MIX-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -380,8 +446,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-002')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -422,8 +487,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-PARCIAL-1')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -438,12 +502,11 @@ class RecepcionesTest extends TestCase
 
         // La solicitud sigue siendo elegible (parcialmente_recibida) para una
         // segunda recepción que complete el resto.
-        $ids = Livewire::test(Recepciones::class)->viewData('solicitudOptions')->pluck('id')->all();
+        $ids = Livewire::test(Recepciones::class)->viewData('solicitudes')->pluck('id')->all();
         $this->assertContains($solicitud->id, $ids);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-PARCIAL-2')
             ->set('form.fecha_recepcion', '2026-09-02')
             ->set('form.recibido_por_id', $validador->id)
@@ -487,8 +550,7 @@ class RecepcionesTest extends TestCase
 
         // Sin capturar tipo_equipo_id — debe fallar la validación.
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-003')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -502,8 +564,7 @@ class RecepcionesTest extends TestCase
 
         // Capturando el tipo de equipo faltante, ahora sí guarda.
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-003')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -567,8 +628,7 @@ class RecepcionesTest extends TestCase
         // Sin capturar marca_id/modelo_id/tipo_equipo_id manuales — el
         // artículo ya los trae todos.
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-FICHA-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -610,8 +670,7 @@ class RecepcionesTest extends TestCase
 
         // Sin capturar marca_id manual — debe fallar la validación.
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-SIN-MARCA')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -625,8 +684,7 @@ class RecepcionesTest extends TestCase
 
         // Capturando la marca manualmente, ahora sí guarda.
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-SIN-MARCA')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -689,8 +747,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         $component = Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->assertSet('lineas.0.articulo_id', $articuloSolicitado->id)
             ->set('lineas.0.articulo_id', $articuloRecibido->id)
             ->assertSet('lineas.0.articulo_marca_id', $marcaRecibida->id);
@@ -731,8 +788,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         $recepciones = Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-ACTA-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -776,8 +832,7 @@ class RecepcionesTest extends TestCase
         ]);
 
         Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->set('form.folio_remision', 'REM-ACTA-NULL')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)
@@ -856,8 +911,7 @@ class RecepcionesTest extends TestCase
         });
 
         $component = Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->call('openSharePointBuscar')
             ->assertSet('showSharePointModal', true);
 
@@ -946,8 +1000,7 @@ class RecepcionesTest extends TestCase
         });
 
         $component = Livewire::test(Recepciones::class)
-            ->call('create')
-            ->set('selectedSolicitudId', $solicitud->id)
+            ->call('abrirSolicitud', $solicitud->id)
             ->call('openSharePointBuscar')
             ->assertSet('showSharePointModal', true);
 
