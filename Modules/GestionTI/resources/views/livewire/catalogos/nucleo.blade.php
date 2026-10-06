@@ -56,6 +56,7 @@
             $headers = match ($tab) {
                 'empresas' => ['Nombre comercial', 'Razón social', 'RFC', 'Estatus', ''],
                 'centros_costo' => ['Código', 'Nombre', 'Empresa', 'Estatus', ''],
+                'ubicaciones' => ['Nombre', 'Nombre conocido', 'Lugar de entrega (Compras)', 'Estatus', ''],
                 default => ['Nombre', 'Nombre conocido', 'Estatus', ''],
             };
         @endphp
@@ -71,6 +72,10 @@
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->codigo }}</td>
                         <td class="py-2">{{ $record->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->empresa?->nombre_comercial }}</td>
+                    @elseif ($tab === 'ubicaciones')
+                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->nombre_conocido }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->lugarEntrega?->nombre ?? '—' }}</td>
                     @else
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->nombre_conocido }}</td>
@@ -123,6 +128,25 @@
                     <option value="">Selecciona una empresa</option>
                     @foreach ($empresasOptions as $empresa)
                         <option value="{{ $empresa->id }}">{{ $empresa->nombre_comercial }}</option>
+                    @endforeach
+                </x-ui.select>
+            @elseif ($tab === 'ubicaciones')
+                <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
+                <x-ui.input
+                    label="Nombre conocido"
+                    name="form.nombre_conocido"
+                    wire:model="form.nombre_conocido"
+                    hint="Cómo se le conoce internamente, si es distinto del nombre formal."
+                />
+                <x-ui.select
+                    label="Lugar de entrega (Compras)"
+                    name="form.lugar_entrega_id"
+                    wire:model="form.lugar_entrega_id"
+                    hint="Zurich, CEDA o Sotelo: agrupa esta ubicación bajo ese sitio. En Recepción de Proveedor, el sitio que recibe solo ofrece las ubicaciones que tenga asignadas aquí."
+                >
+                    <option value="">Sin lugar de entrega</option>
+                    @foreach ($lugaresEntregaOptions as $lugarOpcion)
+                        <option value="{{ $lugarOpcion->id }}">{{ $lugarOpcion->nombre }}</option>
                     @endforeach
                 </x-ui.select>
             @else

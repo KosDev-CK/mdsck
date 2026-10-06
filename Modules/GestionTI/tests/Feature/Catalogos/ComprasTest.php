@@ -713,30 +713,19 @@ class ComprasTest extends TestCase
         $this->assertSame('CEDA Corregido', $lugar->fresh()->nombre);
     }
 
-    public function test_a_lugar_de_entrega_can_be_mapped_to_an_inventory_location(): void
+    public function test_the_lugar_de_entrega_tab_shows_how_many_ubicaciones_each_site_groups(): void
     {
         $this->actingAs($this->actingUser());
-        $ubicacion = \Modules\GestionTI\Models\Ubicacion::create(['nombre' => 'CEDA BODEGA A30']);
-        $lugar = LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+        $ceda = LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+        \Modules\GestionTI\Models\Ubicacion::create(['nombre' => 'CEDA BODEGA A30', 'lugar_entrega_id' => $ceda->id]);
+        \Modules\GestionTI\Models\Ubicacion::create(['nombre' => 'CEDA ELEFANTE', 'lugar_entrega_id' => $ceda->id]);
 
-        Livewire::test(Compras::class)
+        $records = Livewire::test(Compras::class)
             ->call('setTab', 'lugares_entrega')
-            ->call('edit', $lugar->id)
-            ->set('form.ubicacion_id', $ubicacion->id)
-            ->call('save')
-            ->assertHasNoErrors();
+            ->viewData('records');
 
-        $this->assertSame($ubicacion->id, $lugar->fresh()->ubicacion_id);
-
-        // "Sin ubicación" (select vacío) vuelve a null en vez de reventar la FK.
-        Livewire::test(Compras::class)
-            ->call('setTab', 'lugares_entrega')
-            ->call('edit', $lugar->id)
-            ->set('form.ubicacion_id', '')
-            ->call('save')
-            ->assertHasNoErrors();
-
-        $this->assertNull($lugar->fresh()->ubicacion_id);
+        $this->assertSame(2, $records->firstWhere('id', $ceda->id)->ubicaciones_count);
+        $this->assertSame(0, $records->firstWhere('nombre', 'Sotelo')->ubicaciones_count);
     }
 
     public function test_can_toggle_activo_on_a_lugar_de_entrega(): void

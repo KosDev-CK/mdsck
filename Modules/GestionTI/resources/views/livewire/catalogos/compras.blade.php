@@ -58,7 +58,7 @@
             $headers = match ($tab) {
                 'proveedores' => ['Nombre comercial', 'Razón social', 'RFC', 'Contacto', 'Estatus', ''],
                 'categorias' => ['Nombre', 'Va a Compras', 'Estatus', ''],
-                'lugares_entrega' => ['Nombre', 'Ubicación de inventario', 'Estatus', ''],
+                'lugares_entrega' => ['Nombre', 'Ubicaciones agrupadas', 'Estatus', ''],
                 'ebs_articulos' => ['Item ID (EBS)', 'Descripción en EBS', 'Artículo mapeado', ''],
                 default => ['Código', 'Descripción', 'Unidad de medida', 'Categoría', 'Tipo de equipo', 'Estatus', ''],
             };
@@ -80,10 +80,10 @@
                     @elseif ($tab === 'lugares_entrega')
                         <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">
-                            @if ($record->ubicacion)
-                                {{ $record->ubicacion->nombre }}
+                            @if ($record->ubicaciones_count > 0)
+                                {{ $record->ubicaciones_count }}
                             @else
-                                <x-ui.badge color="amber">Sin ubicación</x-ui.badge>
+                                <x-ui.badge color="amber">Sin ubicaciones</x-ui.badge>
                             @endif
                         </td>
                     @elseif ($tab === 'ebs_articulos')
@@ -154,12 +154,7 @@
                 <x-ui.toggle label="Va a Compras (genera Solicitud a Proveedor)" name="form.es_compra" wire:model="form.es_compra" />
             @elseif ($tab === 'lugares_entrega')
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
-                <x-ui.select label="Ubicación de inventario" name="form.ubicacion_id" wire:model="form.ubicacion_id" hint="Ubicación a la que quedan los activos recibidos en este lugar de entrega. Sin ella no se puede registrar una recepción de este sitio.">
-                    <option value="">Sin ubicación</option>
-                    @foreach ($ubicacionOptions as $ubicacionOption)
-                        <option value="{{ $ubicacionOption->id }}">{{ $ubicacionOption->nombre }}</option>
-                    @endforeach
-                </x-ui.select>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Las ubicaciones de inventario que agrupa este lugar se asignan desde Catálogos Núcleo → Ubicaciones (campo "Lugar de entrega (Compras)"); sin ubicaciones asignadas no se puede registrar una recepción de este sitio.</p>
             @elseif ($tab === 'ebs_articulos')
                 <x-ui.select label="Artículo del catálogo" name="form.articulo_id" wire:model="form.articulo_id" hint="El artículo estándar/genérico al que corresponde este ítem de EBS (no la marca/modelo real — eso se resuelve después, en Recepción de Proveedor).">
                     <option value="">Sin mapear</option>

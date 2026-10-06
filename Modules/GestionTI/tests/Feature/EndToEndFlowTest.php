@@ -108,7 +108,7 @@ class EndToEndFlowTest extends TestCase
         $proveedor = Proveedor::create(['razon_social' => 'Distribuidora E2E S.A. de C.V.', 'nombre_comercial' => 'Distribuidora E2E']);
         // El técnico receptor es quien tiene la sesión; Zurich llega al almacén.
         $validador = Validador::create(['nombre' => 'Ana Torres E2E', 'user_id' => $admin->id]);
-        \Modules\GestionTI\Models\LugarEntrega::query()->update(['ubicacion_id' => $ubicacionAlmacen->id]);
+        $ubicacionAlmacen->update(['lugar_entrega_id' => \Modules\GestionTI\Models\LugarEntrega::query()->value('id')]);
         $marca = Marca::create(['nombre' => 'Dell E2E']);
         $articuloCatalogo = ArticuloSolicitud::create([
             'codigo' => 'ART-E2E-001',

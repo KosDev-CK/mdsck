@@ -128,10 +128,9 @@ class Compras extends Component
             'lugares_entrega' => [
                 'label' => 'Lugar de entrega',
                 'model' => LugarEntrega::class,
-                'fields' => ['nombre', 'ubicacion_id'],
+                'fields' => ['nombre'],
                 'rules' => [
                     'form.nombre' => 'required|string|max:255',
-                    'form.ubicacion_id' => 'nullable|exists:ubicaciones,id',
                 ],
                 'orderBy' => 'nombre',
                 'searchColumns' => ['nombre'],
@@ -139,6 +138,7 @@ class Compras extends Component
                     ['model' => SolicitudProveedorLinea::class, 'column' => 'lugar_entrega_id'],
                     ['model' => Validador::class, 'column' => 'lugar_entrega_id'],
                     ['model' => Recepcion::class, 'column' => 'lugar_entrega_id'],
+                    ['model' => Ubicacion::class, 'column' => 'lugar_entrega_id'],
                 ],
             ],
             // Mapeo EBS -> Artículo estándar (Fase 5) — las filas las crea
@@ -209,7 +209,7 @@ class Compras extends Component
      */
     private function nullifyEmptyForeignKeys(): void
     {
-        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'categoria_id', 'articulo_id', 'ubicacion_id'] as $field) {
+        foreach (['tipo_equipo_id', 'marca_id', 'modelo_id', 'procesador_id', 'ram_id', 'almacenamiento_id', 'categoria_id', 'articulo_id'] as $field) {
             if (array_key_exists($field, $this->form) && $this->form[$field] === '') {
                 $this->form[$field] = null;
             }
@@ -342,7 +342,7 @@ class Compras extends Component
         $records = $config['model']::query()
             ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'marca', 'modelo', 'categoria']))
             ->when($this->tab === 'ebs_articulos', fn ($q) => $q->with('articulo'))
-            ->when($this->tab === 'lugares_entrega', fn ($q) => $q->with('ubicacion'))
+            ->when($this->tab === 'lugares_entrega', fn ($q) => $q->withCount('ubicaciones'))
             ->when($this->search !== '', function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -374,9 +374,6 @@ class Compras extends Component
                 : null,
             'ramOptions' => $this->tab === 'articulos_solicitud'
                 ? Ram::where('activo', true)->orderBy('nombre')->get()
-                : null,
-            'ubicacionOptions' => $this->tab === 'lugares_entrega'
-                ? Ubicacion::where('activo', true)->orderBy('nombre')->get()
                 : null,
             'articuloMapeadoOptions' => $this->tab === 'ebs_articulos'
                 ? ArticuloSolicitud::where('activo', true)->orderBy('descripcion')->get()

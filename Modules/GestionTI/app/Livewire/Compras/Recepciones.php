@@ -114,6 +114,13 @@ class Recepciones extends Component
      */
     public ?int $lugarRecepcionId = null;
 
+    /**
+     * Ubicación de inventario donde quedan los equipos recibidos: una de las
+     * que el lugar de entrega agrupa (Catálogos Núcleo → Ubicaciones). Si el
+     * sitio solo tiene una, se toma sola.
+     */
+    public ?int $ubicacionDestinoId = null;
+
     /** Detalle de solo lectura de la SIC/requisición de una línea (mismos partials que "SIC en EBS"). */
     public bool $showDetalleModal = false;
 
@@ -176,6 +183,31 @@ class Recepciones extends Component
             'lineas.*.cantidad_a_recibir.integer' => 'La cantidad a recibir debe ser un número entero.',
             'lineas.*.cantidad_a_recibir.min' => 'La cantidad a recibir no puede ser negativa.',
         ];
+    }
+
+    /** Ubicaciones activas que agrupa el sitio que se está recibiendo. */
+    private function ubicacionesDelLugar()
+    {
+        if (! $this->lugarRecepcionId) {
+            return collect();
+        }
+
+        return Ubicacion::where('lugar_entrega_id', $this->lugarRecepcionId)->where('activo', true)->orderBy('nombre')->get();
+    }
+
+    private function resolverUbicacionPorDefecto(): void
+    {
+        $ubicaciones = $this->ubicacionesDelLugar();
+
+        if ($ubicaciones->count() === 1) {
+            $this->ubicacionDestinoId = (int) $ubicaciones->first()->id;
+
+            return;
+        }
+
+        if ($this->ubicacionDestinoId !== null && ! $ubicaciones->contains('id', $this->ubicacionDestinoId)) {
+            $this->ubicacionDestinoId = null;
+        }
     }
 
     private function esAdministrador(): bool
@@ -275,6 +307,13 @@ class Recepciones extends Component
             $this->validadorResuelto = false;
             $this->resolverLugarPorDefecto();
             $this->aplicarLugarRecepcion();
+            $this->resolverUbicacionPorDefecto();
+
+            return;
+        }
+
+        if ($name === 'ubicacionDestinoId') {
+            $this->ubicacionDestinoId = $value === '' || $value === null ? null : (int) $value;
 
             return;
         }
@@ -288,6 +327,7 @@ class Recepciones extends Component
             }
 
             $this->aplicarLugarRecepcion();
+            $this->resolverUbicacionPorDefecto();
 
             return;
         }
@@ -487,6 +527,7 @@ class Recepciones extends Component
         $this->selectedSolicitudId = $solicitud->id;
         $this->lineas = [];
         $this->lugarRecepcionId = null;
+        $this->ubicacionDestinoId = null;
         // Administrador: arranca como él mismo si es técnico; si no, debe elegir al técnico.
         $this->tecnicoRecibeId = $this->esAdministrador()
             ? Validador::where('activo', true)->where('user_id', auth()->id())->value('id')
@@ -500,6 +541,7 @@ class Recepciones extends Component
             $this->loadLineas();
             $this->resolverLugarPorDefecto();
             $this->aplicarLugarRecepcion();
+            $this->resolverUbicacionPorDefecto();
         }
 
         $this->showModal = true;
@@ -512,6 +554,7 @@ class Recepciones extends Component
         $this->selectedSolicitudId = null;
         $this->lineas = [];
         $this->lugarRecepcionId = null;
+        $this->ubicacionDestinoId = null;
         $this->tecnicoRecibeId = null;
         $this->validadorResuelto = false;
         $this->documentoRemision = null;
@@ -842,8 +885,12 @@ class Recepciones extends Component
             $this->addError('lugarRecepcionId', 'Elige el sitio de entrega que estás recibiendo.');
         } elseif (! $this->puedeRecibirEnLugar($validador, $lugar->id)) {
             $this->addError('lugarRecepcionId', "No tienes asignado el sitio {$lugar->nombre}: solo puedes recibir en {$validador->lugarEntrega?->nombre}.");
-        } elseif (! $lugar->ubicacion_id) {
-            $this->addError('lugarRecepcionId', "El sitio {$lugar->nombre} no tiene ubicación de inventario configurada (Catálogos de Compras → Lugar de entrega).");
+        } elseif ($this->ubicacionesDelLugar()->isEmpty()) {
+            $this->addError('lugarRecepcionId', "El sitio {$lugar->nombre} no tiene ubicaciones de inventario asignadas (Catálogos Núcleo → Ubicaciones, campo \"Lugar de entrega (Compras)\").");
+        } elseif ($this->ubicacionDestinoId === null) {
+            $this->addError('ubicacionDestinoId', 'Elige la ubicación donde quedan los equipos.');
+        } elseif (! $this->ubicacionesDelLugar()->contains('id', $this->ubicacionDestinoId)) {
+            $this->addError('ubicacionDestinoId', "Esa ubicación no pertenece al sitio {$lugar->nombre}.");
         }
 
         // Lugar real de cada línea, de la BD (no del cliente).
@@ -980,7 +1027,7 @@ class Recepciones extends Component
 
         $validador = $this->validadorActual();
         $lugar = LugarEntrega::findOrFail($this->lugarRecepcionId);
-        $ubicacionId = $lugar->ubicacion_id;
+        $ubicacionId = $this->ubicacionDestinoId;
 
         DB::transaction(function () use ($solicitud, $validador, $lugar, $ubicacionId) {
             // Arranca siempre de un max(codigo) fresco contra BD — ver nota
@@ -1235,6 +1282,7 @@ class Recepciones extends Component
             'admiteRecepcion' => $this->admiteRecepcion($solicitudSeleccionada),
             'validadorActual' => $this->validadorActual(),
             'esAdministrador' => $this->esAdministrador(),
+            'ubicacionesDestino' => $this->ubicacionesDelLugar(),
             // Técnicos por los que un administrador puede capturar: los ya configurados (con usuario o con sede).
             'tecnicosOptions' => $this->esAdministrador()
                 ? Validador::with('lugarEntrega')->where('activo', true)

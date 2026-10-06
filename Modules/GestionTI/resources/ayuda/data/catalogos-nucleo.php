@@ -15,6 +15,7 @@ return [
     'campos' => [
         ['nombre' => 'Nombre / Razón social', 'explicacion' => 'Nombre formal del registro. En la pestaña Empresas se llama "Razón social" (el nombre fiscal); en las demás pestañas es simplemente "Nombre". Obligatorio en todos los casos.'],
         ['nombre' => 'Nombre comercial (solo Empresas)', 'explicacion' => 'Nombre comercial de la empresa, distinto de la razón social. Obligatorio.'],
+        ['nombre' => 'Lugar de entrega (Compras) (solo Ubicaciones)', 'explicacion' => 'Agrupa la ubicación bajo uno de los sitios de entrega de Compras (Zurich, CEDA o Sotelo; catálogo "Lugar de entrega" en Catálogos de Compras). Es lo que permite que Recepción de Proveedor ofrezca, para el sitio que se está recibiendo, solo las ubicaciones que le corresponden. Opcional: una ubicación sin lugar de entrega no se ofrece en ninguna recepción.'],
         ['nombre' => 'Nombre conocido (Ubicaciones, Áreas, Unidades de Negocio, Puestos)', 'explicacion' => 'Cómo se le conoce internamente si es distinto del nombre formal (por ejemplo, el apodo interno de una ubicación). Opcional.'],
         ['nombre' => 'RFC (solo Empresas)', 'explicacion' => 'RFC fiscal de la empresa. Opcional.'],
         ['nombre' => 'Código (solo Centros de Costo)', 'explicacion' => 'Clave corta del centro de costo, tal como se usa en EBS/contabilidad. Obligatoria.'],

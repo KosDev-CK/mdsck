@@ -8,16 +8,16 @@ class LugarEntrega extends Model
 {
     protected $table = 'lugares_entrega';
 
-    protected $fillable = ['nombre', 'ubicacion_id', 'activo'];
+    protected $fillable = ['nombre', 'activo'];
 
     protected $casts = [
         'activo' => 'boolean',
     ];
 
-    /** Ubicación física (inventario) a la que llegan los activos recibidos en este lugar. */
-    public function ubicacion()
+    /** Ubicaciones de inventario que este lugar de entrega agrupa (se asignan desde Catálogos Núcleo → Ubicaciones). */
+    public function ubicaciones()
     {
-        return $this->belongsTo(Ubicacion::class);
+        return $this->hasMany(Ubicacion::class, 'lugar_entrega_id');
     }
 
     public function lineas()

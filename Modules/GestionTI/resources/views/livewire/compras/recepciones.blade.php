@@ -219,6 +219,25 @@
                         @error('lugarRecepcionId')
                             <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                         @enderror
+
+                        @if ($validadorActual && $lugarRecepcionId)
+                            <label class="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-300">Ubicación destino</label>
+                            @if ($ubicacionesDestino->isEmpty())
+                                <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">Este sitio no tiene ubicaciones asignadas: se asignan en Catálogos Núcleo → Ubicaciones.</p>
+                            @elseif ($ubicacionesDestino->count() === 1)
+                                <div class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-100">{{ $ubicacionesDestino->first()->nombre }}</div>
+                            @else
+                                <x-ui.select name="ubicacionDestinoId" wire:model.live="ubicacionDestinoId" class="mt-1">
+                                    <option value="">Selecciona...</option>
+                                    @foreach ($ubicacionesDestino as $ubicacionOpcion)
+                                        <option value="{{ $ubicacionOpcion->id }}">{{ $ubicacionOpcion->nombre }}</option>
+                                    @endforeach
+                                </x-ui.select>
+                            @endif
+                            @error('ubicacionDestinoId')
+                                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                        @endif
                     </div>
                 </div>
 

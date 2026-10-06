@@ -97,6 +97,32 @@ class NucleoTest extends TestCase
         ]);
     }
 
+    public function test_an_ubicacion_can_be_assigned_to_a_lugar_de_entrega_and_unassigned(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ceda = \Modules\GestionTI\Models\LugarEntrega::where('nombre', 'CEDA')->firstOrFail();
+        $ubicacion = \Modules\GestionTI\Models\Ubicacion::create(['nombre' => 'CEDA BODEGA A30']);
+
+        Livewire::test(Nucleo::class)
+            ->call('setTab', 'ubicaciones')
+            ->call('edit', $ubicacion->id)
+            ->set('form.lugar_entrega_id', $ceda->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame($ceda->id, $ubicacion->fresh()->lugar_entrega_id);
+
+        // "Sin lugar de entrega" (select vacío) vuelve a null en vez de reventar la FK.
+        Livewire::test(Nucleo::class)
+            ->call('setTab', 'ubicaciones')
+            ->call('edit', $ubicacion->id)
+            ->set('form.lugar_entrega_id', '')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertNull($ubicacion->fresh()->lugar_entrega_id);
+    }
+
     public function test_can_toggle_activo(): void
     {
         $this->actingAs($this->actingUser());

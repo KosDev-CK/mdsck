@@ -58,10 +58,11 @@ class Nucleo extends Component
             'ubicaciones' => [
                 'label' => 'Ubicaciones',
                 'model' => Ubicacion::class,
-                'fields' => ['nombre', 'nombre_conocido'],
+                'fields' => ['nombre', 'nombre_conocido', 'lugar_entrega_id'],
                 'rules' => [
                     'form.nombre' => 'required|string|max:255',
                     'form.nombre_conocido' => 'nullable|string|max:255',
+                    'form.lugar_entrega_id' => 'nullable|exists:lugares_entrega,id',
                 ],
                 'orderBy' => 'nombre',
                 'searchColumns' => ['nombre', 'nombre_conocido'],
@@ -169,6 +170,12 @@ class Nucleo extends Component
     public function save(): void
     {
         $config = $this->catalogos()[$this->tab];
+
+        // "Sin lugar de entrega" manda '' — la FK nullable necesita null.
+        if (($this->form['lugar_entrega_id'] ?? null) === '') {
+            $this->form['lugar_entrega_id'] = null;
+        }
+
         $this->validate($config['rules']);
 
         if ($this->editingId) {
@@ -246,6 +253,7 @@ class Nucleo extends Component
 
         $records = $config['model']::query()
             ->when($this->tab === 'centros_costo', fn ($q) => $q->with('empresa'))
+            ->when($this->tab === 'ubicaciones', fn ($q) => $q->with('lugarEntrega'))
             ->when($this->search !== '', function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -257,6 +265,9 @@ class Nucleo extends Component
             ->paginate(10);
 
         return view('gestionti::livewire.catalogos.nucleo', [
+            'lugaresEntregaOptions' => $this->tab === 'ubicaciones'
+                ? \Modules\GestionTI\Models\LugarEntrega::where('activo', true)->orderBy('nombre')->get()
+                : collect(),
             'catalogos' => $catalogos,
             'config' => $config,
             'records' => $records,

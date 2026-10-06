@@ -99,7 +99,7 @@ class RecepcionesTest extends TestCase
     private function ubicacion(): Ubicacion
     {
         $ubicacion = Ubicacion::firstOrCreate(['nombre' => 'Almacén Central']);
-        LugarEntrega::where('nombre', 'Zurich')->update(['ubicacion_id' => $ubicacion->id]);
+        $ubicacion->update(['lugar_entrega_id' => LugarEntrega::where('nombre', 'Zurich')->value('id')]);
 
         return $ubicacion;
     }
@@ -643,7 +643,7 @@ class RecepcionesTest extends TestCase
         $this->actingAs($user);
         $this->estatusEnStock();
         $ceda = $this->lugar('CEDA');
-        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+        Ubicacion::create(['nombre' => 'CEDA bodega', 'lugar_entrega_id' => $ceda->id]);
         $this->validador()->update(['lugar_entrega_id' => $ceda->id]);
 
         // 2 laptops a Zurich y 1 cable a CEDA en la misma solicitud.
@@ -692,7 +692,7 @@ class RecepcionesTest extends TestCase
         $this->actingAs($this->actingUser());
         $this->estatusEnStock();
         $ceda = $this->lugar('CEDA');
-        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+        Ubicacion::create(['nombre' => 'CEDA bodega', 'lugar_entrega_id' => $ceda->id]);
 
         $solicitud = $this->solicitudConLineaInventariable();
         $solicitud->lineas()->create([
@@ -723,7 +723,7 @@ class RecepcionesTest extends TestCase
     {
         $this->actingAs($this->actingUser());
         $this->estatusEnStock();
-        $this->lugar('Zurich')->update(['ubicacion_id' => null]);
+        Ubicacion::query()->update(['lugar_entrega_id' => null]);
         $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
 
         Livewire::test(Recepciones::class)
@@ -734,6 +734,38 @@ class RecepcionesTest extends TestCase
             ->assertHasErrors(['lugarRecepcionId']);
 
         $this->assertDatabaseMissing('recepciones', ['folio_remision' => 'REM-SIN-UBI']);
+    }
+
+    public function test_a_site_with_several_ubicaciones_requires_choosing_one_of_its_own(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $zurich = $this->lugar('Zurich');
+        $nave = Ubicacion::create(['nombre' => 'Zurich nave 2', 'lugar_entrega_id' => $zurich->id]);
+        $ajena = Ubicacion::create(['nombre' => 'CEDA bodega', 'lugar_entrega_id' => $this->lugar('CEDA')->id]);
+        $solicitud = $this->solicitudConLineaInventariable([], ['es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable']);
+
+        $component = Livewire::test(Recepciones::class)->call('abrirSolicitud', $solicitud->id);
+
+        // Zurich tiene 2 ubicaciones ("Almacén Central" del helper y la nave): no se elige sola, y solo se ofrecen las suyas.
+        $this->assertNull($component->get('ubicacionDestinoId'));
+        $this->assertEqualsCanonicalizing(
+            [$this->ubicacion()->id, $nave->id],
+            $component->viewData('ubicacionesDestino')->pluck('id')->all(),
+        );
+
+        $component
+            ->set('form.folio_remision', 'REM-UBI-1')
+            ->set('form.fecha_recepcion', now()->format('Y-m-d'))
+            ->call('save')
+            ->assertHasErrors(['ubicacionDestinoId']);
+
+        // Una ubicación de otro sitio forzada desde el cliente se rechaza.
+        $component->set('ubicacionDestinoId', $ajena->id)->call('save')->assertHasErrors(['ubicacionDestinoId']);
+
+        $component->set('ubicacionDestinoId', $nave->id)->call('save')->assertHasNoErrors();
+
+        $this->assertSame($nave->id, Recepcion::where('folio_remision', 'REM-UBI-1')->firstOrFail()->ubicacion_id);
     }
 
     public function test_a_line_without_a_lugar_de_entrega_cannot_be_received(): void
@@ -799,7 +831,7 @@ class RecepcionesTest extends TestCase
         $this->estatusEnStock();
 
         $ceda = $this->lugar('CEDA');
-        $ceda->update(['ubicacion_id' => Ubicacion::create(['nombre' => 'CEDA bodega'])->id]);
+        Ubicacion::create(['nombre' => 'CEDA bodega', 'lugar_entrega_id' => $ceda->id]);
         $tecnico = Validador::create(['nombre' => 'Técnico CEDA', 'lugar_entrega_id' => $ceda->id]);
 
         $solicitud = $this->solicitudConLineaInventariable([], ['lugar_entrega_id' => $ceda->id, 'es_activo_inventariable' => false, 'articulo_id' => null, 'descripcion_libre' => 'Cable', 'cantidad_solicitada' => 3]);
