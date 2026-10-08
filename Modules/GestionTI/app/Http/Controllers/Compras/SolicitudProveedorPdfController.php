@@ -20,7 +20,7 @@ class SolicitudProveedorPdfController extends Controller
 {
     public function __invoke(SolicitudProveedor $solicitudProveedor)
     {
-        $solicitudProveedor->load(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition']);
+        $solicitudProveedor->load(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition', 'lineas.lugarEntrega']);
 
         return Pdf::loadView('gestionti::pdf.solicitud-proveedor', [
             'solicitud' => $solicitudProveedor,

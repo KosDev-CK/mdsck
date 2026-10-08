@@ -1047,7 +1047,7 @@ class SolicitudesProveedor extends Component
      */
     public function enviarAProveedor(int $id): void
     {
-        $record = SolicitudProveedor::with(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition'])->findOrFail($id);
+        $record = SolicitudProveedor::with(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition', 'lineas.lugarEntrega'])->findOrFail($id);
 
         if (empty($record->vendor?->contacto_correo)) {
             session()->flash('error', 'El proveedor no tiene correo de contacto capturado — agrégalo desde "Catálogos de Compras" antes de enviar.');

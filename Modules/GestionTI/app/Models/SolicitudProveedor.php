@@ -55,6 +55,31 @@ class SolicitudProveedor extends Model
         return \Illuminate\Support\Carbon::parse($fechaSolicitud)->addDays(self::DIAS_ENTREGA_PROMETIDA)->toDateString();
     }
 
+    /**
+     * Código que se imprime (código de barras) junto a cada línea en el PDF:
+     * `{folio}-L{n}`, donde n es la posición de la línea (1, 2, 3...) por id.
+     * Recepción de Proveedor lo escanea para ir a esa línea.
+     */
+    public function codigoLinea(int $ordinal): string
+    {
+        return "{$this->folio}-L{$ordinal}";
+    }
+
+    /**
+     * Separa un código escaneado `{folio}-L{n}` en [folio, n]; `null` si no
+     * tiene esa forma.
+     *
+     * @return array{0: string, 1: int}|null
+     */
+    public static function parsearCodigoLinea(string $codigo): ?array
+    {
+        if (preg_match('/^(.+)-L(\d+)$/i', trim($codigo), $m) !== 1) {
+            return null;
+        }
+
+        return [$m[1], (int) $m[2]];
+    }
+
     public function vendor()
     {
         return $this->belongsTo(Proveedor::class, 'vendor_id');

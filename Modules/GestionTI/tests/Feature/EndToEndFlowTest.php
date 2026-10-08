@@ -365,6 +365,7 @@ class EndToEndFlowTest extends TestCase
         // ==============================================================
         Livewire::test(Recepciones::class)
             ->call('abrirSolicitud', $solicitudProveedor->id)
+            ->call('recibirTodoPendiente')
             ->set('form.folio_remision', 'REM-E2E-001')
             ->set('form.fecha_recepcion', '2026-09-01')
             ->set('form.recibido_por_id', $validador->id)

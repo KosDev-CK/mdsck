@@ -7,6 +7,15 @@ import { camaraDisponible, escanearConCamara } from './barcode-scanner';
 window.camaraDisponible = camaraDisponible;
 window.escanearConCamara = escanearConCamara;
 
+// Recepción de Proveedor (eventos que manda el servidor tras escanear un código):
+// llevar la vista a la línea activa y devolver el foco al campo de escaneo.
+window.addEventListener('recepcion-scroll', (evento) => {
+    setTimeout(() => document.getElementById(evento.detail.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+});
+window.addEventListener('recepcion-enfocar-escaner', () => {
+    setTimeout(() => document.getElementById('recepcion-escaner')?.focus(), 250);
+});
+
 // Enter en un campo de número de serie (lo que manda un lector al terminar de
 // escanear) pasa al siguiente número de serie del formulario en vez de
 // enviarlo. Los campos se marcan con `data-serie`.

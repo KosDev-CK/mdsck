@@ -36,8 +36,8 @@
                 <p class="meta">Folio {{ $solicitud->folio }} &middot; Generado el {{ now()->format('d/m/Y H:i') }}</p>
             </td>
             <td style="vertical-align: top; text-align: right; width: 260px;">
-                {{-- Se escanea en Recepción de Proveedor para abrir esta solicitud. --}}
-                <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->folio) }}" alt="{{ $solicitud->folio }}" style="height: 48px; max-width: 250px;">
+                {{-- QR del folio: se escanea en Recepción de Proveedor para abrir esta solicitud. --}}
+                <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoQr::dataUri($solicitud->folio) }}" alt="{{ $solicitud->folio }}" style="width: 84px; height: 84px;">
                 <div style="font-size: 9px; color: #6b7280; margin-top: 2px;">{{ $solicitud->folio }}</div>
             </td>
         </tr>
@@ -83,21 +83,29 @@
                 <th>Artículo</th>
                 <th>Cantidad</th>
                 <th>Precio unitario</th>
+                <th>Entrega en</th>
                 <th>Observaciones</th>
+                <th>Código de la línea</th>
             </tr>
         </thead>
         <tbody>
-            @forelse ($solicitud->lineas as $linea)
+            @forelse ($solicitud->lineas->sortBy('id')->values() as $linea)
                 <tr>
                     <td>{{ $linea->folioSicDisplay() ?? '—' }}</td>
                     <td>{{ $linea->articulo?->descripcion ?? $linea->descripcion_libre ?? '—' }}</td>
                     <td>{{ $linea->cantidad_solicitada }}</td>
                     <td>{{ $linea->precio_unitario_cotizado ?? '—' }}</td>
+                    <td>{{ $linea->lugarEntrega?->nombre ?? '—' }}</td>
                     <td>{{ $linea->observaciones_especificaciones ?? '—' }}</td>
+                    <td>
+                        {{-- Se escanea en Recepción para ir a esta línea; luego se escanea el número de serie del equipo. --}}
+                        <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->codigoLinea($loop->iteration), 1, 40) }}" alt="{{ $solicitud->codigoLinea($loop->iteration) }}" style="width: 150px; height: 26px;">
+                        <div style="font-size: 8px; color: #6b7280;">{{ $solicitud->codigoLinea($loop->iteration) }}</div>
+                    </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="5">Sin líneas registradas.</td>
+                    <td colspan="7">Sin líneas registradas.</td>
                 </tr>
             @endforelse
         </tbody>

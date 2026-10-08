@@ -39,7 +39,7 @@
                 {{-- Un lector de código de barras escribe el folio y manda Enter: abre esa solicitud. --}}
                 <input
                     wire:model.live.debounce.300ms="search"
-                    wire:keydown.enter="abrirPorCodigo($event.target.value)"
+                    wire:keydown.enter="escanear($event.target.value)"
                     type="search"
                     autofocus
                     placeholder="Buscar o escanear folio de solicitud, proveedor o remisión..."
@@ -49,7 +49,7 @@
                     type="button"
                     x-show="camara"
                     x-cloak
-                    x-on:click="escanearConCamara({ titulo: 'Escanear folio de la solicitud', autoAceptar: true, alAceptar: (valor) => $wire.abrirPorCodigo(valor) })"
+                    x-on:click="escanearConCamara({ titulo: 'Escanear folio de la solicitud', autoAceptar: true, alAceptar: (valor) => $wire.escanear(valor) })"
                     class="shrink-0 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200"
                 >
                     Escanear
@@ -115,6 +115,27 @@
                 @error('selectedSolicitudId')
                     <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                 @enderror
+
+                {{-- Escáner: código QR de la solicitud, código de barras de una línea o número de serie del equipo. --}}
+                <div x-data="{ camara: window.camaraDisponible?.() }" class="flex items-center gap-2">
+                    <input
+                        id="recepcion-escaner"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="Escanear: QR de la solicitud, código de la línea o número de serie…"
+                        x-on:keydown.enter.prevent="$wire.escanear($el.value); $el.value = ''"
+                        class="w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                    >
+                    <button
+                        type="button"
+                        x-show="camara"
+                        x-cloak
+                        x-on:click="escanearConCamara({ titulo: 'Escanear código', autoAceptar: false, alAceptar: (valor) => $wire.escanear(valor) })"
+                        class="shrink-0 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                    >
+                        Escanear
+                    </button>
+                </div>
 
                 <div>
                     <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Recepciones registradas</p>
@@ -275,7 +296,13 @@
                 <x-ui.input label="Observaciones" name="form.observaciones" type="textarea" wire:model="form.observaciones" />
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Líneas de la solicitud</label>
+                    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Líneas de la solicitud</label>
+                        @if (collect($lineas)->contains(fn ($l) => ($l['recibible'] ?? false)))
+                            <button type="button" wire:click="recibirTodoPendiente" class="text-xs text-primary hover:underline">Recibir todo lo pendiente de este sitio</button>
+                        @endif
+                    </div>
+                    <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">Captura (o escanea) solo lo que llegó en esta remisión: lo demás queda pendiente para la siguiente entrega.</p>
 
                     @error('lineas')
                         <p class="mb-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
@@ -283,7 +310,7 @@
 
                     <div class="space-y-3">
                         @foreach ($lineas as $i => $linea)
-                            <div wire:key="recepcion-linea-{{ $i }}" class="rounded-md border border-gray-100 dark:border-gray-800 p-3 space-y-2">
+                            <div wire:key="recepcion-linea-{{ $i }}" id="recepcion-linea-{{ $i }}" class="rounded-md border p-3 space-y-2 {{ $lineaActiva === $i ? 'border-primary ring-2 ring-primary/40' : 'border-gray-100 dark:border-gray-800' }}">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
                                         {{ $linea['descripcion'] }}
@@ -346,10 +373,10 @@
                                 @enderror
 
                                 {{-- El artículo con el que se pidió suele ser genérico (p. ej. "Laptop Ejecutiva"): aquí se elige el REAL que llegó, y de él depende si se da de alta como activo inventariable. --}}
-                                @if ((int) $linea['cantidad_a_recibir'] > 0)
+                                @if ($linea['recibible'] ?? false)
                                     @php($elegido = $articulosElegidos->get($linea['articulo_id'] ?? 0))
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Artículo recibido</label>
+                                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">{{ ($linea['usa_unidades'] ?? false) && (int) $linea['cantidad_a_recibir'] > 1 ? 'Artículo recibido (aplica a todas las piezas)' : 'Artículo recibido' }}</label>
                                         <div class="mt-1 flex items-center gap-2">
                                             <div class="min-h-9 flex-1 truncate rounded-md border border-gray-300 px-3 py-2 text-sm dark:border-gray-700 dark:text-gray-100 {{ $errors->has('lineas.'.$i.'.articulo_id') ? 'border-danger!' : '' }}">
                                                 @if ($elegido)
@@ -369,79 +396,106 @@
                                     </div>
 
                                     <p class="text-xs {{ $linea['es_activo_inventariable'] ? 'text-success' : 'text-gray-500 dark:text-gray-400' }}">
-                                        {{ $linea['es_activo_inventariable'] ? 'Se dará de alta como activo inventariable (un activo por unidad).' : 'No inventariable: solo se registra la cantidad recibida, sin alta de activos.' }}
+                                        @if ($linea['usa_unidades'] ?? false)
+                                            Cada pieza lleva su propio artículo (abajo): el de arriba se aplica a todas y puedes cambiarlo en las que lleguen distintas. Las piezas con un artículo inventariable se dan de alta como activo.
+                                        @else
+                                            {{ $linea['es_activo_inventariable'] ? 'Se dará de alta como activo inventariable (un activo por unidad).' : 'No inventariable: solo se registra la cantidad recibida, sin alta de activos.' }}
+                                        @endif
                                     </p>
                                 @endif
 
-                                @if ($linea['es_activo_inventariable'] && (int) $linea['cantidad_a_recibir'] > 0)
+                                @if (($linea['usa_unidades'] ?? false) && (int) $linea['cantidad_a_recibir'] > 0)
                                     <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2">
+                                        @if ($resumenLineas[$i]['hay'] ?? false)
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                @if ($resumenLineas[$i]['marca'] ?? false)
+                                                    <x-ui.select label="Marca" name="lineas.{{ $i }}.marca_id" wire:model="lineas.{{ $i }}.marca_id" hint="Algún artículo no tiene marca definida — captúrala aquí.">
+                                                        <option value="">Selecciona...</option>
+                                                        @foreach ($marcaOptions as $marca)
+                                                            <option value="{{ $marca->id }}">{{ $marca->nombre }}</option>
+                                                        @endforeach
+                                                    </x-ui.select>
+                                                @endif
 
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            @if (! $linea['articulo_marca_id'])
-                                                <x-ui.select label="Marca" name="lineas.{{ $i }}.marca_id" wire:model="lineas.{{ $i }}.marca_id" hint="El artículo no tiene marca definida — captúrala aquí.">
+                                                @if ($resumenLineas[$i]['modelo'] ?? false)
+                                                    <x-ui.select label="Modelo (opcional)" name="lineas.{{ $i }}.modelo_id" wire:model="lineas.{{ $i }}.modelo_id">
+                                                        <option value="">Sin asignar</option>
+                                                        @foreach ($modeloOptions as $modelo)
+                                                            <option value="{{ $modelo->id }}">{{ $modelo->nombre }}</option>
+                                                        @endforeach
+                                                    </x-ui.select>
+                                                @endif
+                                            </div>
+
+                                            @if ($resumenLineas[$i]['tipo'] ?? false)
+                                                <x-ui.select label="Tipo de equipo" name="lineas.{{ $i }}.tipo_equipo_id" wire:model="lineas.{{ $i }}.tipo_equipo_id" hint="Algún artículo no tiene un tipo de equipo asignado — captúralo aquí.">
                                                     <option value="">Selecciona...</option>
-                                                    @foreach ($marcaOptions as $marca)
-                                                        <option value="{{ $marca->id }}">{{ $marca->nombre }}</option>
+                                                    @foreach ($tipoEquipoOptions as $tipoEquipo)
+                                                        <option value="{{ $tipoEquipo->id }}">{{ $tipoEquipo->nombre }}</option>
                                                     @endforeach
                                                 </x-ui.select>
                                             @endif
 
-                                            @if (! $linea['articulo_modelo_id'])
-                                                <x-ui.select label="Modelo (opcional)" name="lineas.{{ $i }}.modelo_id" wire:model="lineas.{{ $i }}.modelo_id">
-                                                    <option value="">Sin asignar</option>
-                                                    @foreach ($modeloOptions as $modelo)
-                                                        <option value="{{ $modelo->id }}">{{ $modelo->nombre }}</option>
-                                                    @endforeach
-                                                </x-ui.select>
-                                            @endif
-                                        </div>
-
-                                        @if (! $linea['articulo_tipo_equipo_id'])
-                                            <x-ui.select label="Tipo de equipo" name="lineas.{{ $i }}.tipo_equipo_id" wire:model="lineas.{{ $i }}.tipo_equipo_id" hint="El artículo no tiene un tipo de equipo asignado — captúralo aquí.">
-                                                <option value="">Selecciona...</option>
-                                                @foreach ($tipoEquipoOptions as $tipoEquipo)
-                                                    <option value="{{ $tipoEquipo->id }}">{{ $tipoEquipo->nombre }}</option>
-                                                @endforeach
-                                            </x-ui.select>
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                <x-ui.input label="Inicio de garantía (opcional)" name="lineas.{{ $i }}.fecha_inicio_garantia" type="date" wire:model="lineas.{{ $i }}.fecha_inicio_garantia" />
+                                                <x-ui.input label="Fin de garantía (opcional)" name="lineas.{{ $i }}.fecha_fin_garantia" type="date" wire:model="lineas.{{ $i }}.fecha_fin_garantia" />
+                                            </div>
                                         @endif
 
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <x-ui.input label="Inicio de garantía (opcional)" name="lineas.{{ $i }}.fecha_inicio_garantia" type="date" wire:model="lineas.{{ $i }}.fecha_inicio_garantia" />
-                                            <x-ui.input label="Fin de garantía (opcional)" name="lineas.{{ $i }}.fecha_fin_garantia" type="date" wire:model="lineas.{{ $i }}.fecha_fin_garantia" />
-                                        </div>
-
                                         <div class="space-y-2">
-                                            <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Unidades a recibir</p>
+                                            <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Piezas a recibir</p>
                                             @foreach ($linea['unidades'] as $u => $unidad)
-                                                <div wire:key="recepcion-linea-{{ $i }}-unidad-{{ $u }}" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                    {{-- Captura manual siempre disponible; además, un lector USB (escribe + Enter pasa al siguiente serie) o, en celular, la cámara. --}}
-                                                    <div x-data="{ camara: window.camaraDisponible?.() }">
-                                                        <x-ui.input
-                                                            label="Número de serie"
-                                                            name="lineas.{{ $i }}.unidades.{{ $u }}.numero_serie"
-                                                            wire:model="lineas.{{ $i }}.unidades.{{ $u }}.numero_serie"
-                                                            data-serie
-                                                            autocomplete="off"
-                                                            x-on:keydown.enter.prevent="enfocarSiguienteSerie($el)"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            x-show="camara"
-                                                            x-cloak
-                                                            x-on:click="escanearConCamara({
-                                                                titulo: 'Escanear número de serie',
-                                                                alAceptar: (valor) => {
-                                                                    const campo = $el.parentElement.querySelector('[data-serie]');
-                                                                    campo.value = valor;
-                                                                    campo.dispatchEvent(new Event('input', { bubbles: true }));
-                                                                },
-                                                            })"
-                                                            class="mt-1 text-xs text-primary hover:underline"
-                                                        >
-                                                            Escanear con cámara
-                                                        </button>
+                                                @php($pieza = $infoUnidades[$i][$u] ?? ['articulo' => null, 'inventariable' => false])
+                                                <div wire:key="recepcion-linea-{{ $i }}-unidad-{{ $u }}" class="space-y-2 rounded-md border border-gray-200 p-2 dark:border-gray-700">
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="shrink-0 text-xs font-medium text-gray-700 dark:text-gray-300">Pieza {{ $u + 1 }}</span>
+                                                        <div class="min-h-8 flex-1 truncate rounded-md border border-gray-300 px-2 py-1 text-sm dark:border-gray-700 dark:text-gray-100 {{ $errors->has('lineas.'.$i.'.unidades.'.$u.'.articulo_id') ? 'border-danger!' : '' }}">
+                                                            @if ($pieza['articulo'])
+                                                                {{ $pieza['articulo']->codigo }} — {{ $pieza['articulo']->descripcion }}{{ $pieza['articulo']->es_inventariable ? ' · inventariable' : '' }}
+                                                            @else
+                                                                <span class="text-gray-400">{{ ! empty($linea['articulo_generico']) ? 'Selecciona el artículo real...' : 'Sin artículo' }}</span>
+                                                            @endif
+                                                        </div>
+                                                        <x-ui.button type="button" variant="secondary" size="sm" wire:click="abrirBuscadorArticulo({{ $i }}, {{ $u }})">Buscar / cambiar</x-ui.button>
                                                     </div>
-                                                    <x-ui.input label="Service tag (opcional)" name="lineas.{{ $i }}.unidades.{{ $u }}.service_tag" wire:model="lineas.{{ $i }}.unidades.{{ $u }}.service_tag" />
+                                                    @error('lineas.'.$i.'.unidades.'.$u.'.articulo_id')
+                                                        <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                                                    @enderror
+
+                                                    @if ($pieza['inventariable'])
+                                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                            {{-- Captura manual siempre disponible; además, un lector USB (escribe + Enter pasa al siguiente serie) o, en celular, la cámara. --}}
+                                                            <div x-data="{ camara: window.camaraDisponible?.() }">
+                                                                <x-ui.input
+                                                                    label="Número de serie"
+                                                                    name="lineas.{{ $i }}.unidades.{{ $u }}.numero_serie"
+                                                                    wire:model="lineas.{{ $i }}.unidades.{{ $u }}.numero_serie"
+                                                                    data-serie
+                                                                    autocomplete="off"
+                                                                    x-on:keydown.enter.prevent="enfocarSiguienteSerie($el)"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    x-show="camara"
+                                                                    x-cloak
+                                                                    x-on:click="escanearConCamara({
+                                                                        titulo: 'Escanear número de serie',
+                                                                        alAceptar: (valor) => {
+                                                                            const campo = $el.parentElement.querySelector('[data-serie]');
+                                                                            campo.value = valor;
+                                                                            campo.dispatchEvent(new Event('input', { bubbles: true }));
+                                                                        },
+                                                                    })"
+                                                                    class="mt-1 text-xs text-primary hover:underline"
+                                                                >
+                                                                    Escanear con cámara
+                                                                </button>
+                                                            </div>
+                                                            <x-ui.input label="Service tag (opcional)" name="lineas.{{ $i }}.unidades.{{ $u }}.service_tag" wire:model="lineas.{{ $i }}.unidades.{{ $u }}.service_tag" />
+                                                        </div>
+                                                    @elseif ($pieza['articulo'])
+                                                        <p class="text-xs text-gray-500 dark:text-gray-400">Artículo no inventariable: solo se registra la pieza, sin alta de activo.</p>
+                                                    @endif
                                                 </div>
                                             @endforeach
                                         </div>
@@ -463,7 +517,7 @@
         </form>
     </x-ui.modal>
 
-    <x-ui.modal model="showArticuloModal" title="Buscar artículo recibido" max-width="max-w-xl">
+    <x-ui.modal model="showArticuloModal" :title="$articuloUnidadIndex !== null ? 'Buscar artículo de la pieza '.($articuloUnidadIndex + 1) : 'Buscar artículo recibido'" max-width="max-w-xl">
         <div class="space-y-3">
             <input
                 wire:model.live.debounce.300ms="articuloSearch"

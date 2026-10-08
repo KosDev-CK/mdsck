@@ -115,6 +115,14 @@ class Recepciones extends Component
     public ?int $lugarRecepcionId = null;
 
     /**
+     * Línea (índice de `$lineas`) a la que se están escaneando números de
+     * serie: se activa al escanear el código de la línea (impreso en el PDF
+     * de la solicitud, `{folio}-L{n}`) y recibe cada código de artículo
+     * escaneado después.
+     */
+    public ?int $lineaActiva = null;
+
+    /**
      * Ubicación de inventario donde quedan los equipos recibidos: una de las
      * que el lugar de entrega agrupa (Catálogos Núcleo → Ubicaciones). Si el
      * sitio solo tiene una, se toma sola.
@@ -135,6 +143,9 @@ class Recepciones extends Component
      */
     public ?int $tecnicoRecibeId = null;
 
+    /** @var array<int, ArticuloSolicitud|null> */
+    private array $articulosCache = [];
+
     private ?Validador $validadorCache = null;
 
     private bool $validadorResuelto = false;
@@ -143,6 +154,9 @@ class Recepciones extends Component
     public bool $showArticuloModal = false;
 
     public ?int $articuloLineaIndex = null;
+
+    /** Pieza de la línea cuyo artículo se está eligiendo (`null` = el artículo de toda la línea). */
+    public ?int $articuloUnidadIndex = null;
 
     public string $articuloSearch = '';
 
@@ -280,6 +294,161 @@ class Recepciones extends Component
         $this->abrirSolicitud($solicitud->id);
     }
 
+    /**
+     * Punto único de entrada de un código escaneado (lector USB o cámara):
+     *  - `{folio}-L{n}`  → abre la solicitud (si no lo está) y deja activa esa línea;
+     *  - un folio exacto → abre esa solicitud;
+     *  - con una línea activa → es el número de serie de un equipo de esa línea;
+     *  - sin nada abierto → se trata como búsqueda por folio (con aviso si no existe).
+     */
+    public function escanear(string $codigo): void
+    {
+        $codigo = trim($codigo);
+
+        if ($codigo === '') {
+            return;
+        }
+
+        if ($partes = SolicitudProveedor::parsearCodigoLinea($codigo)) {
+            $solicitud = SolicitudProveedor::where('folio', $partes[0])->first();
+
+            if ($solicitud) {
+                $this->activarLinea($solicitud, $partes[1]);
+
+                return;
+            }
+        }
+
+        $solicitudPorFolio = SolicitudProveedor::where('folio', $codigo)->first();
+
+        if ($solicitudPorFolio) {
+            $this->abrirSolicitud($solicitudPorFolio->id);
+            $this->search = '';
+
+            return;
+        }
+
+        if ($this->showModal && $this->selectedSolicitudId) {
+            $this->capturarSerieEscaneada($codigo);
+
+            return;
+        }
+
+        $this->abrirPorCodigo($codigo);
+    }
+
+    private function activarLinea(SolicitudProveedor $solicitud, int $ordinal): void
+    {
+        if (! $this->showModal || $this->selectedSolicitudId !== $solicitud->id) {
+            $this->abrirSolicitud($solicitud->id);
+            $this->search = '';
+        }
+
+        $indice = collect($this->lineas)->search(fn ($linea) => (int) ($linea['ordinal'] ?? 0) === $ordinal);
+
+        if ($indice === false) {
+            session()->flash('error', "La solicitud {$solicitud->folio} no tiene la línea {$ordinal} pendiente de recibir.");
+
+            return;
+        }
+
+        $linea = $this->lineas[$indice];
+
+        if (! ($linea['recibible'] ?? false)) {
+            session()->flash('error', empty($linea['lugar_entrega_id'])
+                ? "La línea {$ordinal} no tiene lugar de entrega: no se puede recibir hasta capturarlo en la solicitud."
+                : "La línea {$ordinal} no se puede recibir en esta recepción: se entrega en {$linea['lugar_nombre']} o ya está completa.");
+
+            return;
+        }
+
+        $this->lineaActiva = $indice;
+        $this->dispatch('recepcion-scroll', id: "recepcion-linea-{$indice}");
+        session()->flash('status', ! empty($linea['articulo_generico']) && empty($linea['es_activo_inventariable'])
+            ? "Línea {$ordinal} activa: primero elige el artículo recibido (Buscar / cambiar) y luego escanea el número de serie de cada equipo."
+            : "Línea {$ordinal} activa: escanea el número de serie de cada equipo que llegó.");
+    }
+
+    /** Número de serie escaneado → siguiente unidad vacía de la línea activa. */
+    private function capturarSerieEscaneada(string $valor): void
+    {
+        $i = $this->lineaActiva;
+
+        if ($i === null || ! isset($this->lineas[$i])) {
+            session()->flash('error', 'Escanea primero el código de la línea (viene impreso en el PDF de la solicitud) y luego el número de serie de cada equipo.');
+
+            return;
+        }
+
+        $linea = $this->lineas[$i];
+
+        if (empty($linea['usa_unidades'])) {
+            session()->flash('error', 'Esta línea no pide número de serie.');
+
+            return;
+        }
+
+        $serie = $valor;
+        $normalizada = mb_strtoupper($serie);
+
+        foreach ($this->lineas as $otra) {
+            foreach ($otra['unidades'] ?? [] as $unidad) {
+                if (mb_strtoupper(trim((string) ($unidad['numero_serie'] ?? ''))) === $normalizada) {
+                    session()->flash('error', "El número de serie {$serie} ya se escaneó en esta recepción.");
+
+                    return;
+                }
+            }
+        }
+
+        // Siguiente pieza sin serie cuyo artículo se da de alta como Activo.
+        $buscarDestino = fn () => collect($this->lineas[$i]['unidades'] ?? [])->search(
+            fn ($unidad) => trim((string) ($unidad['numero_serie'] ?? '')) === ''
+                && $this->unidadEsInventariable($this->lineas[$i], $this->articuloDeUnidad($this->lineas[$i], $unidad))
+        );
+
+        $destino = $buscarDestino();
+
+        if ($destino === false) {
+            // Piezas ya agregadas, sin serie, pero sin artículo real elegido.
+            $sinArticulo = collect($linea['unidades'] ?? [])->search(
+                fn ($unidad) => trim((string) ($unidad['numero_serie'] ?? '')) === ''
+            );
+
+            if ($sinArticulo === false) {
+                // Cada número de serie escaneado es una pieza que llegó en esta
+                // remisión: se suma mientras quede pendiente.
+                if ((int) $linea['cantidad_a_recibir'] >= (int) $linea['cantidad_pendiente']) {
+                    session()->flash('status', 'Esa línea ya no tiene piezas pendientes: escanea el código de otra línea.');
+
+                    return;
+                }
+
+                $this->lineas[$i]['cantidad_a_recibir'] = (int) $linea['cantidad_a_recibir'] + 1;
+                $this->ajustarUnidades($i);
+                $destino = $buscarDestino();
+            }
+
+            if ($destino === false) {
+                session()->flash('error', ! empty($linea['articulo_generico'])
+                    ? 'Primero elige el artículo recibido (de la línea o de cada pieza): con el artículo real se piden los números de serie.'
+                    : 'Esta pieza no es inventariable: no pide número de serie.');
+
+                return;
+            }
+        }
+
+        $this->lineas[$i]['unidades'][$destino]['numero_serie'] = $serie;
+
+        if (Asset::where('numero_serie', $serie)->exists()) {
+            session()->flash('error', "Atención: ya existe un activo con el número de serie {$serie} en el inventario. Se capturó, pero revísalo antes de guardar.");
+
+            return;
+        }
+
+        $this->dispatch('recepcion-scroll', id: "recepcion-linea-{$i}");
+    }
+
     public function updatingEstatusFiltro(): void
     {
         $this->resetPage();
@@ -366,6 +535,15 @@ class Recepciones extends Component
         $this->lineas[$index]['es_activo_inventariable'] = $articulo !== null
             ? (bool) $articulo->es_inventariable
             : (bool) ($this->lineas[$index]['es_activo_inventariable_original'] ?? false);
+
+        // Elegir el artículo de la línea lo aplica a todas sus piezas (cada una
+        // se puede cambiar después). Hay piezas individuales si la línea es
+        // inventariable o se pidió con un artículo genérico.
+        foreach ($this->lineas[$index]['unidades'] ?? [] as $u => $unidad) {
+            $this->lineas[$index]['unidades'][$u]['articulo_id'] = null;
+        }
+        $this->lineas[$index]['usa_unidades'] = (bool) ($this->lineas[$index]['usa_unidades_base'] ?? false)
+            || $this->lineas[$index]['es_activo_inventariable'];
         $this->ajustarUnidades($index);
 
         $this->lineas[$index]['articulo_tipo_equipo_id'] = $articulo?->tipo_equipo_id;
@@ -374,6 +552,49 @@ class Recepciones extends Component
         $this->lineas[$index]['articulo_procesador'] = $articulo?->procesador?->nombre;
         $this->lineas[$index]['articulo_ram'] = $articulo?->ram?->nombre;
         $this->lineas[$index]['articulo_almacenamiento'] = $articulo?->almacenamiento?->nombre;
+    }
+
+    private function articuloConSpecs(int $id): ?ArticuloSolicitud
+    {
+        if (! array_key_exists($id, $this->articulosCache)) {
+            $this->articulosCache[$id] = ArticuloSolicitud::with(['procesador', 'ram', 'almacenamiento'])->find($id);
+        }
+
+        return $this->articulosCache[$id];
+    }
+
+    /**
+     * Artículo REAL de una pieza: el que se eligió para ella o, si no, el de la
+     * línea. Un artículo genérico (el estándar con el que se pidió) nunca
+     * cuenta como real: hay que elegir uno.
+     */
+    private function articuloDeUnidad(array $linea, array $unidad): ?ArticuloSolicitud
+    {
+        $id = ! empty($unidad['articulo_id']) ? (int) $unidad['articulo_id'] : (int) ($linea['articulo_id'] ?? 0);
+
+        if ($id === 0) {
+            return null;
+        }
+
+        $articulo = $this->articuloConSpecs($id);
+
+        return $this->esArticuloGenerico($articulo) ? null : $articulo;
+    }
+
+    /** ¿Esta pieza se da de alta como Activo? Lo decide su artículo; sin artículo, la bandera original de la línea. */
+    private function unidadEsInventariable(array $linea, ?ArticuloSolicitud $articulo): bool
+    {
+        $banderaOriginal = (bool) ($linea['es_activo_inventariable_original'] ?? false);
+
+        if ($articulo === null) {
+            return $banderaOriginal && empty($linea['articulo_generico']);
+        }
+
+        // Si se sustituyó el artículo, manda el del artículo recibido; si es el
+        // mismo con el que se pidió, también cuenta la bandera guardada en la línea.
+        $sustituido = (int) $articulo->id !== (int) ($linea['articulo_solicitado_id'] ?? 0);
+
+        return (bool) $articulo->es_inventariable || (! $sustituido && $banderaOriginal);
     }
 
     /** Artículo con el que se pidió la línea, leído de la BD (no del estado del cliente). */
@@ -414,13 +635,14 @@ class Recepciones extends Component
         return $this->consultaArticulosPermitidos($index)->whereKey($articuloId)->exists();
     }
 
-    public function abrirBuscadorArticulo(int $index): void
+    public function abrirBuscadorArticulo(int $index, ?int $unidad = null): void
     {
-        if (! isset($this->lineas[$index])) {
+        if (! isset($this->lineas[$index]) || ($unidad !== null && ! isset($this->lineas[$index]['unidades'][$unidad]))) {
             return;
         }
 
         $this->articuloLineaIndex = $index;
+        $this->articuloUnidadIndex = $unidad;
         $this->articuloSearch = '';
         $this->showArticuloModal = true;
     }
@@ -429,6 +651,7 @@ class Recepciones extends Component
     {
         $this->showArticuloModal = false;
         $this->articuloLineaIndex = null;
+        $this->articuloUnidadIndex = null;
         $this->articuloSearch = '';
     }
 
@@ -440,8 +663,15 @@ class Recepciones extends Component
             return;
         }
 
-        $this->lineas[$index]['articulo_id'] = $articuloId;
-        $this->recalcArticuloDerivedFields($index);
+        if ($this->articuloUnidadIndex !== null) {
+            if (isset($this->lineas[$index]['unidades'][$this->articuloUnidadIndex])) {
+                $this->lineas[$index]['unidades'][$this->articuloUnidadIndex]['articulo_id'] = $articuloId;
+            }
+        } else {
+            $this->lineas[$index]['articulo_id'] = $articuloId;
+            $this->recalcArticuloDerivedFields($index);
+        }
+
         $this->cerrarBuscadorArticulo();
     }
 
@@ -454,8 +684,15 @@ class Recepciones extends Component
             return;
         }
 
-        $this->lineas[$index]['articulo_id'] = null;
-        $this->recalcArticuloDerivedFields($index);
+        if ($this->articuloUnidadIndex !== null) {
+            if (isset($this->lineas[$index]['unidades'][$this->articuloUnidadIndex])) {
+                $this->lineas[$index]['unidades'][$this->articuloUnidadIndex]['articulo_id'] = null;
+            }
+        } else {
+            $this->lineas[$index]['articulo_id'] = null;
+            $this->recalcArticuloDerivedFields($index);
+        }
+
         $this->cerrarBuscadorArticulo();
     }
 
@@ -465,7 +702,7 @@ class Recepciones extends Component
      */
     private function ajustarUnidades(int $index): void
     {
-        if (! $this->lineas[$index]['es_activo_inventariable']) {
+        if (empty($this->lineas[$index]['usa_unidades'])) {
             $this->lineas[$index]['unidades'] = [];
 
             return;
@@ -475,7 +712,7 @@ class Recepciones extends Component
         $unidades = $this->lineas[$index]['unidades'] ?? [];
 
         while (count($unidades) < $cantidad) {
-            $unidades[] = ['numero_serie' => '', 'service_tag' => ''];
+            $unidades[] = ['numero_serie' => '', 'service_tag' => '', 'articulo_id' => null];
         }
 
         $this->lineas[$index]['unidades'] = array_slice($unidades, 0, $cantidad);
@@ -492,22 +729,7 @@ class Recepciones extends Component
         $cantidad = max(0, min($cantidad, $pendiente));
         $this->lineas[$index]['cantidad_a_recibir'] = $cantidad;
 
-        if (! $this->lineas[$index]['es_activo_inventariable']) {
-            return;
-        }
-
-        $unidades = $this->lineas[$index]['unidades'];
-        $actual = count($unidades);
-
-        if ($cantidad > $actual) {
-            for ($i = $actual; $i < $cantidad; $i++) {
-                $unidades[] = ['numero_serie' => '', 'service_tag' => ''];
-            }
-        } elseif ($cantidad < $actual) {
-            $unidades = array_slice($unidades, 0, $cantidad);
-        }
-
-        $this->lineas[$index]['unidades'] = $unidades;
+        $this->ajustarUnidades($index);
     }
 
     /**
@@ -528,6 +750,7 @@ class Recepciones extends Component
         $this->lineas = [];
         $this->lugarRecepcionId = null;
         $this->ubicacionDestinoId = null;
+        $this->lineaActiva = null;
         // Administrador: arranca como él mismo si es técnico; si no, debe elegir al técnico.
         $this->tecnicoRecibeId = $this->esAdministrador()
             ? Validador::where('activo', true)->where('user_id', auth()->id())->value('id')
@@ -545,6 +768,7 @@ class Recepciones extends Component
         }
 
         $this->showModal = true;
+        $this->dispatch('recepcion-enfocar-escaner');
     }
 
     public function cancel(): void
@@ -555,6 +779,7 @@ class Recepciones extends Component
         $this->lineas = [];
         $this->lugarRecepcionId = null;
         $this->ubicacionDestinoId = null;
+        $this->lineaActiva = null;
         $this->tecnicoRecibeId = null;
         $this->validadorResuelto = false;
         $this->documentoRemision = null;
@@ -602,9 +827,27 @@ class Recepciones extends Component
                 && (int) $linea['lugar_entrega_id'] === $this->lugarRecepcionId
                 && $this->puedeRecibirEnLugar($validador, $this->lugarRecepcionId);
 
+            if (! $recibible && $this->lineaActiva === $i) {
+                $this->lineaActiva = null;
+            }
+
             $this->lineas[$i]['recibible'] = $recibible;
-            $this->lineas[$i]['cantidad_a_recibir'] = $recibible ? (int) $linea['cantidad_pendiente'] : 0;
+            $this->lineas[$i]['cantidad_a_recibir'] = 0;
             $this->ajustarUnidades($i);
+        }
+    }
+
+    /**
+     * Atajo para cuando la remisión trae todo lo pendiente del sitio: pone en
+     * cada línea recibible su cantidad pendiente completa.
+     */
+    public function recibirTodoPendiente(): void
+    {
+        foreach ($this->lineas as $i => $linea) {
+            if ($linea['recibible'] ?? false) {
+                $this->lineas[$i]['cantidad_a_recibir'] = (int) $linea['cantidad_pendiente'];
+                $this->ajustarUnidades($i);
+            }
         }
     }
 
@@ -800,12 +1043,14 @@ class Recepciones extends Component
             return;
         }
 
-        foreach ($solicitud->lineas as $linea) {
+        foreach ($solicitud->lineas->sortBy('id')->values() as $posicion => $linea) {
             $pendiente = max(0, $linea->cantidad_solicitada - $linea->cantidad_recibida);
             $articulo = $linea->articulo;
 
             $lineaForm = [
                 'solicitud_proveedor_linea_id' => $linea->id,
+                // Posición de la línea en la solicitud (1, 2, 3...): es la n del código `{folio}-L{n}` impreso en el PDF.
+                'ordinal' => $posicion + 1,
                 // De cabecera a línea (rediseño de "Solicitud a
                 // Proveedores": de 1 a N SICs) — cada línea puede traer su
                 // propia SIC, usada abajo para decidir "reservado" vs.
@@ -823,7 +1068,10 @@ class Recepciones extends Component
                 'cantidad_solicitada' => $linea->cantidad_solicitada,
                 'cantidad_ya_recibida' => $linea->cantidad_recibida,
                 'cantidad_pendiente' => $pendiente,
-                'cantidad_a_recibir' => $pendiente,
+                // Una solicitud se entrega en varias remisiones y no se sabe qué
+                // llega en cada una: arranca en 0 y se captura (o se escanea)
+                // solo lo que realmente llegó en ESTA remisión.
+                'cantidad_a_recibir' => 0,
                 // El atributo del artículo manda: la bandera guardada en la línea
                 // es una foto del momento de la solicitud, y si el artículo se
                 // marcó inventariable después, la recepción debe pedir serie,
@@ -838,6 +1086,11 @@ class Recepciones extends Component
                 'articulo_id' => $linea->articulo_id,
                 'articulo_solicitado_id' => $linea->articulo_id,
                 'es_activo_inventariable_original' => (bool) $linea->es_activo_inventariable,
+                // Piezas individuales (una fila por pieza, cada una con su artículo
+                // y su número de serie): líneas inventariables y las pedidas con un
+                // artículo genérico, donde cada pieza puede llegar distinta.
+                'usa_unidades_base' => (bool) $linea->es_activo_inventariable || (bool) $articulo?->es_inventariable || $this->esArticuloGenerico($articulo),
+                'usa_unidades' => (bool) $linea->es_activo_inventariable || (bool) $articulo?->es_inventariable || $this->esArticuloGenerico($articulo),
                 // Artículo genérico (estándar mapeado desde EBS y no inventariable):
                 // en la recepción es obligatorio elegir el artículo real.
                 'articulo_generico' => $this->esArticuloGenerico($articulo),
@@ -854,12 +1107,6 @@ class Recepciones extends Component
                 'fecha_fin_garantia' => null,
                 'unidades' => [],
             ];
-
-            if ($lineaForm['es_activo_inventariable']) {
-                for ($i = 0; $i < $pendiente; $i++) {
-                    $lineaForm['unidades'][] = ['numero_serie' => '', 'service_tag' => ''];
-                }
-            }
 
             $this->lineas[] = $lineaForm;
         }
@@ -917,40 +1164,60 @@ class Recepciones extends Component
                 $this->addError("lineas.$i.cantidad_a_recibir", 'Esta línea se entrega en otro sitio: la recibe el técnico de ese sitio.');
             }
 
-            if (! empty($linea['articulo_id']) && ! $this->articuloPermitido($i, (int) $linea['articulo_id'])) {
+            // El artículo de la línea es un genérico (nadie lo cambió): no hay nada
+            // que validar a ese nivel, cada pieza elige el suyo.
+            if (! empty($linea['articulo_id'])
+                && ! $this->esArticuloGenerico($this->articuloConSpecs((int) $linea['articulo_id']))
+                && ! $this->articuloPermitido($i, (int) $linea['articulo_id'])) {
                 $this->addError("lineas.$i.articulo_id", 'El artículo elegido no corresponde al tipo de equipo solicitado.');
             }
 
-            // Se pidió con un artículo genérico y no se cambió por el real.
-            // Se recalcula del lado del servidor, no se confía en el cliente.
-            if (! empty($linea['articulo_solicitado_id'])
-                && (int) ($linea['articulo_id'] ?? 0) === (int) $linea['articulo_solicitado_id']
-                && $this->esArticuloGenerico(ArticuloSolicitud::find($linea['articulo_solicitado_id']))) {
-                $this->addError("lineas.$i.articulo_id", 'Elige el artículo real que llegó: la solicitud se hizo con un artículo genérico.');
-            }
-
-            if (! $linea['es_activo_inventariable']) {
+            if (empty($linea['usa_unidades'])) {
                 continue;
-            }
-
-            if (empty($linea['articulo_marca_id']) && empty($linea['marca_id'])) {
-                $this->addError("lineas.$i.marca_id", 'La marca es requerida para un activo inventariable — no se pudo determinar automáticamente del artículo.');
-            }
-
-            if (empty($linea['articulo_tipo_equipo_id']) && empty($linea['tipo_equipo_id'])) {
-                $this->addError("lineas.$i.tipo_equipo_id", 'Selecciona el tipo de equipo — no se pudo determinar automáticamente del artículo.');
             }
 
             $unidades = $linea['unidades'] ?? [];
 
             if (count($unidades) !== $cantidad) {
-                $this->addError("lineas.$i.cantidad_a_recibir", 'El número de unidades capturadas no coincide con la cantidad a recibir.');
+                $this->addError("lineas.$i.cantidad_a_recibir", 'El número de piezas capturadas no coincide con la cantidad a recibir.');
             }
 
+            $faltaMarca = false;
+            $faltaTipo = false;
+
             foreach ($unidades as $u => $unidad) {
+                $articulo = $this->articuloDeUnidad($linea, $unidad);
+
+                // Pedida con un artículo genérico: cada pieza necesita su artículo real.
+                if ($articulo === null && ! empty($linea['articulo_generico'])) {
+                    $this->addError("lineas.$i.unidades.$u.articulo_id", 'Elige el artículo real de esta pieza.');
+                    $this->addError("lineas.$i.articulo_id", 'Elige el artículo real que llegó: la solicitud se hizo con un artículo genérico.');
+
+                    continue;
+                }
+
+                if ($articulo !== null && ! empty($unidad['articulo_id']) && ! $this->articuloPermitido($i, (int) $unidad['articulo_id'])) {
+                    $this->addError("lineas.$i.unidades.$u.articulo_id", 'El artículo elegido no corresponde al tipo de equipo solicitado.');
+                }
+
+                if (! $this->unidadEsInventariable($linea, $articulo)) {
+                    continue;
+                }
+
+                $faltaMarca = $faltaMarca || empty($articulo?->marca_id);
+                $faltaTipo = $faltaTipo || empty($articulo?->tipo_equipo_id);
+
                 if (trim((string) ($unidad['numero_serie'] ?? '')) === '') {
                     $this->addError("lineas.$i.unidades.$u.numero_serie", 'El número de serie es requerido.');
                 }
+            }
+
+            if ($faltaMarca && empty($linea['marca_id'])) {
+                $this->addError("lineas.$i.marca_id", 'La marca es requerida para un activo inventariable — no se pudo determinar automáticamente del artículo.');
+            }
+
+            if ($faltaTipo && empty($linea['tipo_equipo_id'])) {
+                $this->addError("lineas.$i.tipo_equipo_id", 'Selecciona el tipo de equipo — no se pudo determinar automáticamente del artículo.');
             }
         }
 
@@ -958,7 +1225,7 @@ class Recepciones extends Component
         // (típico al escanear dos veces la misma caja).
         $vistos = [];
         foreach ($this->lineas as $i => $linea) {
-            if ((int) ($linea['cantidad_a_recibir'] ?? 0) <= 0 || empty($linea['es_activo_inventariable'])) {
+            if ((int) ($linea['cantidad_a_recibir'] ?? 0) <= 0 || empty($linea['usa_unidades'])) {
                 continue;
             }
 
@@ -1071,7 +1338,7 @@ class Recepciones extends Component
 
                 $solicitudLinea = SolicitudProveedorLinea::findOrFail($linea['solicitud_proveedor_linea_id']);
 
-                if (! $linea['es_activo_inventariable']) {
+                if (empty($linea['usa_unidades'])) {
                     RecepcionLinea::create([
                         'recepcion_id' => $recepcion->id,
                         'solicitud_proveedor_linea_id' => $solicitudLinea->id,
@@ -1080,37 +1347,44 @@ class Recepciones extends Component
                         'articulo_id' => $linea['articulo_id'] ?: null,
                     ]);
                 } else {
-                    $tipoEquipoId = $linea['articulo_tipo_equipo_id'] ?: $linea['tipo_equipo_id'];
-                    $tipoEquipo = TipoEquipo::findOrFail($tipoEquipoId);
-
-                    // El artículo REALMENTE recibido (editable en esta
-                    // pantalla) es el que se hereda hacia el Asset — no el
-                    // que traía originalmente la SolicitudProveedorLinea.
-                    $articuloId = $linea['articulo_id'] ?: null;
-                    $marcaId = $linea['articulo_marca_id'] ?: ($linea['marca_id'] ?: null);
-                    $modeloId = $linea['articulo_modelo_id'] ?: ($linea['modelo_id'] ?: null);
-                    $especificaciones = array_filter([
-                        'procesador' => $linea['articulo_procesador'] ?? null,
-                        'ram' => $linea['articulo_ram'] ?? null,
-                        'almacenamiento' => $linea['articulo_almacenamiento'] ?? null,
-                    ]) ?: null;
-
-                    // Reservación por línea (de 1 a N SICs por solicitud,
-                    // ver el rediseño de "Solicitud a Proveedores"): si ESTA
-                    // línea trae una SIC, los Asset que genera se reservan
-                    // contra ella (apartado, no la asignación formal); si
-                    // no, quedan libres en_stock. Antes se resolvía una sola
-                    // vez por recepción completa a partir de la cabecera —
-                    // ahora puede variar línea por línea.
+                    // Reservación por línea (de 1 a N SICs por solicitud): si ESTA
+                    // línea trae una SIC, los Asset que genera se reservan contra
+                    // ella (apartado, no la asignación formal); si no, quedan libres
+                    // en_stock.
                     $sicIdLinea = $linea['sic_id'] ?? null;
                     $estatusInventariableId = $sicIdLinea
                         ? $this->estatusIdPorCodigo('reservado')
                         : $this->estatusIdPorCodigo('en_stock');
 
+                    // Piezas cuyo artículo no es inventariable: una línea de
+                    // recepción por artículo, solo con la cantidad.
+                    $sinActivo = [];
+
                     foreach ($linea['unidades'] as $unidad) {
+                        // El artículo REALMENTE recibido de ESTA pieza (puede
+                        // diferir del de las demás y del solicitado) es el que se
+                        // hereda hacia el Asset.
+                        $articulo = $this->articuloDeUnidad($linea, $unidad);
+
+                        if (! $this->unidadEsInventariable($linea, $articulo)) {
+                            $clave = $articulo?->id ?? 0;
+                            $sinActivo[$clave] = ($sinActivo[$clave] ?? 0) + 1;
+
+                            continue;
+                        }
+
+                        $tipoEquipo = TipoEquipo::findOrFail($articulo?->tipo_equipo_id ?: $linea['tipo_equipo_id']);
+                        $marcaId = $articulo?->marca_id ?: ($linea['marca_id'] ?: null);
+                        $modeloId = $articulo?->modelo_id ?: ($linea['modelo_id'] ?: null);
+                        $especificaciones = array_filter([
+                            'procesador' => $articulo?->procesador?->nombre,
+                            'ram' => $articulo?->ram?->nombre,
+                            'almacenamiento' => $articulo?->almacenamiento?->nombre,
+                        ]) ?: null;
+
                         $asset = Asset::create([
                             'codigo' => Asset::generateCodigo($tipoEquipo),
-                            'articulo_id' => $articuloId,
+                            'articulo_id' => $articulo?->id,
                             'tipo_equipo_id' => $tipoEquipo->id,
                             'marca_id' => $marcaId,
                             'modelo_id' => $modeloId,
@@ -1135,10 +1409,20 @@ class Recepciones extends Component
                             'solicitud_proveedor_linea_id' => $solicitudLinea->id,
                             'cantidad_recibida' => 1,
                             'asset_id' => $asset->id,
-                            'articulo_id' => $articuloId,
+                            'articulo_id' => $articulo?->id,
                         ]);
 
                         $asset->update(['recepcion_linea_id' => $recepcionLinea->id]);
+                    }
+
+                    foreach ($sinActivo as $articuloId => $piezas) {
+                        RecepcionLinea::create([
+                            'recepcion_id' => $recepcion->id,
+                            'solicitud_proveedor_linea_id' => $solicitudLinea->id,
+                            'cantidad_recibida' => $piezas,
+                            'asset_id' => null,
+                            'articulo_id' => $articuloId ?: null,
+                        ]);
                     }
                 }
 
@@ -1209,6 +1493,51 @@ class Recepciones extends Component
      * con 3 columnas), que es más rápido y portable que armar LIKE/REPLACE por
      * palabra en SQL. Primero salen los que coinciden por marca/modelo.
      */
+    /**
+     * Por cada pieza de cada línea: su artículo real (o `null`) y si se da de
+     * alta como Activo — para pintar sus campos y los datos que faltan.
+     *
+     * @return array<int, array<int, array{articulo: ?ArticuloSolicitud, inventariable: bool}>>
+     */
+    private function infoUnidades(): array
+    {
+        $info = [];
+
+        foreach ($this->lineas as $i => $linea) {
+            foreach ($linea['unidades'] ?? [] as $u => $unidad) {
+                $articulo = $this->articuloDeUnidad($linea, $unidad);
+                $info[$i][$u] = ['articulo' => $articulo, 'inventariable' => $this->unidadEsInventariable($linea, $articulo)];
+            }
+        }
+
+        return $info;
+    }
+
+    /**
+     * Por línea: si alguna pieza se da de alta como Activo y qué datos (marca,
+     * modelo, tipo de equipo) le faltan a los artículos de esas piezas — para
+     * mostrar los selects manuales solo cuando hacen falta.
+     *
+     * @return array<int, array{hay: bool, marca: bool, modelo: bool, tipo: bool}>
+     */
+    private function resumenLineas(): array
+    {
+        $resumen = [];
+
+        foreach ($this->infoUnidades() as $i => $piezas) {
+            $inventariables = collect($piezas)->filter(fn ($pieza) => $pieza['inventariable']);
+
+            $resumen[$i] = [
+                'hay' => $inventariables->isNotEmpty(),
+                'marca' => $inventariables->contains(fn ($pieza) => empty($pieza['articulo']?->marca_id)),
+                'modelo' => $inventariables->contains(fn ($pieza) => empty($pieza['articulo']?->modelo_id)),
+                'tipo' => $inventariables->contains(fn ($pieza) => empty($pieza['articulo']?->tipo_equipo_id)),
+            ];
+        }
+
+        return $resumen;
+    }
+
     private function buscarArticulos(int $index)
     {
         $palabras = collect(preg_split('/\s+/', trim($this->articuloSearch)))
@@ -1305,7 +1634,11 @@ class Recepciones extends Component
                 : null,
             // Etiquetas de los artículos ya elegidos en las líneas (el select largo
             // se sustituyó por un buscador).
-            'articulosElegidos' => ArticuloSolicitud::whereIn('id', collect($this->lineas)->pluck('articulo_id')->filter()->unique())->get()->keyBy('id'),
+            'articulosElegidos' => ArticuloSolicitud::whereIn('id', collect($this->lineas)
+                ->flatMap(fn ($linea) => array_merge([$linea['articulo_id'] ?? null], collect($linea['unidades'] ?? [])->pluck('articulo_id')->all()))
+                ->filter()->unique())->get()->keyBy('id'),
+            'infoUnidades' => $this->infoUnidades(),
+            'resumenLineas' => $this->resumenLineas(),
             'resultadosArticulos' => $this->showArticuloModal && $this->articuloLineaIndex !== null && isset($this->lineas[$this->articuloLineaIndex])
                 ? $this->buscarArticulos($this->articuloLineaIndex)
                 : collect(),

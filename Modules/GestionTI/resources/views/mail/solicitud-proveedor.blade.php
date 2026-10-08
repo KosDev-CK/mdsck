@@ -24,10 +24,10 @@ Le compartimos la siguiente solicitud de compra:
 - **Estatus:** {{ $estatusLabels[$solicitud->estatus] ?? $solicitud->estatus }}
 
 <x-mail::table>
-| SIC | Artículo | Cantidad | Observaciones |
-| :-- | :------- | :------: | :------------ |
+| SIC | Artículo | Cantidad | Entrega en | Observaciones |
+| :-- | :------- | :------: | :--------- | :------------ |
 @foreach ($solicitud->lineas as $linea)
-| {{ $linea->folioSicDisplay() ?? '—' }} | {{ $linea->articulo?->descripcion ?? $linea->descripcion_libre ?? '—' }} | {{ $linea->cantidad_solicitada }} | {{ $linea->observaciones_especificaciones ?? '—' }} |
+| {{ $linea->folioSicDisplay() ?? '—' }} | {{ $linea->articulo?->descripcion ?? $linea->descripcion_libre ?? '—' }} | {{ $linea->cantidad_solicitada }} | {{ $linea->lugarEntrega?->nombre ?? '—' }} | {{ $linea->observaciones_especificaciones ?? '—' }} |
 @endforeach
 </x-mail::table>
 
