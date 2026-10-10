@@ -85,7 +85,6 @@
                 <th>Precio unitario</th>
                 <th>Entrega en</th>
                 <th>Observaciones</th>
-                <th>Código de la línea</th>
             </tr>
         </thead>
         <tbody>
@@ -97,15 +96,17 @@
                     <td>{{ $linea->precio_unitario_cotizado ?? '—' }}</td>
                     <td>{{ $linea->lugarEntrega?->nombre ?? '—' }}</td>
                     <td>{{ $linea->observaciones_especificaciones ?? '—' }}</td>
-                    <td>
-                        {{-- Se escanea en Recepción para ir a esta línea; luego se escanea el número de serie del equipo. --}}
-                        <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->codigoLinea($loop->iteration), 1, 40) }}" alt="{{ $solicitud->codigoLinea($loop->iteration) }}" style="width: 150px; height: 26px;">
-                        <div style="font-size: 8px; color: #6b7280;">{{ $solicitud->codigoLinea($loop->iteration) }}</div>
+                </tr>
+                <tr>
+                    <td colspan="6" style="padding: 2px 4px 8px; border-bottom: 1px solid #e5e7eb;">
+                        {{-- Se escanea en Recepción para ir a esta línea; luego se escanea el número de serie de cada equipo. --}}
+                        <img src="{{ \Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->codigoLinea($loop->iteration), 2, 36) }}" alt="{{ $solicitud->codigoLinea($loop->iteration) }}" style="width: 150px; height: 28px;">
+                        <span style="font-size: 8px; color: #6b7280;">Línea {{ $loop->iteration }} &middot; {{ $solicitud->codigoLinea($loop->iteration) }}</span>
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7">Sin líneas registradas.</td>
+                    <td colspan="6">Sin líneas registradas.</td>
                 </tr>
             @endforelse
         </tbody>

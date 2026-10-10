@@ -122,6 +122,9 @@ class Recepciones extends Component
      */
     public ?int $lineaActiva = null;
 
+    /** Línea (n de `{folio}-Ln`) escaneada antes de elegir al técnico: se activa en cuanto se elige. */
+    public ?int $ordinalPendiente = null;
+
     /**
      * Ubicación de inventario donde quedan los equipos recibidos: una de las
      * que el lugar de entrega agrupa (Catálogos Núcleo → Ubicaciones). Si el
@@ -310,7 +313,9 @@ class Recepciones extends Component
         }
 
         if ($partes = SolicitudProveedor::parsearCodigoLinea($codigo)) {
-            $solicitud = SolicitudProveedor::where('folio', $partes[0])->first();
+            $solicitud = is_int($partes[0])
+                ? SolicitudProveedor::find($partes[0])
+                : SolicitudProveedor::where('folio', $partes[0])->first();
 
             if ($solicitud) {
                 $this->activarLinea($solicitud, $partes[1]);
@@ -344,10 +349,60 @@ class Recepciones extends Component
             $this->search = '';
         }
 
+        $this->ordinalPendiente = null;
+
         $indice = collect($this->lineas)->search(fn ($linea) => (int) ($linea['ordinal'] ?? 0) === $ordinal);
 
         if ($indice === false) {
-            session()->flash('error', "La solicitud {$solicitud->folio} no tiene la línea {$ordinal} pendiente de recibir.");
+            session()->flash('error', "La solicitud {$solicitud->folio} no tiene la línea {$ordinal}"
+                .($this->admiteRecepcion($solicitud) ? '.' : ' disponible: ya no admite recepciones (estatus: '.$solicitud->estatus.').'));
+
+            return;
+        }
+
+        $linea = $this->lineas[$indice];
+
+        if ((int) $linea['cantidad_pendiente'] <= 0) {
+            session()->flash('error', "La línea {$ordinal} ya se recibió completa.");
+
+            return;
+        }
+
+        if (empty($linea['lugar_entrega_id'])) {
+            session()->flash('error', "La línea {$ordinal} no tiene lugar de entrega: no se puede recibir hasta capturarlo en la solicitud.");
+
+            return;
+        }
+
+        // Sin técnico no se sabe qué sitio puede recibir: se deja pendiente la
+        // línea y se activa sola cuando el administrador elija al técnico.
+        $validador = $this->validadorActual();
+
+        if ($validador === null) {
+            if ($this->esAdministrador()) {
+                $this->ordinalPendiente = $ordinal;
+                session()->flash('error', "Elige primero el técnico que recibió (campo \"Recibido por\"): al elegirlo se activa la línea {$ordinal}.");
+            } else {
+                session()->flash('error', 'Tu usuario no está dado de alta como técnico receptor: pide que lo vinculen en Catálogos de Inventario → Validador.');
+            }
+
+            return;
+        }
+
+        if (! $this->puedeRecibirEnLugar($validador, (int) $linea['lugar_entrega_id'])) {
+            session()->flash('error', "La línea {$ordinal} se entrega en {$linea['lugar_nombre']} y tu sede es {$validador->lugarEntrega?->nombre}: la recibe el técnico de ese sitio.");
+
+            return;
+        }
+
+        // Un técnico sin sede elige el sitio: escanear una línea ya lo define.
+        if ($this->lugarRecepcionId === null) {
+            $this->lugarRecepcionId = (int) $linea['lugar_entrega_id'];
+            $this->aplicarLugarRecepcion();
+            $this->resolverUbicacionPorDefecto();
+        } elseif ($this->lugarRecepcionId !== (int) $linea['lugar_entrega_id']) {
+            $actual = LugarEntrega::find($this->lugarRecepcionId)?->nombre;
+            session()->flash('error', "Estás recibiendo el sitio {$actual} y la línea {$ordinal} se entrega en {$linea['lugar_nombre']}: se recibe en otra recepción (guarda esta o cambia el sitio).");
 
             return;
         }
@@ -355,9 +410,7 @@ class Recepciones extends Component
         $linea = $this->lineas[$indice];
 
         if (! ($linea['recibible'] ?? false)) {
-            session()->flash('error', empty($linea['lugar_entrega_id'])
-                ? "La línea {$ordinal} no tiene lugar de entrega: no se puede recibir hasta capturarlo en la solicitud."
-                : "La línea {$ordinal} no se puede recibir en esta recepción: se entrega en {$linea['lugar_nombre']} o ya está completa.");
+            session()->flash('error', "La línea {$ordinal} no se puede recibir en esta recepción.");
 
             return;
         }
@@ -477,6 +530,14 @@ class Recepciones extends Component
             $this->resolverLugarPorDefecto();
             $this->aplicarLugarRecepcion();
             $this->resolverUbicacionPorDefecto();
+
+            if ($this->ordinalPendiente !== null && $this->selectedSolicitudId) {
+                $solicitud = SolicitudProveedor::find($this->selectedSolicitudId);
+
+                if ($solicitud) {
+                    $this->activarLinea($solicitud, $this->ordinalPendiente);
+                }
+            }
 
             return;
         }
@@ -751,6 +812,7 @@ class Recepciones extends Component
         $this->lugarRecepcionId = null;
         $this->ubicacionDestinoId = null;
         $this->lineaActiva = null;
+        $this->ordinalPendiente = null;
         // Administrador: arranca como él mismo si es técnico; si no, debe elegir al técnico.
         $this->tecnicoRecibeId = $this->esAdministrador()
             ? Validador::where('activo', true)->where('user_id', auth()->id())->value('id')
@@ -780,6 +842,7 @@ class Recepciones extends Component
         $this->lugarRecepcionId = null;
         $this->ubicacionDestinoId = null;
         $this->lineaActiva = null;
+        $this->ordinalPendiente = null;
         $this->tecnicoRecibeId = null;
         $this->validadorResuelto = false;
         $this->documentoRemision = null;
@@ -1612,10 +1675,13 @@ class Recepciones extends Component
             'validadorActual' => $this->validadorActual(),
             'esAdministrador' => $this->esAdministrador(),
             'ubicacionesDestino' => $this->ubicacionesDelLugar(),
-            // Técnicos por los que un administrador puede capturar: los ya configurados (con usuario o con sede).
+            // Técnicos por los que un administrador puede capturar: todos los del
+            // catálogo que están activos (quien recibió puede no tener usuario),
+            // sin los registros de relleno como "No aplica".
             'tecnicosOptions' => $this->esAdministrador()
                 ? Validador::with('lugarEntrega')->where('activo', true)
-                    ->where(fn ($q) => $q->whereNotNull('user_id')->orWhereNotNull('lugar_entrega_id'))
+                    ->whereRaw('TRIM(nombre) <> ?', [''])
+                    ->whereRaw('LOWER(TRIM(nombre)) <> ?', ['no aplica'])
                     ->orderBy('nombre')->get()
                 : collect(),
             'puedeRecibir' => $this->admiteRecepcion($solicitudSeleccionada) && $this->validadorActual() !== null,

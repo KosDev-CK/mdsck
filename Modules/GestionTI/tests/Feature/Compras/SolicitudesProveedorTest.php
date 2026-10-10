@@ -1131,18 +1131,25 @@ class SolicitudesProveedorTest extends TestCase
 
         $this->assertStringContainsString($qr, $html);
         foreach ([1, 2] as $n) {
-            $this->assertStringContainsString(\Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri("SP-261002-001-L{$n}", 1, 40), $html);
-            $this->assertStringContainsString("SP-261002-001-L{$n}", $html);
+            $this->assertStringContainsString(\Modules\GestionTI\Support\Codigos\CodigoDeBarras::dataUri($solicitud->codigoLinea($n), 2, 36), $html);
+            $this->assertStringContainsString($solicitud->codigoLinea($n), $html);
         }
     }
 
-    public function test_line_codes_are_built_and_parsed_back(): void
+    public function test_line_codes_are_short_and_parsed_back_in_both_formats(): void
     {
         $solicitud = new SolicitudProveedor(['folio' => 'SP-261002-001']);
+        $solicitud->id = 57;
 
-        $this->assertSame('SP-261002-001-L3', $solicitud->codigoLinea(3));
+        // Formato actual: corto, para que las barras impresas sean gruesas y las pistolas lo lean.
+        $this->assertSame('L57-3', $solicitud->codigoLinea(3));
+        $this->assertSame([57, 3], SolicitudProveedor::parsearCodigoLinea('L57-3'));
+        $this->assertSame([57, 12], SolicitudProveedor::parsearCodigoLinea(' l57-12 '));
+
+        // Formato anterior (PDFs ya impresos).
         $this->assertSame(['SP-261002-001', 3], SolicitudProveedor::parsearCodigoLinea('SP-261002-001-L3'));
         $this->assertSame(12, SolicitudProveedor::parsearCodigoLinea(' sp-261002-001-l12 ')[1]);
+
         $this->assertNull(SolicitudProveedor::parsearCodigoLinea('SP-261002-001'));
         $this->assertNull(SolicitudProveedor::parsearCodigoLinea('4PHPM21B23000056'));
     }

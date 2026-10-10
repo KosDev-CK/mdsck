@@ -56,28 +56,39 @@ class SolicitudProveedor extends Model
     }
 
     /**
-     * Código que se imprime (código de barras) junto a cada línea en el PDF:
-     * `{folio}-L{n}`, donde n es la posición de la línea (1, 2, 3...) por id.
-     * Recepción de Proveedor lo escanea para ir a esa línea.
+     * Código de barras que se imprime en el PDF junto a cada línea: `L{id}-{n}`
+     * (id de la solicitud y n = posición de la línea, 1, 2, 3..., por id). Es
+     * CORTO a propósito: un código largo (el folio completo) obliga a barras
+     * muy finas al imprimirlo y las pistolas lo leen mal. Recepción de
+     * Proveedor lo escanea para ir a esa línea.
      */
     public function codigoLinea(int $ordinal): string
     {
-        return "{$this->folio}-L{$ordinal}";
+        return "L{$this->id}-{$ordinal}";
     }
 
     /**
-     * Separa un código escaneado `{folio}-L{n}` en [folio, n]; `null` si no
-     * tiene esa forma.
+     * Interpreta un código de línea escaneado. Devuelve `[id|folio, n]`: el
+     * primer elemento es el id de la solicitud (int) para el formato actual
+     * `L{id}-{n}`, o el folio (string) para el formato anterior
+     * `{folio}-L{n}` (PDFs ya impresos); `null` si no tiene ninguna de las dos
+     * formas.
      *
-     * @return array{0: string, 1: int}|null
+     * @return array{0: int|string, 1: int}|null
      */
     public static function parsearCodigoLinea(string $codigo): ?array
     {
-        if (preg_match('/^(.+)-L(\d+)$/i', trim($codigo), $m) !== 1) {
-            return null;
+        $codigo = trim($codigo);
+
+        if (preg_match('/^L(\d+)-(\d+)$/i', $codigo, $m) === 1) {
+            return [(int) $m[1], (int) $m[2]];
         }
 
-        return [$m[1], (int) $m[2]];
+        if (preg_match('/^(.+)-L(\d+)$/i', $codigo, $m) === 1) {
+            return [$m[1], (int) $m[2]];
+        }
+
+        return null;
     }
 
     public function vendor()

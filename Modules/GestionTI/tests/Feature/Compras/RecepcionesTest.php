@@ -877,6 +877,40 @@ class RecepcionesTest extends TestCase
         $this->assertSame($ceda->id, $recepcion->lugar_entrega_id);
     }
 
+    public function test_the_administrator_technician_list_has_every_active_technician_except_filler_records(): void
+    {
+        $this->actingAs($this->administradorSinValidador());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        $sinUsuario = Validador::create(['nombre' => 'Técnico sin usuario']);
+        Validador::create(['nombre' => 'No aplica']);
+        Validador::create(['nombre' => ' ']);
+        Validador::create(['nombre' => 'Técnico inactivo', 'activo' => false]);
+
+        $nombres = Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->viewData('tecnicosOptions')->pluck('nombre')->all();
+
+        $this->assertContains('Técnico sin usuario', $nombres);
+        $this->assertNotContains('No aplica', $nombres);
+        $this->assertNotContains(' ', $nombres);
+        $this->assertNotContains('Técnico inactivo', $nombres);
+    }
+
+    public function test_an_administrator_who_is_also_a_technician_starts_as_himself(): void
+    {
+        $user = $this->actingUser();
+        $user->assignRole(Role::findOrCreate('Administrador', 'web'));
+        $this->actingAs($user);
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable();
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->assertSet('tecnicoRecibeId', $this->validador()->id);
+    }
+
     public function test_an_administrator_must_pick_the_technician_before_saving(): void
     {
         $this->actingAs($this->administradorSinValidador());
@@ -1052,6 +1086,93 @@ class RecepcionesTest extends TestCase
             ->call('escanear', 'SP-ESC-005-L1')
             ->assertSet('lineaActiva', null)
             ->assertSee('se entrega en CEDA');
+    }
+
+    /** Solicitud de 2 líneas en sitios distintos (Zurich y CEDA) con ubicación en ambos. */
+    private function solicitudEnDosSitios(string $folio): SolicitudProveedor
+    {
+        $ceda = $this->lugar('CEDA');
+        Ubicacion::create(['nombre' => 'CEDA bodega', 'lugar_entrega_id' => $ceda->id]);
+
+        $solicitud = $this->solicitudConLineaInventariable(['folio' => $folio]); // línea 1: Zurich
+        $solicitud->lineas()->create([
+            'descripcion_libre' => 'Cable HDMI',
+            'cantidad_solicitada' => 3,
+            'cantidad_recibida' => 0,
+            'es_activo_inventariable' => false,
+            'lugar_entrega_id' => $ceda->id,
+        ]);
+
+        return $solicitud;
+    }
+
+    public function test_scanning_a_line_picks_the_site_for_a_technician_without_a_sede(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudEnDosSitios('SP-SITIO-001');
+        $ceda = $this->lugar('CEDA');
+
+        // Escanear la línea 2 (CEDA) define el sitio: no hay que elegirlo antes.
+        $component = Livewire::test(Recepciones::class)
+            ->call('escanear', 'SP-SITIO-001-L2')
+            ->assertSet('lugarRecepcionId', $ceda->id)
+            ->assertSet('lineaActiva', 1);
+
+        $this->assertTrue($component->get('lineas.1.recibible'));
+        $this->assertFalse($component->get('lineas.0.recibible'));
+
+        // Otra línea de un sitio distinto al que ya se está recibiendo: aviso claro.
+        $component
+            ->call('escanear', 'SP-SITIO-001-L1')
+            ->assertSet('lineaActiva', 1)
+            ->assertSee('Estás recibiendo el sitio CEDA')
+            ->assertSee('se entrega en Zurich');
+    }
+
+    public function test_an_administrator_who_scans_a_line_before_choosing_the_technician_gets_it_activated_afterwards(): void
+    {
+        $this->actingAs($this->administradorSinValidador());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudEnDosSitios('SP-SITIO-002');
+        $ceda = $this->lugar('CEDA');
+        $tecnico = Validador::create(['nombre' => 'Técnico CEDA', 'lugar_entrega_id' => $ceda->id]);
+
+        $component = Livewire::test(Recepciones::class)
+            ->call('escanear', 'SP-SITIO-002-L2')
+            ->assertSet('lineaActiva', null)
+            ->assertSee('Elige primero el técnico que recibió');
+
+        // Al elegir al técnico, la línea escaneada queda activa sola.
+        $component->set('tecnicoRecibeId', $tecnico->id)
+            ->assertSet('lineaActiva', 1)
+            ->assertSet('ordinalPendiente', null);
+    }
+
+    public function test_scanning_a_line_already_received_completely_says_so(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable(['folio' => 'SP-SITIO-003'], ['cantidad_solicitada' => 2, 'cantidad_recibida' => 2]);
+        $solicitud->lineas()->create(['descripcion_libre' => 'Otra', 'cantidad_solicitada' => 1, 'cantidad_recibida' => 0, 'es_activo_inventariable' => false]);
+
+        Livewire::test(Recepciones::class)
+            ->call('escanear', 'SP-SITIO-003-L1')
+            ->assertSet('lineaActiva', null)
+            ->assertSee('ya se recibió completa');
+    }
+
+    public function test_scanning_the_short_line_code_printed_in_the_pdf_activates_the_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $solicitud = $this->solicitudConLineaInventariable(['folio' => 'SP-CORTO-001']);
+
+        Livewire::test(Recepciones::class)
+            ->call('escanear', $solicitud->codigoLinea(1))   // L{id}-1
+            ->assertSet('showModal', true)
+            ->assertSet('selectedSolicitudId', $solicitud->id)
+            ->assertSet('lineaActiva', 0);
     }
 
     public function test_scanning_an_unknown_line_number_shows_an_error(): void
