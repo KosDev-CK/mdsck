@@ -156,7 +156,13 @@ class GestionTIServiceProvider extends ModuleServiceProvider
         // el registro base que aprobadas completa). Mismo horario (01:00)
         // por instrucción explícita — el scheduler de Laravel las ejecuta
         // en el orden en que se registran para el mismo tick.
-        $schedule->command('gestionti:ebs-sincronizar-creadas')->dailyAt('01:00');
-        $schedule->command('gestionti:ebs-sincronizar-aprobadas')->dailyAt('01:00');
+        // 04:00 y no 01:00: a la 01:00 EBS a veces aún no tiene listo el día
+        // anterior y responde errorCode=10 (visto en producción 2026-10-13).
+        $schedule->command('gestionti:ebs-sincronizar-creadas')->dailyAt('04:00');
+        $schedule->command('gestionti:ebs-sincronizar-aprobadas')->dailyAt('04:00');
+
+        // Red de seguridad: reintenta solo los días que quedaron en
+        // EbsSyncFailure, sin depender de correrlo a mano.
+        $schedule->command('gestionti:ebs-reintentar-fallidos')->dailyAt('07:00');
     }
 }
