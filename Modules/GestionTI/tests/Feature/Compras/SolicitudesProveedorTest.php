@@ -1136,6 +1136,44 @@ class SolicitudesProveedorTest extends TestCase
         }
     }
 
+    public function test_the_pdf_has_one_sheet_per_delivery_site_keeps_line_numbers_and_numbers_the_pages(): void
+    {
+        $zurich = LugarEntrega::create(['nombre' => 'Zurich']);
+        $ceda = LugarEntrega::create(['nombre' => 'CEDA']);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-261013-001',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-10-13',
+            'tipo_solicitud' => 'regular',
+        ]);
+        // Capturadas intercaladas: 1 Zurich, 2 CEDA, 3 Zurich.
+        $solicitud->lineas()->create(['descripcion_libre' => 'Laptop uno', 'cantidad_solicitada' => 1, 'lugar_entrega_id' => $zurich->id]);
+        $solicitud->lineas()->create(['descripcion_libre' => 'Monitor dos', 'cantidad_solicitada' => 1, 'lugar_entrega_id' => $ceda->id]);
+        $solicitud->lineas()->create(['descripcion_libre' => 'Teclado tres', 'cantidad_solicitada' => 1, 'lugar_entrega_id' => $zurich->id]);
+
+        $html = view('gestionti::pdf.solicitud-proveedor', ['solicitud' => $solicitud->load(['vendor', 'lineas.lugarEntrega'])])->render();
+
+        // CEDA va primero (orden alfabético) y Zurich después, cada uno en su hoja.
+        $this->assertStringContainsString('Entrega en: CEDA', $html);
+        $this->assertStringContainsString('Entrega en: Zurich', $html);
+        $this->assertLessThan(strpos($html, 'Entrega en: Zurich'), strpos($html, 'Entrega en: CEDA'));
+        $this->assertStringContainsString('Hoja 2 de 2 lugares de entrega', $html);
+        $this->assertSame(1, substr_count($html, 'page-break-before: always'));
+
+        // Cada línea conserva su número (el del código de barras) aunque se reordene.
+        $this->assertLessThan(strpos($html, 'Línea 1 &middot;'), strpos($html, 'Línea 2 &middot;'));
+        $this->assertStringContainsString($solicitud->codigoLinea(3), $html);
+
+        // El PDF real queda en 2 hojas, numeradas.
+        $pdf = \Modules\GestionTI\Support\Pdf\SolicitudProveedorPdf::generar($solicitud)->output();
+        $this->assertSame(2, preg_match_all('/\/Type \/Page\b/', $pdf));
+        preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $streams);
+        $texto = implode('', array_map(fn ($s) => (string) @gzuncompress($s), $streams[1]));
+        $this->assertStringContainsString('de 2)', $texto);
+        $this->assertStringContainsString('Solicitud a Proveedor SP-261013-001', $texto);
+    }
+
     public function test_line_codes_are_short_and_parsed_back_in_both_formats(): void
     {
         $solicitud = new SolicitudProveedor(['folio' => 'SP-261002-001']);

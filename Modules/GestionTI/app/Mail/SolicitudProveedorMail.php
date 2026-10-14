@@ -2,12 +2,12 @@
 
 namespace Modules\GestionTI\Mail;
 
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Attachment;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Support\Pdf\SolicitudProveedorPdf;
 
 /**
  * Envío/reenvío al proveedor de una Solicitud a Proveedor (ver
@@ -54,9 +54,7 @@ class SolicitudProveedorMail extends Mailable
     {
         return [
             Attachment::fromData(
-                fn () => Pdf::loadView('gestionti::pdf.solicitud-proveedor', [
-                    'solicitud' => $this->solicitud,
-                ])->output(),
+                fn () => SolicitudProveedorPdf::generar($this->solicitud)->output(),
                 "solicitud-proveedor-{$this->solicitud->folio}.pdf"
             )->withMime('application/pdf'),
         ];

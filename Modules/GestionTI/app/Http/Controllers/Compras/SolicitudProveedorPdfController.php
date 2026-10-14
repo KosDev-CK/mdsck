@@ -2,9 +2,9 @@
 
 namespace Modules\GestionTI\Http\Controllers\Compras;
 
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Routing\Controller;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Support\Pdf\SolicitudProveedorPdf;
 
 /**
  * PDF de la Solicitud a Proveedor (punto 13 del rediseño, ver
@@ -22,8 +22,6 @@ class SolicitudProveedorPdfController extends Controller
     {
         $solicitudProveedor->load(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition', 'lineas.lugarEntrega']);
 
-        return Pdf::loadView('gestionti::pdf.solicitud-proveedor', [
-            'solicitud' => $solicitudProveedor,
-        ])->download("solicitud-proveedor-{$solicitudProveedor->folio}.pdf");
+        return SolicitudProveedorPdf::generar($solicitudProveedor)->download("solicitud-proveedor-{$solicitudProveedor->folio}.pdf");
     }
 }
