@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\MesaServicio\Http\Controllers\Ayuda\AyudaPdfController;
+use Modules\MesaServicio\Http\Controllers\Catalogos\CatalogosSdpExportController;
 use Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp;
 use Modules\MesaServicio\Livewire\Catalogos\Destinatarios;
 use Modules\MesaServicio\Livewire\Catalogos\GruposAnaliticos;
@@ -46,6 +47,10 @@ Route::middleware(['auth', 'permission:screens.mesaservicio-slas.manage'])
 Route::middleware(['auth', 'permission:screens.mesaservicio-catalogos-sdp.manage'])
     ->get('/mesa-servicio/catalogos-sdp', CatalogosSdp::class)
     ->name('mesaservicio.catalogos-sdp.index');
+
+Route::middleware(['auth', 'permission:screens.mesaservicio-catalogos-sdp.manage'])
+    ->get('/mesa-servicio/catalogos-sdp/exportar', CatalogosSdpExportController::class)
+    ->name('mesaservicio.catalogos-sdp.export');
 
 Route::middleware(['auth', 'permission:screens.mesaservicio-grupos-analiticos.manage'])
     ->get('/mesa-servicio/grupos-analiticos', GruposAnaliticos::class)

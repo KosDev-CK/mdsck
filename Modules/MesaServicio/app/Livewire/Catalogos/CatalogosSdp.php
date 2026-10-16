@@ -5,6 +5,7 @@ namespace Modules\MesaServicio\Livewire\Catalogos;
 use Illuminate\Support\Facades\Artisan;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
+use Livewire\WithPagination;
 use Modules\MesaServicio\Models\SdpCatalogEntry;
 
 /**
@@ -23,6 +24,10 @@ use Modules\MesaServicio\Models\SdpCatalogEntry;
 #[Layout('layouts.app')]
 class CatalogosSdp extends Component
 {
+    use WithPagination;
+
+    private const POR_PAGINA = 25;
+
     public string $tabActiva = 'categories';
 
     public bool $sincronizando = false;
@@ -67,6 +72,7 @@ class CatalogosSdp extends Component
     {
         if (in_array($catalogo, SdpCatalogEntry::todos(), true)) {
             $this->tabActiva = $catalogo;
+            $this->resetPage();
         }
     }
 
@@ -97,7 +103,7 @@ class CatalogosSdp extends Component
         return view('mesaservicio::livewire.catalogos.catalogos-sdp', [
             'etiquetas' => self::etiquetas(),
             'esJerarquico' => in_array($this->tabActiva, SdpCatalogEntry::CATALOGOS_JERARQUICOS, true),
-            'entradas' => SdpCatalogEntry::delCatalogo($this->tabActiva)->orderBy('nombre')->get(),
+            'entradas' => SdpCatalogEntry::delCatalogo($this->tabActiva)->orderBy('nombre')->orderBy('id')->paginate(self::POR_PAGINA),
         ]);
     }
 }

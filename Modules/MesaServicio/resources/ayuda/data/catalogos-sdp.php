@@ -7,6 +7,7 @@ return [
     'proceso' => [
         'Elige una pestaña para ver el catálogo correspondiente.',
         'Da clic en "Sincronizar catálogos" para traer la versión más reciente de los 12 catálogos planos desde ServiceDesk Plus — puede tardar unos segundos.',
+        'Da clic en "Exportar a Excel" para descargar el catálogo de la pestaña activa en un archivo .xlsx (incluye el ID de SDP; subcategorías y artículos traen categoría y subcategoría en columnas separadas).',
         'Subcategorías y Artículos se sincronizan desde consola (php artisan sdp:sync-catalogos subcategories, luego items), porque SDP los entrega anidados y toma más de un minuto.',
     ],
     'campos' => [

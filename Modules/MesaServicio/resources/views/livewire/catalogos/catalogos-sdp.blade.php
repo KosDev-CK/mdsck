@@ -25,16 +25,22 @@
             </p>
         </div>
 
-        <x-ui.button
-            variant="secondary"
-            size="sm"
-            wire:click="sincronizar"
-            wire:loading.attr="disabled"
-            wire:target="sincronizar"
-        >
-            <span wire:loading.remove wire:target="sincronizar">Sincronizar catálogos</span>
-            <span wire:loading wire:target="sincronizar">Sincronizando…</span>
-        </x-ui.button>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('mesaservicio.catalogos-sdp.export', ['tab' => $tabActiva]) }}">
+                <x-ui.button type="button" variant="secondary" size="sm">Exportar a Excel{{ $entradas->total() > 0 ? ' ('.$entradas->total().')' : '' }}</x-ui.button>
+            </a>
+
+            <x-ui.button
+                variant="secondary"
+                size="sm"
+                wire:click="sincronizar"
+                wire:loading.attr="disabled"
+                wire:target="sincronizar"
+            >
+                <span wire:loading.remove wire:target="sincronizar">Sincronizar catálogos</span>
+                <span wire:loading wire:target="sincronizar">Sincronizando…</span>
+            </x-ui.button>
+        </div>
     </div>
 
     <x-ui.card padding="p-5">
@@ -94,6 +100,8 @@
                 </tr>
             @endforeach
         </x-ui.table>
+
+        <div class="mt-4">{{ $entradas->links() }}</div>
     </x-ui.card>
 
     <x-ui.help-modal titulo="Catálogos SDP" :pdf-url="route('mesaservicio.ayuda.pdf', 'catalogos-sdp')">

@@ -142,6 +142,36 @@ class CatalogosSdpTest extends TestCase
         $this->assertDatabaseHas('sdp_catalog_entries', ['catalogo' => 'categories', 'sdp_id' => 'cat-1']);
     }
 
+    public function test_it_paginates_the_active_tab_and_resets_the_page_when_switching(): void
+    {
+        foreach (range(1, 30) as $n) {
+            SdpCatalogEntry::create(['catalogo' => 'items', 'sdp_id' => "i{$n}", 'nombre' => sprintf('Artículo %02d', $n), 'activo' => true]);
+        }
+        SdpCatalogEntry::create(['catalogo' => 'modes', 'sdp_id' => 'm1', 'nombre' => 'E-Mail', 'activo' => true]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(CatalogosSdp::class)
+            ->call('setTab', 'items')
+            ->assertSee('Artículo 25')
+            ->assertDontSee('Artículo 26')
+            ->call('gotoPage', 2)
+            ->assertSee('Artículo 26')
+            ->assertDontSee('Artículo 01')
+            ->call('setTab', 'modes')
+            ->assertSee('E-Mail');
+    }
+
+    public function test_export_button_points_to_the_active_tab(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(CatalogosSdp::class)
+            ->call('setTab', 'items')
+            ->assertSee(route('mesaservicio.catalogos-sdp.export', ['tab' => 'items']), escape: false)
+            ->assertSee('Exportar a Excel');
+    }
+
     public function test_it_shows_the_help_button_with_its_pdf_route(): void
     {
         $this->actingAs($this->actingUser());
