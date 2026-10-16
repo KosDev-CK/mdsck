@@ -91,6 +91,14 @@ class EbsRequisitionsClient
             return [];
         }
 
+        // `requisition_header_approved`: misma respuesta cuando ese día no se
+        // aprobó ninguna SIC. Confirmado contra producción (2026-10-16): los
+        // días que fallaron con este código (fines de semana y feriados) no
+        // tienen ninguna aprobación guardada (`approver_date`).
+        if ($method === self::METHOD_APROBADAS && $errorCode === 10 && empty($payload['payload'])) {
+            return [];
+        }
+
         if ($errorCode !== 0) {
             $errorMsg = $payload['status']['errorMsg'] ?? 'desconocido';
 
