@@ -68,32 +68,49 @@
         @endif
 
         <x-ui.table
-            :headers="$esJerarquico ? ['Nombre', 'Pertenece a', 'Descripción', 'Activo'] : ['Nombre', 'Descripción', 'Color', 'Activo']"
+            :headers="$esSla
+                ? ['Nombre', 'Primera respuesta', 'Resolución', 'Criterios', 'Calendario', 'Activo']
+                : ($esJerarquico ? ['Nombre', 'Pertenece a', 'Descripción', 'Activo'] : ['Nombre', 'Descripción', 'Color', 'Activo'])"
             :empty="$entradas->isEmpty()"
             empty-title="Sin registros sincronizados todavía"
             empty-description='Da clic en "Sincronizar catálogos" para traer los datos desde ServiceDesk Plus.'
         >
             @foreach ($entradas as $entrada)
-                <tr wire:key="entrada-{{ $entrada->id }}" class="border-b border-gray-50 dark:border-gray-800">
-                    <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $entrada->nombre }}</td>
-                    @if ($esJerarquico)
-                        <td class="py-2 text-gray-500 dark:text-gray-400">
-                            {{ collect([$entrada->extra['category_nombre'] ?? null, $entrada->extra['subcategory_nombre'] ?? null])->filter()->implode(' › ') ?: '—' }}
-                        </td>
-                    @endif
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $entrada->descripcion ?? '—' }}</td>
-                    @unless ($esJerarquico)
-                    <td class="py-2">
-                        @if ($entrada->color)
-                            <span class="inline-flex items-center gap-2">
-                                <span class="inline-block w-3 h-3 rounded-full border border-gray-200 dark:border-gray-700" style="background-color: {{ $entrada->color }};"></span>
-                                <span class="text-xs text-gray-500 dark:text-gray-400">{{ $entrada->color }}</span>
-                            </span>
-                        @else
-                            <span class="text-gray-400 dark:text-gray-500">—</span>
+                <tr wire:key="entrada-{{ $entrada->id }}" class="border-b border-gray-50 dark:border-gray-800 align-top">
+                    <td class="py-2 font-medium text-gray-900 dark:text-gray-100">
+                        {{ $entrada->nombre }}
+                        @if ($esSla && $entrada->descripcion)
+                            <div class="text-xs font-normal text-gray-500 dark:text-gray-400">{{ $entrada->descripcion }}</div>
                         @endif
                     </td>
-                    @endunless
+                    @if ($esSla)
+                        @php($extra = $entrada->extra ?? [])
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ \Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp::duracion($extra['respuesta_minutos'] ?? null) }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ \Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp::duracion($extra['resolucion_minutos'] ?? null) }}</td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $extra['criterios_texto'] ?? 'Todas las solicitudes' }}</td>
+                        <td class="py-2 text-xs text-gray-500 dark:text-gray-400">
+                            {{ \Modules\MesaServicio\Livewire\Catalogos\CatalogosSdp::calendario($extra) }}
+                        </td>
+                    @else
+                        @if ($esJerarquico)
+                            <td class="py-2 text-gray-500 dark:text-gray-400">
+                                {{ collect([$entrada->extra['category_nombre'] ?? null, $entrada->extra['subcategory_nombre'] ?? null])->filter()->implode(' › ') ?: '—' }}
+                            </td>
+                        @endif
+                        <td class="py-2 text-gray-500 dark:text-gray-400">{{ $entrada->descripcion ?? '—' }}</td>
+                        @unless ($esJerarquico)
+                            <td class="py-2">
+                                @if ($entrada->color)
+                                    <span class="inline-flex items-center gap-2">
+                                        <span class="inline-block w-3 h-3 rounded-full border border-gray-200 dark:border-gray-700" style="background-color: {{ $entrada->color }};"></span>
+                                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ $entrada->color }}</span>
+                                    </span>
+                                @else
+                                    <span class="text-gray-400 dark:text-gray-500">—</span>
+                                @endif
+                            </td>
+                        @endunless
+                    @endif
                     <td class="py-2">
                         <x-ui.badge :color="$entrada->activo ? 'emerald' : 'gray'">{{ $entrada->activo ? 'Activo' : 'Inactivo' }}</x-ui.badge>
                     </td>

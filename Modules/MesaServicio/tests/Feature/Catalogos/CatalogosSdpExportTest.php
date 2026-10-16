@@ -129,6 +129,28 @@ class CatalogosSdpExportTest extends TestCase
         $this->assertSame(['Alta', 'Alto', 'Urgente', '#ff0000'], $hoja[1]);
     }
 
+    public function test_sla_export_has_minutes_criteria_and_calendar_columns(): void
+    {
+        SdpCatalogEntry::create([
+            'catalogo' => 'slas', 'sdp_id' => 'sla-1', 'nombre' => 'High SLA', 'activo' => false,
+            'extra' => [
+                'sitio' => 'Base Site', 'orden' => 1, 'es_servicio' => false,
+                'respuesta_minutos' => null, 'resolucion_minutos' => 60,
+                'criterios_texto' => 'Prioridad es Alta', 'ignora_fines_de_semana' => true,
+            ],
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        $hoja = $this->descargar('slas');
+
+        $this->assertSame('Primera respuesta (min)', $hoja[0][6]);
+        $this->assertSame(
+            ['sla-1', 'High SLA', null, 'Base Site', '1', 'No', null, '60', 'Prioridad es Alta', 'Sí', 'No', 'No', 'Inactivo'],
+            $hoja[1]
+        );
+    }
+
     public function test_export_includes_every_record_of_the_tab_not_just_one_page(): void
     {
         foreach (range(1, 60) as $n) {

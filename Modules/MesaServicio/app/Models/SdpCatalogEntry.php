@@ -31,6 +31,7 @@ class SdpCatalogEntry extends Model
         'worklog_types',
         'closure_codes',
         'downtime_types',
+        'slas',
     ];
 
     /**

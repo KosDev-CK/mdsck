@@ -78,14 +78,70 @@ class SyncCatalogosCommandTest extends TestCase
         Http::fake($fakes);
     }
 
-    public function test_it_syncs_all_14_catalogs_when_no_argument_is_given(): void
+    public function test_it_syncs_all_15_catalogs_when_no_argument_is_given(): void
     {
         $this->fakeAllCatalogs();
 
         $this->artisan('sdp:sync-catalogos')->assertSuccessful();
 
-        $this->assertSame(14, SdpCatalogEntry::query()->select('catalogo')->distinct()->count());
-        $this->assertSame(14, SdpCatalogEntry::count());
+        $this->assertSame(15, SdpCatalogEntry::query()->select('catalogo')->distinct()->count());
+        $this->assertSame(15, SdpCatalogEntry::count());
+    }
+
+    public function test_it_syncs_sla_rules_normalizing_times_flags_and_the_criteria_tree(): void
+    {
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/slas*' => Http::response([
+                'slas' => [
+                    [
+                        'id' => 'sla-1',
+                        'name' => 'ABC USUARIO ORA/ LI MEDIA',
+                        'description' => 'SLA para el ABC de Usuarios',
+                        'inactive' => false,
+                        'order' => '5',
+                        'is_service_sla' => false,
+                        'site' => ['id' => 's1', 'name' => 'Base Site'],
+                        'is_first_response_enabled' => true,
+                        'fr_due_by_days' => '0', 'fr_due_by_hours' => '1', 'fr_due_by_minutes' => '30',
+                        'resolution_due_by_days' => '1', 'resolution_due_by_hours' => '2', 'resolution_due_by_minutes' => '0',
+                        'ignore_weekends' => true, 'ignore_holidays' => false, 'ignore_operational_hours' => false,
+                        'criteria' => [
+                            'condition' => 'is', 'field' => 'category',
+                            'values' => [['id' => 'c1', 'name' => 'Oracle'], ['id' => 'c2', 'name' => 'Libra']],
+                            'children' => [
+                                ['condition' => 'is', 'field' => 'priority', 'logical_operator' => 'AND', 'values' => [['id' => 'p1', 'name' => 'Media']]],
+                            ],
+                        ],
+                    ],
+                    [
+                        'id' => 'sla-2', 'name' => 'Apagado', 'description' => '', 'inactive' => true,
+                        'is_first_response_enabled' => false, 'criteria' => null,
+                        'resolution_due_by_hours' => '2',
+                    ],
+                ],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+        ]);
+
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'slas'])->assertSuccessful();
+
+        $sla = SdpCatalogEntry::delCatalogo('slas')->where('sdp_id', 'sla-1')->first();
+        $this->assertTrue($sla->activo);
+        $this->assertSame('SLA para el ABC de Usuarios', $sla->descripcion);
+        $this->assertSame(90, $sla->extra['respuesta_minutos']);
+        $this->assertSame(1560, $sla->extra['resolucion_minutos']);
+        $this->assertSame('Base Site', $sla->extra['sitio']);
+        $this->assertTrue($sla->extra['ignora_fines_de_semana']);
+        $this->assertFalse($sla->extra['ignora_feriados']);
+        $this->assertSame('Categoría es Oracle o Libra y Prioridad es Media', $sla->extra['criterios_texto']);
+
+        $apagado = SdpCatalogEntry::delCatalogo('slas')->where('sdp_id', 'sla-2')->first();
+        $this->assertFalse($apagado->activo);
+        $this->assertNull($apagado->descripcion);
+        $this->assertNull($apagado->extra['respuesta_minutos']);
+        $this->assertSame(120, $apagado->extra['resolucion_minutos']);
+        $this->assertNull($apagado->extra['criterios_texto']);
     }
 
     public function test_it_syncs_subcategories_under_each_local_category_keeping_the_parent_in_extra(): void

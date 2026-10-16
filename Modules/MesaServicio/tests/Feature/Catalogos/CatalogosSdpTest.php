@@ -53,7 +53,7 @@ class CatalogosSdpTest extends TestCase
             ->assertSet('tabActiva', SdpCatalogEntry::todos()[0]);
     }
 
-    public function test_it_renders_all_14_tabs(): void
+    public function test_it_renders_all_15_tabs(): void
     {
         $this->actingAs($this->actingUser());
 
@@ -160,6 +160,36 @@ class CatalogosSdpTest extends TestCase
             ->assertDontSee('Artículo 01')
             ->call('setTab', 'modes')
             ->assertSee('E-Mail');
+    }
+
+    public function test_slas_tab_shows_times_criteria_and_calendar(): void
+    {
+        SdpCatalogEntry::create([
+            'catalogo' => 'slas', 'sdp_id' => 'sla-1', 'nombre' => 'High SLA', 'descripcion' => 'Default SLA for priority High', 'activo' => true,
+            'extra' => [
+                'respuesta_minutos' => 0, 'resolucion_minutos' => 1560,
+                'criterios_texto' => 'Prioridad es Alta', 'ignora_fines_de_semana' => true, 'ignora_feriados' => true,
+            ],
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(CatalogosSdp::class)
+            ->call('setTab', 'slas')
+            ->assertSee('High SLA')
+            ->assertSee('Default SLA for priority High')
+            ->assertSee('1 d 2 h')
+            ->assertSee('Prioridad es Alta')
+            ->assertSee('Ignora fines de semana, feriados');
+    }
+
+    public function test_duracion_formats_minutes(): void
+    {
+        $this->assertSame('—', CatalogosSdp::duracion(null));
+        $this->assertSame('Sin límite', CatalogosSdp::duracion(0));
+        $this->assertSame('30 min', CatalogosSdp::duracion(30));
+        $this->assertSame('2 h', CatalogosSdp::duracion(120));
+        $this->assertSame('1 d 4 h 15 min', CatalogosSdp::duracion(1440 + 240 + 15));
     }
 
     public function test_export_button_points_to_the_active_tab(): void

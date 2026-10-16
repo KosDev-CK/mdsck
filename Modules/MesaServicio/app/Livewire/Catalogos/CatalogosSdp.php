@@ -56,7 +56,46 @@ class CatalogosSdp extends Component
             'worklog_types' => 'Tipos de bitácora de trabajo',
             'closure_codes' => 'Códigos de cierre',
             'downtime_types' => 'Tipos de tiempo de inactividad',
+            'slas' => 'SLAs',
         ];
+    }
+
+    /**
+     * Minutos -> texto corto ("30 min", "2 h", "1 d 4 h"); "—" si no aplica.
+     */
+    public static function duracion(?int $minutos): string
+    {
+        if ($minutos === null) {
+            return '—';
+        }
+
+        if ($minutos === 0) {
+            return 'Sin límite';
+        }
+
+        $partes = [];
+        foreach ([['d', 1440], ['h', 60], ['min', 1]] as [$unidad, $tamano]) {
+            if ($minutos >= $tamano) {
+                $partes[] = intdiv($minutos, $tamano).' '.$unidad;
+                $minutos %= $tamano;
+            }
+        }
+
+        return implode(' ', $partes);
+    }
+
+    /**
+     * Resumen de las 3 banderas "ignora ..." de una regla SLA de SDP.
+     */
+    public static function calendario(array $extra): string
+    {
+        $ignora = array_filter([
+            ! empty($extra['ignora_fines_de_semana']) ? 'fines de semana' : null,
+            ! empty($extra['ignora_feriados']) ? 'feriados' : null,
+            ! empty($extra['ignora_horario_operativo']) ? 'horario operativo' : null,
+        ]);
+
+        return $ignora === [] ? 'Cuenta todo el tiempo' : 'Ignora '.implode(', ', $ignora);
     }
 
     public function mount(): void
@@ -102,6 +141,7 @@ class CatalogosSdp extends Component
     {
         return view('mesaservicio::livewire.catalogos.catalogos-sdp', [
             'etiquetas' => self::etiquetas(),
+            'esSla' => $this->tabActiva === 'slas',
             'esJerarquico' => in_array($this->tabActiva, SdpCatalogEntry::CATALOGOS_JERARQUICOS, true),
             'entradas' => SdpCatalogEntry::delCatalogo($this->tabActiva)->orderBy('nombre')->orderBy('id')->paginate(self::POR_PAGINA),
         ]);

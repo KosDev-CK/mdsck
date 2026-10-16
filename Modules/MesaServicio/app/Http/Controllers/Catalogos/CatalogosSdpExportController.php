@@ -40,6 +40,19 @@ class CatalogosSdpExportController extends Controller
                 ['Urgencia', 'Impacto', 'Prioridad resultante', 'Color'],
                 $entradas->map(fn ($e) => [$e->extra['urgency']['name'] ?? '', $e->extra['impact']['name'] ?? '', $e->extra['priority']['name'] ?? '', $e->color]),
             ],
+            'slas' => [
+                ['ID SDP', 'Nombre', 'Descripción', 'Sitio', 'Orden', 'Aplica a servicios', 'Primera respuesta (min)', 'Resolución (min)', 'Criterios', 'Ignora fines de semana', 'Ignora feriados', 'Ignora horario operativo', 'Estatus'],
+                $entradas->map(fn ($e) => [
+                    $e->sdp_id, $e->nombre, $e->descripcion, $e->extra['sitio'] ?? '', $e->extra['orden'] ?? '',
+                    ! empty($e->extra['es_servicio']) ? 'Sí' : 'No',
+                    $e->extra['respuesta_minutos'] ?? '', $e->extra['resolucion_minutos'] ?? '',
+                    $e->extra['criterios_texto'] ?? 'Todas las solicitudes',
+                    ! empty($e->extra['ignora_fines_de_semana']) ? 'Sí' : 'No',
+                    ! empty($e->extra['ignora_feriados']) ? 'Sí' : 'No',
+                    ! empty($e->extra['ignora_horario_operativo']) ? 'Sí' : 'No',
+                    $estatus($e),
+                ]),
+            ],
             'closure_codes' => [
                 ['ID SDP', 'Nombre', 'Descripción', 'Módulo', 'Estatus'],
                 $entradas->map(fn ($e) => [$e->sdp_id, $e->nombre, $e->descripcion, $e->extra['module']['name'] ?? '', $estatus($e)]),

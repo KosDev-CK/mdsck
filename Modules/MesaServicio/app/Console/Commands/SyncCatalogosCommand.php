@@ -96,6 +96,8 @@ class SyncCatalogosCommand extends Command
             foreach ($entries as $entry) {
                 if ($catalogo === 'priority_matrices') {
                     $this->upsertPriorityMatrixEntry($entry);
+                } elseif ($catalogo === 'slas') {
+                    $this->upsertSlaEntry($entry);
                 } else {
                     $this->upsertFlatEntry($catalogo, $entry);
                 }
@@ -241,6 +243,100 @@ class SyncCatalogosCommand extends Command
                 'extra' => $extra !== [] ? $extra : null,
             ]
         );
+    }
+
+    /**
+     * Reglas SLA definidas en SDP (recurso "slas", ~37 en la instancia real).
+     * Espejo de solo lectura — independiente de sdp_sla_definitions, el
+     * catálogo propio y editable de la pantalla "SLA" que se usa para medir
+     * cumplimiento.
+     *
+     * SDP entrega los tiempos como strings separados (days/hours/minutes) y
+     * un árbol `criteria` (campo/condición/valores con hijos AND/OR); aquí se
+     * normalizan a minutos totales y a un texto legible, y se conserva el
+     * árbol original en `extra.criteria` por si hiciera falta. "inactive"
+     * (como closure_codes) en vez de "deleted".
+     */
+    private function upsertSlaEntry(array $entry): void
+    {
+        if (empty($entry['id'])) {
+            return;
+        }
+
+        $minutos = fn (string $prefijo) => ((int) ($entry["{$prefijo}_days"] ?? 0)) * 1440
+            + ((int) ($entry["{$prefijo}_hours"] ?? 0)) * 60
+            + (int) ($entry["{$prefijo}_minutes"] ?? 0);
+
+        $respuestaHabilitada = (bool) ($entry['is_first_response_enabled'] ?? false);
+
+        SdpCatalogEntry::updateOrCreate(
+            ['catalogo' => 'slas', 'sdp_id' => (string) $entry['id']],
+            [
+                'nombre' => $entry['name'] ?? '',
+                'descripcion' => ($entry['description'] ?? '') !== '' ? $entry['description'] : null,
+                'color' => null,
+                'activo' => ! ($entry['inactive'] ?? false),
+                'extra' => [
+                    'sitio' => $entry['site']['name'] ?? null,
+                    'orden' => isset($entry['order']) ? (int) $entry['order'] : null,
+                    'es_servicio' => (bool) ($entry['is_service_sla'] ?? false),
+                    'respuesta_habilitada' => $respuestaHabilitada,
+                    'respuesta_minutos' => $respuestaHabilitada ? $minutos('fr_due_by') : null,
+                    'resolucion_minutos' => $minutos('resolution_due_by'),
+                    'ignora_fines_de_semana' => (bool) ($entry['ignore_weekends'] ?? false),
+                    'ignora_feriados' => (bool) ($entry['ignore_holidays'] ?? false),
+                    'ignora_horario_operativo' => (bool) ($entry['ignore_operational_hours'] ?? false),
+                    'criterios_texto' => $this->criteriosATexto($entry['criteria'] ?? null),
+                    'criteria' => $entry['criteria'] ?? null,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Convierte el árbol `criteria` de SDP a texto legible, ej.
+     * "Categoría es Oracle o Libra y Prioridad es Media". Los hijos traen su
+     * propio `logical_operator` respecto al criterio que los contiene.
+     */
+    private function criteriosATexto(?array $criterio): ?string
+    {
+        if (empty($criterio) || empty($criterio['field'])) {
+            return null;
+        }
+
+        $campos = [
+            'category' => 'Categoría', 'subcategory' => 'Subcategoría', 'item' => 'Artículo',
+            'priority' => 'Prioridad', 'urgency' => 'Urgencia', 'impact' => 'Impacto',
+            'status' => 'Estado', 'site' => 'Sitio', 'request_type' => 'Tipo de solicitud',
+            'mode' => 'Modo', 'level' => 'Nivel', 'group' => 'Grupo', 'service_category' => 'Categoría de servicio',
+            'requester' => 'Solicitante', 'department' => 'Departamento',
+        ];
+        $condiciones = [
+            'is' => 'es', 'is not' => 'no es', 'contains' => 'contiene', 'not contains' => 'no contiene',
+            'starts with' => 'empieza con', 'ends with' => 'termina con',
+        ];
+
+        $valores = collect($criterio['values'] ?? [])
+            ->map(fn ($v) => is_array($v) ? ($v['name'] ?? $v['value'] ?? $v['id'] ?? '') : $v)
+            ->filter(fn ($v) => $v !== '' && $v !== null)
+            ->implode(' o ');
+
+        $texto = trim(sprintf(
+            '%s %s %s',
+            $campos[$criterio['field']] ?? $criterio['field'],
+            $condiciones[$criterio['condition'] ?? 'is'] ?? ($criterio['condition'] ?? 'es'),
+            $valores
+        ));
+
+        foreach ($criterio['children'] ?? [] as $hijo) {
+            $textoHijo = $this->criteriosATexto($hijo);
+
+            if ($textoHijo !== null) {
+                $texto .= (strtoupper($hijo['logical_operator'] ?? 'AND') === 'OR' ? ' o ' : ' y ').$textoHijo;
+            }
+        }
+
+        return $texto;
     }
 
     /**
