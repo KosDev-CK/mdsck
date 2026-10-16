@@ -96,6 +96,33 @@ class EbsRequisitionsClientTest extends TestCase
         $this->client()->obtenerAprobadas(1);
     }
 
+    public function test_creadas_treats_error_code_10_with_an_empty_payload_as_a_day_without_sics(): void
+    {
+        Http::fake([
+            'https://ebs.example.test/*' => Http::response([
+                'payload' => '',
+                'status' => ['errorCode' => 10, 'errorMsg' => 'No fue posible obtener la información'],
+                'track' => [],
+            ]),
+        ]);
+
+        $this->assertSame([], $this->client()->obtenerCreadas(1));
+    }
+
+    public function test_aprobadas_still_throws_on_error_code_10_with_an_empty_payload(): void
+    {
+        Http::fake([
+            'https://ebs.example.test/*' => Http::response([
+                'payload' => '',
+                'status' => ['errorCode' => 10, 'errorMsg' => 'ERROR'],
+            ]),
+        ]);
+
+        $this->expectException(EbsRequisitionSyncException::class);
+
+        $this->client()->obtenerAprobadas(1);
+    }
+
     public function test_returns_an_empty_array_when_the_payload_has_no_requisitions(): void
     {
         Http::fake([

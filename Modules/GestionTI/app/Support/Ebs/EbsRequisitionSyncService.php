@@ -179,6 +179,24 @@ class EbsRequisitionSyncService
                 }
             }
 
+            // La primera recuperación ya trae `notes[]` (antes solo llegaban
+            // con la aprobación). Solo se reemplazan si la clave viene en la
+            // respuesta, para no borrar notas ya guardadas por `aprobadas`.
+            if (array_key_exists('notes', $data)) {
+                $ebsRequisicion->notes()->delete();
+
+                foreach (($data['notes'] ?? []) as $note) {
+                    if (! isset($note['key'])) {
+                        continue;
+                    }
+
+                    $ebsRequisicion->notes()->create([
+                        'clave' => $note['key'],
+                        'valor' => $note['value'] ?? null,
+                    ]);
+                }
+            }
+
             // Nunca dispara avisos, aunque el mapeo resultante avance el
             // estatus (ej. una requisición que ya llega "APPROVED" el mismo
             // día que se crea) — solo `sincronizarAprobadas()` lo hace.

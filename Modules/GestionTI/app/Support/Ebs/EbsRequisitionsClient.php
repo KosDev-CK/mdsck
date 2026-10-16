@@ -83,6 +83,14 @@ class EbsRequisitionsClient
         $payload = $response->json() ?? [];
         $errorCode = $payload['status']['errorCode'] ?? null;
 
+        // `requisition_header_line` responde errorCode=10 con payload vacío
+        // ("") cuando ese día no se creó ninguna SIC — el proveedor no pudo
+        // devolver un objeto vacío, así que no es una falla: es un día sin
+        // datos.
+        if ($method === self::METHOD_CREADAS && $errorCode === 10 && empty($payload['payload'])) {
+            return [];
+        }
+
         if ($errorCode !== 0) {
             $errorMsg = $payload['status']['errorMsg'] ?? 'desconocido';
 

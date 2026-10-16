@@ -120,6 +120,26 @@ class EbsRequisitionSyncServiceTest extends TestCase
 
     // --- sincronizarCreadas ------------------------------------------------
 
+    public function test_sincronizar_creadas_stores_notes_and_keeps_them_when_the_key_is_absent(): void
+    {
+        $client = $this->mockClient();
+        $client->method('obtenerCreadas')->willReturnOnConsecutiveCalls(
+            [$this->requisicionCreada(['notes' => [['key' => 'Motivo', 'value' => 'Reemplazo']]])],
+            [$this->requisicionCreada()],
+        );
+
+        $this->service($client)->sincronizarCreadas(1);
+
+        $ebs = EbsRequisition::where('requisition_header_id', 2293693)->first();
+        $this->assertSame(1, $ebs->notes()->count());
+        $this->assertDatabaseHas('ebs_requisition_notes', ['clave' => 'Motivo', 'valor' => 'Reemplazo']);
+
+        // Segunda corrida sin la clave `notes`: no se borran las ya guardadas.
+        $this->service($client)->sincronizarCreadas(1);
+
+        $this->assertSame(1, $ebs->notes()->count());
+    }
+
     public function test_sincronizar_creadas_creates_a_new_ebs_requisition_with_its_lines(): void
     {
         $client = $this->mockClient();
