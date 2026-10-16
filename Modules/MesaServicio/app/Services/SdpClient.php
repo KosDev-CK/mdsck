@@ -190,6 +190,27 @@ class SdpClient
     }
 
     /**
+     * Subcategorías de UNA categoría — confirmado contra la instancia real:
+     * no existe /subcategories de nivel superior (404 "Invalid URL"), solo
+     * anidado bajo la categoría. Clave de respuesta: "subcategories", cada
+     * una con "category": {id, name, deleted}.
+     */
+    public function listSubcategories(string $categoryId, int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo("categories/{$categoryId}/subcategories", [], [], $startIndex, $rowCount);
+    }
+
+    /**
+     * Artículos de UNA subcategoría — ruta anidada completa (la ruta corta
+     * subcategories/{id}/items da 404). Clave de respuesta: "items", cada uno
+     * con "subcategory": {id, name}.
+     */
+    public function listItems(string $categoryId, string $subcategoryId, int $startIndex = 1, int $rowCount = 100): array
+    {
+        return $this->getListInfo("categories/{$categoryId}/subcategories/{$subcategoryId}/items", [], [], $startIndex, $rowCount);
+    }
+
+    /**
      * Los listados de la API v3 de SDP van por GET, con "input_data" como
      * parámetro de query string (JSON serializado) — no por POST con cuerpo
      * JSON: la API interpreta un POST como intento de creación y responde

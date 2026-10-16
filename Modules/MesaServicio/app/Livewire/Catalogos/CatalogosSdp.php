@@ -16,7 +16,7 @@ use Modules\MesaServicio\Models\SdpCatalogEntry;
  * "Pendiente" en CLAUDE.md), resuelto con una propiedad Livewire simple
  * ($tabActiva) en vez de construir uno nuevo.
  *
- * "Sincronizar catálogos" corre sdp:sync-catalogos (los 12) de forma
+ * "Sincronizar catálogos" corre sdp:sync-catalogos (los 12 planos) de forma
  * síncrona dentro del propio request — mismo patrón que
  * Livewire\Dashboard::sincronizar() (Artisan::call + flash + wire:loading).
  */
@@ -28,8 +28,8 @@ class CatalogosSdp extends Component
     public bool $sincronizando = false;
 
     /**
-     * Etiquetas en español para cada catálogo — mismo orden que
-     * SdpCatalogEntry::CATALOGOS, usado tanto para las pestañas como para
+     * Etiquetas en español para cada catálogo (los 14 de
+     * SdpCatalogEntry::todos()), usado tanto para las pestañas como para
      * el título de cada tabla.
      *
      * @return array<string, string>
@@ -38,6 +38,8 @@ class CatalogosSdp extends Component
     {
         return [
             'categories' => 'Categorías',
+            'subcategories' => 'Subcategorías',
+            'items' => 'Artículos',
             'levels' => 'Niveles',
             'modes' => 'Modos',
             'impacts' => 'Impactos',
@@ -56,14 +58,14 @@ class CatalogosSdp extends Component
     {
         // Defensivo: si algún día CATALOGOS cambia de orden/contenido, sigue
         // arrancando en un catálogo válido en vez de una pestaña vacía.
-        if (! in_array($this->tabActiva, SdpCatalogEntry::CATALOGOS, true)) {
-            $this->tabActiva = SdpCatalogEntry::CATALOGOS[0];
+        if (! in_array($this->tabActiva, SdpCatalogEntry::todos(), true)) {
+            $this->tabActiva = SdpCatalogEntry::todos()[0];
         }
     }
 
     public function setTab(string $catalogo): void
     {
-        if (in_array($catalogo, SdpCatalogEntry::CATALOGOS, true)) {
+        if (in_array($catalogo, SdpCatalogEntry::todos(), true)) {
             $this->tabActiva = $catalogo;
         }
     }
@@ -73,9 +75,16 @@ class CatalogosSdp extends Component
         $this->sincronizando = true;
 
         try {
-            Artisan::call('sdp:sync-catalogos');
+            // Solo los 12 planos: subcategorías y artículos son ~150
+            // llamadas anidadas (~95 s), demasiado para un request web
+            // síncrono — esos 2 se sincronizan por consola.
+            foreach (SdpCatalogEntry::CATALOGOS as $catalogo) {
+                if (Artisan::call('sdp:sync-catalogos', ['catalogo' => $catalogo]) !== 0) {
+                    throw new \RuntimeException(trim(Artisan::output()));
+                }
+            }
 
-            session()->flash('status', trim(Artisan::output()) ?: 'Sincronización completada.');
+            session()->flash('status', 'Se sincronizaron los '.count(SdpCatalogEntry::CATALOGOS).' catálogos planos.');
         } catch (\Throwable $e) {
             session()->flash('error', 'No se pudo sincronizar: '.$e->getMessage());
         } finally {
@@ -87,6 +96,7 @@ class CatalogosSdp extends Component
     {
         return view('mesaservicio::livewire.catalogos.catalogos-sdp', [
             'etiquetas' => self::etiquetas(),
+            'esJerarquico' => in_array($this->tabActiva, SdpCatalogEntry::CATALOGOS_JERARQUICOS, true),
             'entradas' => SdpCatalogEntry::delCatalogo($this->tabActiva)->orderBy('nombre')->get(),
         ]);
     }

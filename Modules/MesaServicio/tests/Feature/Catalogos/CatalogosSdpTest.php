@@ -50,10 +50,10 @@ class CatalogosSdpTest extends TestCase
         $this->actingAs($this->actingUser());
 
         Livewire::test(CatalogosSdp::class)
-            ->assertSet('tabActiva', SdpCatalogEntry::CATALOGOS[0]);
+            ->assertSet('tabActiva', SdpCatalogEntry::todos()[0]);
     }
 
-    public function test_it_renders_all_12_tabs(): void
+    public function test_it_renders_all_14_tabs(): void
     {
         $this->actingAs($this->actingUser());
 
@@ -86,7 +86,23 @@ class CatalogosSdpTest extends TestCase
 
         Livewire::test(CatalogosSdp::class)
             ->call('setTab', 'no-existe')
-            ->assertSet('tabActiva', SdpCatalogEntry::CATALOGOS[0]);
+            ->assertSet('tabActiva', SdpCatalogEntry::todos()[0]);
+    }
+
+    public function test_items_tab_shows_the_category_and_subcategory_it_belongs_to(): void
+    {
+        SdpCatalogEntry::create([
+            'catalogo' => 'items', 'sdp_id' => 'i1', 'nombre' => 'ABC', 'activo' => true,
+            'extra' => ['category_nombre' => 'Libra', 'subcategory_nombre' => 'Accesos al Sistema'],
+        ]);
+
+        $this->actingAs($this->actingUser());
+
+        Livewire::test(CatalogosSdp::class)
+            ->call('setTab', 'items')
+            ->assertSee('ABC')
+            ->assertSee('Libra › Accesos al Sistema')
+            ->assertSee('sdp:sync-catalogos items');
     }
 
     public function test_it_shows_the_color_swatch_and_activo_badge(): void

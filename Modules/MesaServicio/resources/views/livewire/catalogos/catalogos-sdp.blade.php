@@ -21,7 +21,7 @@
         <div>
             <h1 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Catálogos de ServiceDesk Plus</h1>
             <p class="text-xs text-gray-500 dark:text-gray-400">
-                Espejo local de solo lectura de los 12 catálogos de configuración de SDP.
+                Espejo local de solo lectura de los catálogos de configuración de SDP, incluidas categorías, subcategorías y artículos.
             </p>
         </div>
 
@@ -54,8 +54,15 @@
             @endforeach
         </div>
 
+        @if ($esJerarquico)
+            <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                Estos catálogos se sincronizan desde consola (son ~150 llamadas a SDP):
+                <code class="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">php artisan sdp:sync-catalogos {{ $tabActiva }}</code>
+            </p>
+        @endif
+
         <x-ui.table
-            :headers="['Nombre', 'Descripción', 'Color', 'Activo']"
+            :headers="$esJerarquico ? ['Nombre', 'Pertenece a', 'Descripción', 'Activo'] : ['Nombre', 'Descripción', 'Color', 'Activo']"
             :empty="$entradas->isEmpty()"
             empty-title="Sin registros sincronizados todavía"
             empty-description='Da clic en "Sincronizar catálogos" para traer los datos desde ServiceDesk Plus.'
@@ -63,7 +70,13 @@
             @foreach ($entradas as $entrada)
                 <tr wire:key="entrada-{{ $entrada->id }}" class="border-b border-gray-50 dark:border-gray-800">
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $entrada->nombre }}</td>
+                    @if ($esJerarquico)
+                        <td class="py-2 text-gray-500 dark:text-gray-400">
+                            {{ collect([$entrada->extra['category_nombre'] ?? null, $entrada->extra['subcategory_nombre'] ?? null])->filter()->implode(' › ') ?: '—' }}
+                        </td>
+                    @endif
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $entrada->descripcion ?? '—' }}</td>
+                    @unless ($esJerarquico)
                     <td class="py-2">
                         @if ($entrada->color)
                             <span class="inline-flex items-center gap-2">
@@ -74,6 +87,7 @@
                             <span class="text-gray-400 dark:text-gray-500">—</span>
                         @endif
                     </td>
+                    @endunless
                     <td class="py-2">
                         <x-ui.badge :color="$entrada->activo ? 'emerald' : 'gray'">{{ $entrada->activo ? 'Activo' : 'Inactivo' }}</x-ui.badge>
                     </td>

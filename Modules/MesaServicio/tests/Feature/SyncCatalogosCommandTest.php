@@ -50,8 +50,18 @@ class SyncCatalogosCommandTest extends TestCase
      */
     private function fakeAllCatalogs(array $entriesByResource = []): void
     {
+        // Las rutas anidadas van primero: Http::fake() toma el primer patrón
+        // que coincide y `*/api/v3/categories*` también las atraparía.
         $fakes = [
             '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/categories/*/subcategories/*/items*' => Http::response([
+                'items' => [['id' => 'item-1', 'name' => 'Artículo 1', 'deleted' => false, 'subcategory' => ['id' => 'sub-1', 'name' => 'Sub 1']]],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+            '*/api/v3/categories/*/subcategories*' => Http::response([
+                'subcategories' => [['id' => 'sub-1', 'name' => 'Subcategoría 1', 'deleted' => false, 'category' => ['id' => 'entry-1', 'name' => 'Entrada 1']]],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
         ];
 
         foreach (SdpCatalogEntry::CATALOGOS as $catalogo) {
@@ -68,14 +78,84 @@ class SyncCatalogosCommandTest extends TestCase
         Http::fake($fakes);
     }
 
-    public function test_it_syncs_all_12_catalogs_when_no_argument_is_given(): void
+    public function test_it_syncs_all_14_catalogs_when_no_argument_is_given(): void
     {
         $this->fakeAllCatalogs();
 
         $this->artisan('sdp:sync-catalogos')->assertSuccessful();
 
-        $this->assertSame(12, SdpCatalogEntry::query()->select('catalogo')->distinct()->count());
-        $this->assertSame(12, SdpCatalogEntry::count());
+        $this->assertSame(14, SdpCatalogEntry::query()->select('catalogo')->distinct()->count());
+        $this->assertSame(14, SdpCatalogEntry::count());
+    }
+
+    public function test_it_syncs_subcategories_under_each_local_category_keeping_the_parent_in_extra(): void
+    {
+        SdpCatalogEntry::create(['catalogo' => 'categories', 'sdp_id' => 'cat-1', 'nombre' => 'Libra', 'activo' => true]);
+        SdpCatalogEntry::create(['catalogo' => 'categories', 'sdp_id' => 'cat-2', 'nombre' => 'Redes', 'activo' => true]);
+
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/categories/cat-1/subcategories*' => Http::response([
+                'subcategories' => [
+                    ['id' => 's1', 'name' => 'Accesos', 'deleted' => false, 'category' => ['id' => 'cat-1', 'name' => 'Libra']],
+                    ['id' => 's2', 'name' => 'Viejo', 'deleted' => true, 'category' => ['id' => 'cat-1', 'name' => 'Libra']],
+                ],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+            '*/api/v3/categories/cat-2/subcategories*' => Http::response([
+                'subcategories' => [['id' => 's3', 'name' => 'WiFi', 'deleted' => false, 'category' => ['id' => 'cat-2', 'name' => 'Redes']]],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+        ]);
+
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'subcategories'])->assertSuccessful();
+
+        $this->assertSame(3, SdpCatalogEntry::delCatalogo('subcategories')->count());
+        $this->assertDatabaseHas('sdp_catalog_entries', ['catalogo' => 'subcategories', 'sdp_id' => 's1', 'activo' => true]);
+        $this->assertDatabaseHas('sdp_catalog_entries', ['catalogo' => 'subcategories', 'sdp_id' => 's2', 'activo' => false]);
+
+        $sub = SdpCatalogEntry::where('catalogo', 'subcategories')->where('sdp_id', 's3')->first();
+        $this->assertSame('cat-2', $sub->extra['category_id']);
+        $this->assertSame('Redes', $sub->extra['category_nombre']);
+    }
+
+    public function test_it_syncs_items_under_each_local_subcategory_keeping_category_and_subcategory(): void
+    {
+        SdpCatalogEntry::create([
+            'catalogo' => 'subcategories', 'sdp_id' => 's1', 'nombre' => 'Accesos', 'activo' => true,
+            'extra' => ['category_id' => 'cat-1', 'category_nombre' => 'Libra'],
+        ]);
+
+        Http::fake([
+            '*/oauth/v2/token' => Http::response(['access_token' => 'fake-access-token'], 200),
+            '*/api/v3/categories/cat-1/subcategories/s1/items*' => Http::response([
+                'items' => [['id' => 'i1', 'name' => 'ABC', 'deleted' => false, 'subcategory' => ['id' => 's1', 'name' => 'Accesos']]],
+                'list_info' => ['has_more_rows' => false],
+            ], 200),
+        ]);
+
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'items'])->assertSuccessful();
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'items'])->assertSuccessful();
+
+        $this->assertSame(1, SdpCatalogEntry::delCatalogo('items')->count());
+
+        $item = SdpCatalogEntry::delCatalogo('items')->first();
+        $this->assertSame('ABC', $item->nombre);
+        $this->assertSame('cat-1', $item->extra['category_id']);
+        $this->assertSame('Libra', $item->extra['category_nombre']);
+        $this->assertSame('s1', $item->extra['subcategory_id']);
+        $this->assertSame('Accesos', $item->extra['subcategory_nombre']);
+    }
+
+    public function test_hierarchical_catalogs_fail_with_a_hint_when_the_parent_is_not_synced_yet(): void
+    {
+        Http::fake();
+
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'subcategories'])->assertFailed();
+        $this->artisan('sdp:sync-catalogos', ['catalogo' => 'items'])->assertFailed();
+
+        $this->assertSame(0, SdpCatalogEntry::count());
+        Http::assertNothingSent();
     }
 
     public function test_it_syncs_only_the_given_catalog_when_an_argument_is_provided(): void
