@@ -140,6 +140,27 @@ class EbsRequisitionSyncServiceTest extends TestCase
         $this->assertSame(1, $ebs->notes()->count());
     }
 
+    public function test_sincronizar_creadas_keeps_existing_lines_when_the_response_has_no_requisition_lines_key(): void
+    {
+        $conLineas = $this->requisicionCreada();
+        $sinLineas = $conLineas;
+        unset($sinLineas['requisition_lines']);
+
+        $client = $this->mockClient();
+        $client->method('obtenerCreadas')->willReturnOnConsecutiveCalls([$conLineas], [$sinLineas]);
+
+        $this->service($client)->sincronizarCreadas(1);
+
+        $ebs = EbsRequisition::where('requisition_header_id', 2293693)->first();
+        $lineasAntes = $ebs->lines()->count();
+        $this->assertGreaterThan(0, $lineasAntes);
+
+        // EBS dejó de mandar `requisition_lines`: no se deben borrar las guardadas.
+        $this->service($client)->sincronizarCreadas(1);
+
+        $this->assertSame($lineasAntes, $ebs->lines()->count());
+    }
+
     public function test_sincronizar_creadas_creates_a_new_ebs_requisition_with_its_lines(): void
     {
         $client = $this->mockClient();

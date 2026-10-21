@@ -142,40 +142,45 @@ class EbsRequisitionSyncService
                 ]
             );
 
-            $ebsRequisicion->lines()->delete();
+            // Solo se reemplazan las líneas si la respuesta las trae: EBS
+            // dejó de enviar `requisition_lines` en este método (2026-10) y,
+            // sin esta guarda, cada sincronización borraba las ya guardadas.
+            if (array_key_exists('requisition_lines', $data)) {
+                $ebsRequisicion->lines()->delete();
 
-            foreach (($data['requisition_lines'] ?? []) as $line) {
-                // Typo real del proveedor ("requsition_line_id"), ver
-                // EbsRequisitionsClient. Sin este id no hay forma de
-                // identificar la línea de forma estable — se descarta.
-                if (! isset($line['requsition_line_id'])) {
-                    continue;
-                }
+                foreach (($data['requisition_lines'] ?? []) as $line) {
+                    // Typo real del proveedor ("requsition_line_id"), ver
+                    // EbsRequisitionsClient. Sin este id no hay forma de
+                    // identificar la línea de forma estable — se descarta.
+                    if (! isset($line['requsition_line_id'])) {
+                        continue;
+                    }
 
-                $ebsRequisicion->lines()->create([
-                    'requisition_line_id' => $line['requsition_line_id'],
-                    'line_number' => $line['lineNumber'] ?? null,
-                    'line_type_id' => $line['lineTypeId'] ?? null,
-                    'category_id' => $line['categoryId'] ?? null,
-                    'item_id' => $line['itemId'] ?? null,
-                    'item_description' => $line['itemDescription'] ?? null,
-                    'unit_measurement' => $line['unitMeasurement'] ?? null,
-                    'unit_price' => $line['unitPrice'] ?? null,
-                    'quantity' => $line['quantity'] ?? null,
-                    'currency_code' => $line['currencyCode'] ?? null,
-                ]);
+                    $ebsRequisicion->lines()->create([
+                        'requisition_line_id' => $line['requsition_line_id'],
+                        'line_number' => $line['lineNumber'] ?? null,
+                        'line_type_id' => $line['lineTypeId'] ?? null,
+                        'category_id' => $line['categoryId'] ?? null,
+                        'item_id' => $line['itemId'] ?? null,
+                        'item_description' => $line['itemDescription'] ?? null,
+                        'unit_measurement' => $line['unitMeasurement'] ?? null,
+                        'unit_price' => $line['unitPrice'] ?? null,
+                        'quantity' => $line['quantity'] ?? null,
+                        'currency_code' => $line['currencyCode'] ?? null,
+                    ]);
 
-                // Mapeo EBS -> artículo estándar (Fase 5) — la primera vez
-                // que se ve este `item_id`, se crea sin mapear
-                // (`articulo_id = null`); un humano lo completa después desde
-                // el tab "Artículos EBS" de Catalogos\Compras. No se
-                // actualiza en corridas posteriores (`firstOrCreate`, no
-                // `updateOrCreate`) — el mapeo ya hecho nunca se pisa.
-                if (! empty($line['itemId'])) {
-                    EbsArticulo::firstOrCreate(
-                        ['ebs_item_id' => $line['itemId']],
-                        ['ebs_item_description' => $line['itemDescription'] ?? null]
-                    );
+                    // Mapeo EBS -> artículo estándar (Fase 5) — la primera vez
+                    // que se ve este `item_id`, se crea sin mapear
+                    // (`articulo_id = null`); un humano lo completa después desde
+                    // el tab "Artículos EBS" de Catalogos\Compras. No se
+                    // actualiza en corridas posteriores (`firstOrCreate`, no
+                    // `updateOrCreate`) — el mapeo ya hecho nunca se pisa.
+                    if (! empty($line['itemId'])) {
+                        EbsArticulo::firstOrCreate(
+                            ['ebs_item_id' => $line['itemId']],
+                            ['ebs_item_description' => $line['itemDescription'] ?? null]
+                        );
+                    }
                 }
             }
 
