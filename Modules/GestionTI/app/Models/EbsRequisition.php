@@ -98,15 +98,63 @@ class EbsRequisition extends Model
      */
     public function scopeElegibleDirectoSinSic($query, ?int $exceptSolicitudId = null)
     {
+        // La asignación ya no es por requisición sino POR LÍNEA (una
+        // requisición puede traer varios artículos y cada uno se relaciona
+        // por separado): ver `lineasElegiblesDeCompra()`. `$exceptSolicitudId`
+        // se conserva en la firma por compatibilidad, la reapertura del
+        // hueco en modo edición ahora vive en ese método.
         return $query->where('status', 'APPROVED')
-            ->whereDoesntHave('solicitudSicBorrador')
-            ->where(function ($q) use ($exceptSolicitudId) {
-                $q->whereDoesntHave('solicitudProveedorLineas')
-                    ->when($exceptSolicitudId, fn ($q2) => $q2->orWhereHas(
-                        'solicitudProveedorLineas',
-                        fn ($q3) => $q3->where('solicitud_id', $exceptSolicitudId)
-                    ));
-            });
+            ->whereDoesntHave('solicitudSicBorrador');
+    }
+
+    /**
+     * Líneas elegibles para una Solicitud a Proveedor por el camino directo
+     * (requisiciones sin SIC local): una entrada por LÍNEA de EBS, no por
+     * requisición — la línea es elegible si su ítem está mapeado
+     * (`EbsArticulo`) a un artículo de categoría "va a Compra" y ninguna
+     * línea de Solicitud a Proveedor la ha recogido ya (en modo edición,
+     * `$exceptSolicitudId` sigue mostrando las de ESA misma solicitud).
+     * Resuelto en lote (3 consultas en total, sin N+1) porque se usa sobre
+     * cientos de requisiciones a la vez. Requiere `lines` cargadas.
+     *
+     * @param  \Illuminate\Support\Collection<int, EbsRequisition>  $requisiciones
+     * @return \Illuminate\Support\Collection<int, array{requisicion: EbsRequisition, linea: EbsRequisitionLine, articulo: ArticuloSolicitud, total_lineas: int}>
+     */
+    public static function lineasElegiblesDeCompra($requisiciones, ?int $exceptSolicitudId = null)
+    {
+        $itemIds = $requisiciones->flatMap(fn ($r) => $r->lines->pluck('item_id'))->filter()->unique()->values();
+
+        $articulosPorItem = EbsArticulo::whereIn('ebs_item_id', $itemIds)
+            ->whereNotNull('articulo_id')
+            ->with('articulo.categoria')
+            ->get()
+            ->mapWithKeys(fn ($ebsArticulo) => [$ebsArticulo->ebs_item_id => $ebsArticulo->articulo])
+            ->filter(fn ($articulo) => $articulo && $articulo->categoria?->es_compra);
+
+        $lineaIds = $requisiciones->flatMap(fn ($r) => $r->lines->pluck('requisition_line_id'))->filter()->unique()->values();
+
+        $tomadas = SolicitudProveedorLinea::whereIn('ebs_requisition_line_id', $lineaIds)
+            ->when($exceptSolicitudId, fn ($q) => $q->where('solicitud_id', '!=', $exceptSolicitudId))
+            ->pluck('ebs_requisition_line_id')
+            ->flip();
+
+        $resultado = collect();
+
+        foreach ($requisiciones as $requisicion) {
+            $total = $requisicion->lines->count();
+
+            foreach ($requisicion->lines->sortBy('line_number') as $linea) {
+                $articulo = $articulosPorItem[$linea->item_id] ?? null;
+
+                if ($articulo === null || $tomadas->has($linea->requisition_line_id)) {
+                    continue;
+                }
+
+                $resultado->push(['requisicion' => $requisicion, 'linea' => $linea, 'articulo' => $articulo, 'total_lineas' => $total]);
+            }
+        }
+
+        return $resultado;
     }
 
     /**

@@ -16,6 +16,7 @@ use Modules\GestionTI\Mail\SolicitudProveedorMail;
 use Modules\GestionTI\Models\ArticuloSolicitud;
 use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\EbsRequisition;
+use Modules\GestionTI\Models\EbsRequisitionLine;
 use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
@@ -136,6 +137,7 @@ class SolicitudesProveedor extends Component
             'sic_id' => 'nullable|exists:solicitudes_sic_borrador,id',
             'folio_sic_manual' => 'nullable|string|max:100',
             'ebs_requisition_id' => 'nullable|exists:ebs_requisitions,id',
+            'ebs_requisition_line_id' => 'nullable|integer',
             'lugar_entrega_id' => 'nullable|exists:lugares_entrega,id',
             'articulo_id' => 'nullable|exists:articulos_solicitud,id',
             'descripcion_libre' => 'nullable|string|max:255',
@@ -460,7 +462,7 @@ class SolicitudesProveedor extends Component
         }
 
         if (! empty($linea->ebs_requisition_id)) {
-            return 'e'.$linea->ebs_requisition_id;
+            return 'e'.$linea->ebs_requisition_id.(! empty($linea->ebs_requisition_line_id) ? 'l'.$linea->ebs_requisition_line_id : '');
         }
 
         return null;
@@ -472,9 +474,9 @@ class SolicitudesProveedor extends Component
      * select de artículo para detectar a simple vista si el mapeo
      * automático (`EbsArticulo`) eligió mal. Requiere `lines` cargadas.
      */
-    private function descripcionEbs(?EbsRequisition $ebsRequisicion): ?string
+    private function descripcionEbs(?EbsRequisition $ebsRequisicion, ?EbsRequisitionLine $ebsLinea = null): ?string
     {
-        return $ebsRequisicion?->lines->sortBy('line_number')->first()?->item_description;
+        return ($ebsLinea ?? $ebsRequisicion?->lines->sortBy('line_number')->first())?->item_description;
     }
 
     /**
@@ -483,9 +485,9 @@ class SolicitudesProveedor extends Component
      * solicitada al marcar la fila. Una SIC puramente local no tiene
      * cantidad propia: 1. Requiere `lines` cargadas.
      */
-    private function cantidadEbs(?EbsRequisition $ebsRequisicion): int
+    private function cantidadEbs(?EbsRequisition $ebsRequisicion, ?EbsRequisitionLine $ebsLinea = null): int
     {
-        $cantidad = $ebsRequisicion?->lines->sortBy('line_number')->first()?->quantity;
+        $cantidad = ($ebsLinea ?? $ebsRequisicion?->lines->sortBy('line_number')->first())?->quantity;
 
         return max(1, (int) round((float) ($cantidad ?? 1)));
     }
@@ -521,6 +523,7 @@ class SolicitudesProveedor extends Component
             'sic_id' => $filaPool['sic_id'],
             'folio_sic_manual' => null,
             'ebs_requisition_id' => $filaPool['ebs_requisition_id'],
+            'ebs_requisition_line_id' => $filaPool['ebs_requisition_line_id'] ?? null,
             'lugar_entrega_id' => null,
             'articulo_id' => $filaPool['articulo_id'],
             'descripcion_libre' => null,
@@ -546,6 +549,7 @@ class SolicitudesProveedor extends Component
             'sic_id' => $linea->sic_id,
             'folio_sic_manual' => $linea->folio_sic_manual,
             'ebs_requisition_id' => $linea->ebs_requisition_id,
+            'ebs_requisition_line_id' => $linea->ebs_requisition_line_id,
             'lugar_entrega_id' => $linea->lugar_entrega_id,
             'articulo_id' => $linea->articulo_id,
             'descripcion_libre' => $linea->descripcion_libre,
@@ -564,20 +568,35 @@ class SolicitudesProveedor extends Component
      * mostrar, defaults para cuando se marque y un texto en minúsculas para
      * el buscador.
      */
-    private function filaDePool(string $tipo, int $id, ?string $folio, ?EbsRequisition $ebsRequisicion, ?ArticuloSolicitud $articulo, ?int $fecha): array
+    private function filaDePool(string $tipo, int $id, ?string $folio, ?EbsRequisition $ebsRequisicion, ?ArticuloSolicitud $articulo, ?int $fecha, ?EbsRequisitionLine $ebsLinea = null, int $totalLineas = 1): array
     {
-        $descripcionEbs = $this->descripcionEbs($ebsRequisicion);
+        $descripcionEbs = $this->descripcionEbs($ebsRequisicion, $ebsLinea);
+
+        // Una requisición directa de EBS se ofrece UNA FILA POR LÍNEA
+        // (artículo): la clave incluye el `requisition_line_id` real de EBS.
+        // Si trae varias, el folio indica a cuál corresponde.
+        $lineaEbsId = $tipo === 'ebs' ? $ebsLinea?->requisition_line_id : null;
+
+        if ($tipo === 'ebs' && $totalLineas > 1 && $ebsLinea) {
+            // Posición real dentro de la requisición (EBS numera con huecos:
+            // 1, 3...), para no mostrar "línea 3 de 2".
+            $posicion = $ebsRequisicion?->lines->sortBy('line_number')->values()
+                ->search(fn ($l) => $l->requisition_line_id === $ebsLinea->requisition_line_id);
+
+            $folio = trim(($folio ?? '').' · línea '.($posicion === false || $posicion === null ? '?' : $posicion + 1).' de '.$totalLineas);
+        }
 
         return [
-            'clave' => ($tipo === 'sic' ? 's' : 'e').$id,
+            'clave' => ($tipo === 'sic' ? 's' : 'e').$id.($lineaEbsId ? 'l'.$lineaEbsId : ''),
             'tipo' => $tipo,
             'sic_id' => $tipo === 'sic' ? $id : null,
             'ebs_requisition_id' => $tipo === 'ebs' ? $id : null,
+            'ebs_requisition_line_id' => $lineaEbsId,
             'folio_sic_display' => $folio,
             'ebs_item_description' => $descripcionEbs,
             'articulo_id' => $articulo?->id,
             'articulo_descripcion_preview' => $articulo?->descripcion,
-            'cantidad' => $this->cantidadEbs($ebsRequisicion),
+            'cantidad' => $this->cantidadEbs($ebsRequisicion, $ebsLinea),
             'fecha' => $fecha,
             'busqueda' => mb_strtolower(implode(' ', array_filter([$folio, $descripcionEbs, $articulo?->descripcion]))),
         ];
@@ -634,7 +653,7 @@ class SolicitudesProveedor extends Component
             ));
         }
 
-        foreach ($candidatas ? [] : $this->ebsPickerOptions() as ['requisicion' => $ebsRequisicion, 'articulo' => $articulo]) {
+        foreach ($candidatas ? [] : $this->ebsPickerOptions() as ['requisicion' => $ebsRequisicion, 'linea' => $ebsLinea, 'articulo' => $articulo, 'total_lineas' => $totalLineas]) {
             $filas->push($this->filaDePool(
                 'ebs',
                 $ebsRequisicion->id,
@@ -642,6 +661,8 @@ class SolicitudesProveedor extends Component
                 $ebsRequisicion,
                 $articulo,
                 $ebsRequisicion->fecha_creacion?->timestamp,
+                $ebsLinea,
+                $totalLineas,
             ));
         }
 
@@ -657,13 +678,20 @@ class SolicitudesProveedor extends Component
                 $guardadas->load(['articulo', 'sic.ebsRequisition.lines', 'ebsRequisition.lines']);
 
                 foreach ($guardadas as $linea) {
+                    $ebsRequisicionLinea = $linea->ebsRequisition ?? $linea->sic?->ebsRequisition;
+                    $ebsLineaGuardada = $linea->ebs_requisition_line_id && $ebsRequisicionLinea
+                        ? $ebsRequisicionLinea->lines->firstWhere('requisition_line_id', $linea->ebs_requisition_line_id)
+                        : null;
+
                     $fila = $this->filaDePool(
                         $linea->sic_id ? 'sic' : 'ebs',
                         $linea->sic_id ?: $linea->ebs_requisition_id,
-                        $linea->folioSicDisplay(),
-                        $linea->ebsRequisition ?? $linea->sic?->ebsRequisition,
+                        $linea->folioSicBase(),
+                        $ebsRequisicionLinea,
                         $linea->articulo,
                         PHP_INT_MAX,
+                        $linea->sic_id ? null : $ebsLineaGuardada,
+                        $ebsRequisicionLinea?->lines->count() ?? 1,
                     );
                     $filas->prepend($fila, $fila['clave']);
                 }
@@ -750,15 +778,20 @@ class SolicitudesProveedor extends Component
     private function lineasParaPersistir(): array
     {
         $deSeleccion = collect($this->seleccion)
-            ->filter(fn ($linea, $clave) => preg_match('/^[se]\d+$/', (string) $clave) === 1)
-            ->map(fn ($linea, $clave) => array_merge($linea, [
-                'sic_id' => $clave[0] === 's' ? (int) substr($clave, 1) : null,
-                'ebs_requisition_id' => $clave[0] === 'e' ? (int) substr($clave, 1) : null,
-            ]));
+            ->filter(fn ($linea, $clave) => preg_match('/^(s\d+|e\d+(l\d+)?)$/', (string) $clave) === 1)
+            ->map(function ($linea, $clave) {
+                preg_match('/^e(\d+)(?:l(\d+))?$/', (string) $clave, $ebs);
+
+                return array_merge($linea, [
+                    'sic_id' => $clave[0] === 's' ? (int) substr($clave, 1) : null,
+                    'ebs_requisition_id' => $clave[0] === 'e' ? (int) $ebs[1] : null,
+                    'ebs_requisition_line_id' => $clave[0] === 'e' && ! empty($ebs[2]) ? (int) $ebs[2] : null,
+                ]);
+            });
 
         $manuales = collect($this->lineasManuales)
             ->reject(fn ($linea) => $this->esLineaEnBlancoSinTocar($linea))
-            ->map(fn ($linea) => array_merge($linea, ['sic_id' => null, 'ebs_requisition_id' => null]));
+            ->map(fn ($linea) => array_merge($linea, ['sic_id' => null, 'ebs_requisition_id' => null, 'ebs_requisition_line_id' => null]));
 
         return $deSeleccion->values()->merge($manuales->values())->all();
     }
@@ -982,6 +1015,7 @@ class SolicitudesProveedor extends Component
                 'sic_id' => $linea['sic_id'] ?: null,
                 'folio_sic_manual' => ($linea['folio_sic_manual'] ?? '') !== '' ? $linea['folio_sic_manual'] : null,
                 'ebs_requisition_id' => $linea['ebs_requisition_id'] ?: null,
+                'ebs_requisition_line_id' => ($linea['ebs_requisition_line_id'] ?? null) ?: null,
                 'lugar_entrega_id' => $linea['lugar_entrega_id'] ?: null,
                 'articulo_id' => $linea['articulo_id'] ?: null,
                 'descripcion_libre' => $linea['descripcion_libre'] ?: null,
@@ -1050,7 +1084,7 @@ class SolicitudesProveedor extends Component
      */
     public function enviarAProveedor(int $id): void
     {
-        $record = SolicitudProveedor::with(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition', 'lineas.lugarEntrega'])->findOrFail($id);
+        $record = SolicitudProveedor::with(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition.lines', 'lineas.lugarEntrega'])->findOrFail($id);
 
         if (empty($record->vendor?->contacto_correo)) {
             session()->flash('error', 'El proveedor no tiene correo de contacto capturado — agrégalo desde "Catálogos de Compras" antes de enviar.');
@@ -1123,13 +1157,13 @@ class SolicitudesProveedor extends Component
      */
     private function ebsPickerOptions(): Collection
     {
-        return EbsRequisition::elegibleDirectoSinSic($this->editingId)
+        $requisiciones = EbsRequisition::elegibleDirectoSinSic($this->editingId)
             ->with('lines')
             ->orderByDesc('fecha_creacion')
-            ->get()
-            ->map(fn ($ebsRequisicion) => ['requisicion' => $ebsRequisicion, 'articulo' => $ebsRequisicion->articuloMapeadoDeCompra()])
-            ->filter(fn ($par) => $par['articulo'] !== null)
-            ->values();
+            ->get();
+
+        // Una entrada por LÍNEA (artículo) elegible, no por requisición.
+        return EbsRequisition::lineasElegiblesDeCompra($requisiciones, $this->editingId)->values();
     }
 
     public function render()

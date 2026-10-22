@@ -14,6 +14,7 @@ class SolicitudProveedorLinea extends Model
         'sic_id',
         'folio_sic_manual',
         'ebs_requisition_id',
+        'ebs_requisition_line_id',
         'lugar_entrega_id',
         'descripcion_libre',
         'cantidad_solicitada',
@@ -88,6 +89,32 @@ class SolicitudProveedorLinea extends Model
      * SIC asociado (ej. viene de un artículo de Proyecto de Presupuesto).
      */
     public function folioSicDisplay(): ?string
+    {
+        $folio = $this->folioSicBase();
+
+        // Una requisición de EBS con varios artículos se relaciona por
+        // línea: sin el sufijo, 2 renglones del pedido mostrarían el mismo
+        // folio y parecerían duplicados (PDF, correo, Recepción).
+        if ($folio !== null && ! $this->sic_id && $this->ebs_requisition_line_id && $this->ebsRequisition) {
+            $lineas = $this->ebsRequisition->lines->sortBy('line_number')->values();
+
+            if ($lineas->count() > 1) {
+                $posicion = $lineas->search(fn ($l) => (int) $l->requisition_line_id === (int) $this->ebs_requisition_line_id);
+
+                if ($posicion !== false) {
+                    return $folio.' · línea '.($posicion + 1).' de '.$lineas->count();
+                }
+            }
+        }
+
+        return $folio;
+    }
+
+    /**
+     * Folio SIN el sufijo "línea n de N" — para quien lo compone por su
+     * cuenta (el pool de `SolicitudesProveedor`).
+     */
+    public function folioSicBase(): ?string
     {
         return $this->sic?->folio_sic
             ?? $this->ebsRequisition?->code

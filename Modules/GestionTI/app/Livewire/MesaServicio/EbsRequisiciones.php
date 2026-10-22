@@ -288,11 +288,16 @@ class EbsRequisiciones extends Component
             return $this->ebsDirectoElegibleIdsCache;
         }
 
-        return $this->ebsDirectoElegibleIdsCache = EbsRequisition::elegibleDirectoSinSic()
+        // Elegible = al menos UNA línea con ítem mapeado a categoría "va a
+        // Compra" que ninguna Solicitud a Proveedor haya recogido ya.
+        $requisiciones = EbsRequisition::elegibleDirectoSinSic()
             ->with('lines')
-            ->get()
-            ->filter(fn ($ebsRequisicion) => $ebsRequisicion->articuloMapeadoDeCompra() !== null)
-            ->pluck('id')
+            ->get();
+
+        return $this->ebsDirectoElegibleIdsCache = EbsRequisition::lineasElegiblesDeCompra($requisiciones)
+            ->map(fn ($par) => $par['requisicion']->id)
+            ->unique()
+            ->values()
             ->all();
     }
 

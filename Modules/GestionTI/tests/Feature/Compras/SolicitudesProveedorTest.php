@@ -23,6 +23,7 @@ use Modules\GestionTI\Models\Proveedor;
 use Modules\GestionTI\Models\ProyectoPresupuesto;
 use Modules\GestionTI\Models\ProyectoPresupuestoArticulo;
 use Modules\GestionTI\Models\SolicitudProveedor;
+use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\Ticket;
 use Modules\GestionTI\Models\TipoEquipo;
@@ -311,8 +312,8 @@ class SolicitudesProveedorTest extends TestCase
 
         Livewire::test(SolicitudesProveedor::class)
             ->call('create')
-            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
-            ->assertSet('seleccion.e'.$ebsRequisicion->id.'.cantidad_solicitada', 4);
+            ->call('toggleSeleccion', $this->claveEbs($ebsRequisicion))
+            ->assertSet('seleccion.'.$this->claveEbs($ebsRequisicion).'.cantidad_solicitada', 4);
     }
 
     public function test_folio_is_suggested_when_creating(): void
@@ -1289,6 +1290,14 @@ class SolicitudesProveedorTest extends TestCase
      * por el camino directo (ver `EbsRequisition::scopeElegibleDirectoSinSic()`/
      * `articuloMapeadoDeCompra()`).
      */
+    /** Clave de pool de una línea de una requisición EBS directa (`e{id}l{requisition_line_id}`). */
+    private function claveEbs(EbsRequisition $ebs, int $numeroLinea = 1): string
+    {
+        $lineaId = $ebs->lines()->where('line_number', $numeroLinea)->value('requisition_line_id');
+
+        return 'e'.$ebs->id.'l'.$lineaId;
+    }
+
     private function crearEbsDirectoElegible(string $code, int $itemId, string $itemDescription = 'Item EBS directo'): EbsRequisition
     {
         $this->marcarCategoriaComoCompra();
@@ -1320,6 +1329,108 @@ class SolicitudesProveedorTest extends TestCase
         return $ebsRequisicion->fresh();
     }
 
+    /**
+     * Requisición EBS de 2 líneas, cada una con su ítem mapeado a un artículo
+     * de categoría "va a Compra".
+     */
+    private function crearEbsDeDosLineas(string $code, int $itemA, int $itemB): EbsRequisition
+    {
+        $ebs = $this->crearEbsDirectoElegible($code, $itemA, 'Primer artículo');
+
+        $articuloB = ArticuloSolicitud::create([
+            'codigo' => 'ART-EBS-DIRECTO-B-'.$code,
+            'descripcion' => 'Monitor EBS directo '.$code,
+            'unidad_medida' => 'Pieza',
+            'categoria_id' => CategoriaArticulo::where('slug', 'laptops_desktops')->value('id'),
+            'es_inventariable' => true,
+        ]);
+        EbsArticulo::create(['ebs_item_id' => $itemB, 'articulo_id' => $articuloB->id]);
+
+        $ebs->lines()->create([
+            'requisition_line_id' => random_int(1000000, 9999999),
+            'line_number' => 2,
+            'item_id' => $itemB,
+            'item_description' => 'Segundo artículo',
+            'quantity' => 3,
+        ]);
+
+        return $ebs->fresh();
+    }
+
+    public function test_saved_lines_of_a_multi_line_requisition_show_which_line_each_one_is_in_the_folio(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDeDosLineas('MULTI-4', 7131, 7132);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.vendor_id', $this->proveedor()->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebs, 1))
+            ->call('toggleSeleccion', $this->claveEbs($ebs, 2))
+            ->conLugar()->call('save')
+            ->assertHasNoErrors();
+
+        $lineas = SolicitudProveedorLinea::with('ebsRequisition.lines')->where('ebs_requisition_id', $ebs->id)->get();
+        $folios = $lineas->map->folioSicDisplay()->sort()->values()->all();
+
+        $this->assertSame(['MULTI-4 · línea 1 de 2', 'MULTI-4 · línea 2 de 2'], $folios);
+        $this->assertSame(['MULTI-4'], $lineas->map->folioSicBase()->unique()->values()->all());
+    }
+
+    public function test_ebs_requisition_with_two_lines_shows_one_pool_row_per_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDeDosLineas('MULTI-1', 7101, 7102);
+
+        $component = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertContains($this->claveEbs($ebs, 1), $this->clavesDelPool($component));
+        $this->assertContains($this->claveEbs($ebs, 2), $this->clavesDelPool($component));
+
+        $fila2 = $this->filaDelPool($component, $this->claveEbs($ebs, 2));
+        $this->assertSame('Segundo artículo', $fila2['ebs_item_description']);
+        $this->assertSame(3, $fila2['cantidad']);
+        $this->assertStringContainsString('línea 2 de 2', $fila2['folio_sic_display']);
+    }
+
+    public function test_relating_one_line_of_a_multi_line_requisition_leaves_the_other_available(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDeDosLineas('MULTI-2', 7111, 7112);
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->call('create')
+            ->set('form.vendor_id', $this->proveedor()->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebs, 1))
+            ->conLugar()->call('save')
+            ->assertHasNoErrors();
+
+        $guardada = SolicitudProveedorLinea::where('ebs_requisition_id', $ebs->id)->get();
+        $this->assertCount(1, $guardada);
+        $this->assertSame(
+            (int) $ebs->lines()->where('line_number', 1)->value('requisition_line_id'),
+            (int) $guardada->first()->ebs_requisition_line_id
+        );
+
+        $nuevo = Livewire::test(SolicitudesProveedor::class)->call('create');
+
+        $this->assertNotContains($this->claveEbs($ebs, 1), $this->clavesDelPool($nuevo));
+        $this->assertContains($this->claveEbs($ebs, 2), $this->clavesDelPool($nuevo));
+    }
+
+    public function test_create_from_ebs_requisition_id_preselects_all_its_available_lines(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDeDosLineas('MULTI-3', 7121, 7122);
+
+        $component = Livewire::withQueryParams(['crear_desde_ebs' => (string) $ebs->id])->test(SolicitudesProveedor::class);
+
+        $this->assertEqualsCanonicalizing(
+            [$this->claveEbs($ebs, 1), $this->claveEbs($ebs, 2)],
+            array_keys($component->get('seleccion'))
+        );
+    }
+
     public function test_ebs_direct_requisition_without_local_sic_appears_in_the_picker(): void
     {
         $this->actingAs($this->actingUser());
@@ -1327,7 +1438,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
+        $this->assertContains($this->claveEbs($ebsRequisicion), $this->clavesDelPool($component));
     }
 
     public function test_ebs_requisition_with_an_existing_local_sic_does_not_appear_in_the_direct_picker(): void
@@ -1340,7 +1451,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('create');
 
-        $this->assertNotContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
+        $this->assertNotContains($this->claveEbs($ebsRequisicion), $this->clavesDelPool($component));
     }
 
     public function test_selecting_an_ebs_direct_requisition_creates_a_line_with_the_mapped_articulo(): void
@@ -1351,9 +1462,9 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)
             ->call('create')
-            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id);
+            ->call('toggleSeleccion', $this->claveEbs($ebsRequisicion));
 
-        $linea = $component->get('seleccion.e'.$ebsRequisicion->id);
+        $linea = $component->get('seleccion.'.$this->claveEbs($ebsRequisicion));
         $this->assertNotNull($linea);
         $this->assertSame($articulo->id, $linea['articulo_id']);
         $this->assertNull($linea['sic_id']);
@@ -1372,7 +1483,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebsRequisicion))
             ->conLugar()->call('save')
             ->assertHasNoErrors();
 
@@ -1392,7 +1503,7 @@ class SolicitudesProveedorTest extends TestCase
         $component = Livewire::test(SolicitudesProveedor::class)
             ->call('create');
 
-        $fila = $this->filaDelPool($component, 'e'.$ebsRequisicion->id);
+        $fila = $this->filaDelPool($component, $this->claveEbs($ebsRequisicion));
         $this->assertSame('LAPTOP ITEM EBS DIRECTO ORIGINAL', $fila['ebs_item_description']);
         $component->assertSee('LAPTOP ITEM EBS DIRECTO ORIGINAL');
     }
@@ -1405,7 +1516,7 @@ class SolicitudesProveedorTest extends TestCase
         $component = Livewire::withQueryParams(['crear_desde_ebs' => (string) $ebsRequisicion->id])->test(SolicitudesProveedor::class);
 
         $component->assertSet('showForm', true);
-        $this->assertSame(['e'.$ebsRequisicion->id], array_keys($component->get('seleccion')));
+        $this->assertSame([$this->claveEbs($ebsRequisicion)], array_keys($component->get('seleccion')));
     }
 
     /** `crear_desde_sics` y `crear_desde_ebs` pueden venir mezclados a la vez. */
@@ -1423,7 +1534,7 @@ class SolicitudesProveedorTest extends TestCase
 
         $component->assertSet('showForm', true);
         $this->assertEqualsCanonicalizing(
-            ['s'.$sic->id, 'e'.$ebsRequisicion->id],
+            ['s'.$sic->id, $this->claveEbs($ebsRequisicion)],
             array_keys($component->get('seleccion'))
         );
     }
@@ -1440,7 +1551,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebsRequisicion))
             ->conLugar()->call('save')
             ->assertHasNoErrors();
 
@@ -1448,8 +1559,8 @@ class SolicitudesProveedorTest extends TestCase
 
         $component = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
 
-        $this->assertContains('e'.$ebsRequisicion->id, $this->clavesDelPool($component));
-        $this->assertArrayHasKey('e'.$ebsRequisicion->id, $component->get('seleccion'));
+        $this->assertContains($this->claveEbs($ebsRequisicion), $this->clavesDelPool($component));
+        $this->assertArrayHasKey($this->claveEbs($ebsRequisicion), $component->get('seleccion'));
     }
 
     // --- Campo nuevo por línea: "Lugar de entrega" (catálogo real) ---------
@@ -1672,7 +1783,7 @@ class SolicitudesProveedorTest extends TestCase
             ->set('form.vendor_id', $vendor->id)
             ->set('form.fecha_solicitud', '2026-09-01')
             ->set('form.tipo_solicitud', 'regular')
-            ->call('toggleSeleccion', 'e'.$ebsRequisicion->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebsRequisicion))
             ->set('form.proyecto_presupuesto_articulo_id', $proyectoArticulo->id)
             ->conLugar()->call('save')
             ->assertHasErrors(['origen', 'form.proyecto_presupuesto_articulo_id']);
@@ -1902,7 +2013,7 @@ class SolicitudesProveedorTest extends TestCase
             ->call('toggleSeleccion', 's'.$sic->id)
             ->set('seleccion.s'.$sic->id.'.cantidad_solicitada', 3)
             ->set('seleccion.s'.$sic->id.'.lugar_entrega_id', $lugar->id)
-            ->call('toggleSeleccion', 'e'.$ebs->id)
+            ->call('toggleSeleccion', $this->claveEbs($ebs))
             ->call('addLinea')
             ->set('lineasManuales.0.folio_sic_manual', 'SIC-MANUAL-9')
             ->set('lineasManuales.0.descripcion_libre', 'Cable especial')
@@ -1915,7 +2026,7 @@ class SolicitudesProveedorTest extends TestCase
         $edicion = Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id);
 
         $edicion->assertSet('showForm', true);
-        $this->assertEqualsCanonicalizing(['s'.$sic->id, 'e'.$ebs->id], array_keys($edicion->get('seleccion')));
+        $this->assertEqualsCanonicalizing(['s'.$sic->id, $this->claveEbs($ebs)], array_keys($edicion->get('seleccion')));
         $this->assertSame(3, $edicion->get('seleccion.s'.$sic->id.'.cantidad_solicitada'));
         $this->assertSame($lugar->id, $edicion->get('seleccion.s'.$sic->id.'.lugar_entrega_id'));
         $this->assertNotNull($edicion->get('seleccion.s'.$sic->id.'.id'));
@@ -1923,7 +2034,7 @@ class SolicitudesProveedorTest extends TestCase
         $this->assertSame('SIC-MANUAL-9', $edicion->get('lineasManuales.0.folio_sic_manual'));
 
         // Quitar una fila de la selección y guardar borra su línea.
-        $edicion->call('toggleSeleccion', 'e'.$ebs->id)->conLugar()->call('save')->assertHasNoErrors();
+        $edicion->call('toggleSeleccion', $this->claveEbs($ebs))->conLugar()->call('save')->assertHasNoErrors();
         $this->assertCount(2, $solicitud->fresh()->lineas);
         $this->assertDatabaseMissing('solicitud_proveedor_lineas', ['solicitud_id' => $solicitud->id, 'ebs_requisition_id' => $ebs->id]);
     }

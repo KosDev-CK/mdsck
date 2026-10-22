@@ -1098,7 +1098,7 @@ class Recepciones extends Component
             'lineas.articulo.ram',
             'lineas.articulo.almacenamiento',
             'lineas.sic',
-            'lineas.ebsRequisition',
+            'lineas.ebsRequisition.lines',
             'lineas.lugarEntrega',
         ])->find($this->selectedSolicitudId);
 
