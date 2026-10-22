@@ -1002,8 +1002,11 @@ class SolicitudesProveedor extends Component
 
         $record->lineas()->whereNotIn('id', $keptIds)->delete();
 
-        $this->resetFormState();
-        $this->showForm = false;
+        // Guardar NO saca del formulario: se recarga la solicitud recién
+        // guardada en modo edición (una nueva pasa de "Nueva" a "Editar"),
+        // con las líneas tal como quedaron en BD. Volver al listado es
+        // siempre una acción explícita ("← Volver al listado").
+        $this->edit($record->id);
         session()->flash('status', 'Guardado correctamente.');
     }
 

@@ -102,7 +102,13 @@
             <div class="mt-4">{{ $records->links() }}</div>
         </x-ui.card>
     @else
-        <form wire:submit="save" class="space-y-6">
+        {{-- Enter dentro de un campo NO envía el formulario (ni guarda ni sale): solo confirma el valor del campo en el que estás. Guardar es únicamente con el botón. En textarea sigue siendo salto de línea y en botones sigue activándolos. --}}
+        <form
+            wire:submit="save"
+            class="space-y-6"
+            x-data
+            x-on:keydown.enter="if (! ['TEXTAREA', 'BUTTON'].includes($event.target.tagName) && $event.target.type !== 'submit') { $event.preventDefault(); $event.target.dispatchEvent(new Event('change', { bubbles: true })); }"
+        >
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <x-ui.button type="button" variant="ghost" wire:click="cancel">&larr; Volver al listado</x-ui.button>
                 <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">

@@ -1808,7 +1808,9 @@ class SolicitudesProveedorTest extends TestCase
             ->set('seleccion.s'.$sics[19]->id.'.cantidad_solicitada', 4)
             ->conLugar()->call('save')
             ->assertHasNoErrors()
-            ->assertSet('showForm', false);
+            // Guardar no saca del formulario: queda en modo edición.
+            ->assertSet('showForm', true)
+            ->assertNotSet('editingId', null);
 
         $solicitud = SolicitudProveedor::where('folio', 'SP-PAGINAS-001')->firstOrFail();
         $this->assertCount(2, $solicitud->lineas);
