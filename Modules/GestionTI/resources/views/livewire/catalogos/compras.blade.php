@@ -58,7 +58,7 @@
             $headers = match ($tab) {
                 'proveedores' => ['Nombre comercial', 'Razón social', 'RFC', 'Contacto', 'Estatus', ''],
                 'categorias' => ['Nombre', 'Va a Compras', 'Estatus', ''],
-                'lugares_entrega' => ['Nombre', 'Ubicaciones agrupadas', 'Estatus', ''],
+                'lugares_entrega' => ['Nombre', 'Ubicaciones agrupadas', 'Encargados', 'Estatus', ''],
                 'ebs_articulos' => ['Item ID (EBS)', 'Descripción en EBS', 'Artículo mapeado', ''],
                 default => ['Código', 'Descripción', 'Unidad de medida', 'Categoría', 'Tipo de equipo', 'Estatus', ''],
             };
@@ -89,6 +89,13 @@
                                 {{ $record->ubicaciones_count }}
                             @else
                                 <x-ui.badge color="amber">Sin ubicaciones</x-ui.badge>
+                            @endif
+                        </td>
+                        <td class="py-2 text-gray-500 dark:text-gray-400">
+                            @if ($record->usuarios_count > 0)
+                                {{ $record->usuarios_count }}
+                            @else
+                                <x-ui.badge color="amber">Sin encargados</x-ui.badge>
                             @endif
                         </td>
                     @elseif ($tab === 'ebs_articulos')
@@ -180,6 +187,18 @@
             @elseif ($tab === 'lugares_entrega')
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
                 <p class="text-xs text-gray-500 dark:text-gray-400">Las ubicaciones de inventario que agrupa este lugar se asignan desde Catálogos Núcleo → Ubicaciones (campo "Lugar de entrega (Compras)"); sin ubicaciones asignadas no se puede registrar una recepción de este sitio.</p>
+                <div>
+                    <p class="block text-sm font-medium text-gray-700 dark:text-gray-300">Encargados de recibir en este sitio</p>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Cuando se envía una Solicitud a Proveedores, cada encargado recibe una copia por correo con lo que debe recibir aquí. Puedes elegir varios, o ninguno.</p>
+                    <div class="mt-2 max-h-40 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                        @foreach ($usuarioOptions as $usuario)
+                            <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+                                <input type="checkbox" value="{{ $usuario->id }}" wire:model="usuariosIds" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                                {{ $usuario->name }}
+                            </label>
+                        @endforeach
+                    </div>
+                </div>
             @elseif ($tab === 'ebs_articulos')
                 <x-ui.select label="Artículo del catálogo" name="form.articulo_id" wire:model="form.articulo_id" hint="El artículo estándar/genérico al que corresponde este ítem de EBS (no la marca/modelo real — eso se resuelve después, en Recepción de Proveedor).">
                     <option value="">Sin mapear</option>

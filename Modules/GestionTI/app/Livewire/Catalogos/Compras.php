@@ -206,7 +206,7 @@ class Compras extends Component
 
         $this->editingId = $id;
         $this->form = collect($config['fields'])->mapWithKeys(fn ($field) => [$field => $record->{$field}])->all();
-        $this->usuariosIds = $this->tab === 'proveedores'
+        $this->usuariosIds = in_array($this->tab, ['proveedores', 'lugares_entrega'], true)
             ? $record->usuarios()->pluck('users.id')->map(fn ($id) => (int) $id)->all()
             : [];
         $this->resetValidation();
@@ -284,6 +284,11 @@ class Compras extends Component
             }
         }
 
+        if ($this->tab === 'lugares_entrega') {
+            $config['rules']['usuariosIds'] = 'array';
+            $config['rules']['usuariosIds.*'] = 'integer|exists:users,id';
+        }
+
         $this->validate($config['rules'], [
             'usuariosIds.required' => 'Elige al menos un encargado que confirme las entregas de este proveedor interno.',
             'usuariosIds.min' => 'Elige al menos un encargado que confirme las entregas de este proveedor interno.',
@@ -303,6 +308,8 @@ class Compras extends Component
 
         if ($this->tab === 'proveedores') {
             $registro->usuarios()->sync($this->form['es_interno'] ? $this->usuariosIds : []);
+        } elseif ($this->tab === 'lugares_entrega') {
+            $registro->usuarios()->sync(array_map('intval', $this->usuariosIds));
         }
 
         $this->showModal = false;
@@ -378,7 +385,7 @@ class Compras extends Component
         $records = $config['model']::query()
             ->when($this->tab === 'articulos_solicitud', fn ($q) => $q->with(['tipoEquipo', 'marca', 'modelo', 'categoria']))
             ->when($this->tab === 'ebs_articulos', fn ($q) => $q->with('articulo'))
-            ->when($this->tab === 'lugares_entrega', fn ($q) => $q->withCount('ubicaciones'))
+            ->when($this->tab === 'lugares_entrega', fn ($q) => $q->withCount(['ubicaciones', 'usuarios']))
             ->when($this->search !== '', function ($q) use ($config) {
                 $q->where(function ($q) use ($config) {
                     foreach ($config['searchColumns'] as $column) {
@@ -411,7 +418,7 @@ class Compras extends Component
             'ramOptions' => $this->tab === 'articulos_solicitud'
                 ? Ram::where('activo', true)->orderBy('nombre')->get()
                 : null,
-            'usuarioOptions' => $this->tab === 'proveedores'
+            'usuarioOptions' => in_array($this->tab, ['proveedores', 'lugares_entrega'], true)
                 ? User::where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 : null,
             'articuloMapeadoOptions' => $this->tab === 'ebs_articulos'

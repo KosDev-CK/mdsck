@@ -24,4 +24,13 @@ class LugarEntrega extends Model
     {
         return $this->hasMany(SolicitudProveedorLinea::class, 'lugar_entrega_id');
     }
+
+    /**
+     * Encargados de este sitio: reciben copia de cada Solicitud a Proveedores
+     * con las líneas que deben recibir aquí (`Support\Compras\AvisoEncargadosEntrega`).
+     */
+    public function usuarios()
+    {
+        return $this->belongsToMany(\App\Models\User::class, 'lugar_entrega_usuario')->withTimestamps();
+    }
 }

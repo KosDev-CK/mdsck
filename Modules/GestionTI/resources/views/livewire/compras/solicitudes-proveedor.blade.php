@@ -82,6 +82,15 @@
                                     :title="$record->enviada_at ? 'Reenviar al proveedor' : 'Enviar a proveedor'"
                                 />
 
+                                @if ($record->estatus !== 'cancelada')
+                                    <x-ui.icon-button
+                                        wire:click="avisarEncargados({{ $record->id }})"
+                                        wire:confirm="¿Avisar a los encargados de cada lugar de entrega? Solo se les escribe a ellos, no al proveedor."
+                                        icon="heroicon-o-bell-alert"
+                                        :title="'Avisar a encargados de entrega (solo a ellos, no al proveedor)'.($record->encargados_avisados_at ? ' — último aviso '.$record->encargados_avisados_at->format('d/m/Y') : '')"
+                                    />
+                                @endif
+
                                 <x-ui.icon-button tag="a" :href="route('gestionti.solicitudes-proveedor.pdf', $record)" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
 
                                 @if ($record->estatus === 'solicitada' && $this->puedeEditar($record))

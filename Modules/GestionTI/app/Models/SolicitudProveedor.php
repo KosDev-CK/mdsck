@@ -43,6 +43,7 @@ class SolicitudProveedor extends Model
         'entrega_confirmada_at',
         'entrega_confirmada_por_user_id',
         'entrega_confirmada_notas',
+        'encargados_avisados_at',
     ];
 
     protected $casts = [
@@ -50,6 +51,7 @@ class SolicitudProveedor extends Model
         'fecha_entrega_prometida' => 'date',
         'enviada_at' => 'datetime',
         'entrega_confirmada_at' => 'datetime',
+        'encargados_avisados_at' => 'datetime',
         'ultimo_envio_at' => 'datetime',
     ];
 

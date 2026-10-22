@@ -25,6 +25,7 @@ use Modules\GestionTI\Models\SolicitudProveedor;
 use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Models\Ticket;
+use Modules\GestionTI\Support\Compras\AvisoEncargadosEntrega;
 
 /**
  * "Solicitud a Proveedores" — origen "de 1 a N SICs/EBS" (`$seleccion`) O un
@@ -1118,7 +1119,43 @@ class SolicitudesProveedor extends Component
         $record->ultimo_envio_at = now();
         $record->save();
 
-        session()->flash('status', 'Correo enviado al proveedor.');
+        // Copia a los encargados de cada lugar de entrega (lo que deben
+        // recibir en su sitio). Un fallo aquí nunca deshace el envío al proveedor.
+        $aviso = AvisoEncargadosEntrega::resumen(app(AvisoEncargadosEntrega::class)->enviar($record));
+
+        session()->flash('status', trim('Correo enviado al proveedor. '.$aviso));
+    }
+
+    /**
+     * Manda SOLO a los encargados de cada lugar de entrega la copia de la
+     * solicitud (lo que deben recibir en su sitio), sin escribirle al
+     * proveedor — por ejemplo para avisar de una solicitud que ya se había
+     * enviado antes de configurar los encargados. Disponible en cualquier
+     * estatus salvo cancelada.
+     */
+    public function avisarEncargados(int $id): void
+    {
+        $record = SolicitudProveedor::with('lineas')->findOrFail($id);
+
+        if ($record->estatus === SolicitudProveedor::ESTATUS_CANCELADA) {
+            return;
+        }
+
+        if ($record->lineas->contains(fn ($linea) => empty($linea->lugar_entrega_id))) {
+            session()->flash('error', 'Todas las líneas deben tener lugar de entrega para avisar a los encargados — edita la solicitud y captúralo.');
+
+            return;
+        }
+
+        $resultado = app(AvisoEncargadosEntrega::class)->enviar($record);
+
+        if ($resultado['enviados'] === 0) {
+            session()->flash('error', 'No se envió ningún aviso. '.(AvisoEncargadosEntrega::resumen($resultado) ?: 'Los lugares de entrega de esta solicitud no tienen encargados con correo — asígnalos en Catálogos de Compras → Lugar de entrega.'));
+
+            return;
+        }
+
+        session()->flash('status', AvisoEncargadosEntrega::resumen($resultado));
     }
 
     /**

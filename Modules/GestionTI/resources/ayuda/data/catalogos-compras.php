@@ -75,10 +75,13 @@ return [
                 'Un lugar de entrega AGRUPA ubicaciones de inventario: se asignan desde Catálogos Núcleo → Ubicaciones (campo "Lugar de entrega (Compras)"); la columna "Ubicaciones agrupadas" indica cuántas tiene.',
                 'Un sitio sin ubicaciones no puede recibir equipos: Recepción de Proveedor se bloquea hasta asignarle al menos una.',
                 'Cada técnico recibe solo lo de su sitio (su "sede de trabajo" en el catálogo de Validadores).',
+                'ENCARGADOS: cada sitio puede tener uno o varios encargados (usuarios del sistema con correo). Cuando una Solicitud a Proveedores se envía al proveedor, cada encargado recibe por correo una copia con SOLO las líneas que debe recibir en su sitio (artículo, cantidad, folio de línea, fecha de entrega comprometida) y el PDF completo; un encargado de varios sitios recibe un solo correo con todo. Un sitio sin encargados simplemente no genera copia (el aviso lo indica). Los usuarios inactivos o sin correo se omiten.',
+                'La columna "Encargados" muestra cuántos tiene cada sitio ("Sin encargados" si ninguno).',
                 'Fusionar duplicados repunta las líneas de solicitud del duplicado.',
             ],
             'campos' => [
                 ['nombre' => 'Nombre', 'explicacion' => 'Nombre del sitio de entrega.'],
+                ['nombre' => 'Encargados de recibir en este sitio', 'explicacion' => 'Usuarios que reciben copia por correo de lo que se solicitó para este sitio. Opcional; puedes elegir varios.'],
                 ['nombre' => 'Estatus', 'explicacion' => 'Solo los activos aparecen al capturar una línea.'],
             ],
         ],
