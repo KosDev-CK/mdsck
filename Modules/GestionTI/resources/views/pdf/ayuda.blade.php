@@ -25,7 +25,8 @@
         h1 { font-size: 16px; margin: 0 0 12px; color: #1f2937; }
         h2 { font-size: 12px; margin: 16px 0 6px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; color: #E97132; }
         p { margin: 0 0 8px; line-height: 1.5; }
-        ol { margin: 0 0 8px 18px; padding: 0; }
+        h3 { font-size: 11px; margin: 10px 0 4px; color: #374151; }
+        ol, ul { margin: 0 0 8px 18px; padding: 0; }
         li { margin-bottom: 4px; }
         table.campos { width: 100%; border-collapse: collapse; margin-top: 4px; }
         table.campos td { padding: 6px 4px; vertical-align: top; border-bottom: 1px solid #e5e7eb; }
@@ -44,6 +45,15 @@
 
         <h2>¿Qué resuelve?</h2>
         <p>{{ $contenido['resuelve'] }}</p>
+
+        @if (! empty($contenido['reglas']))
+            <h2>Reglas del proceso</h2>
+            <ul>
+                @foreach ($contenido['reglas'] as $regla)
+                    <li>{{ $regla }}</li>
+                @endforeach
+            </ul>
+        @endif
 
         @if (! empty($contenido['proceso']))
             <h2>Proceso de llenado</h2>
@@ -65,6 +75,44 @@
                 @endforeach
             </table>
         @endif
+
+        @foreach (($contenido['secciones'] ?? []) as $seccion)
+            <h2 style="page-break-before: auto; font-size: 13px; margin-top: 22px;">{{ $seccion['titulo'] }}</h2>
+
+            @if (! empty($seccion['intro']))
+                <p>{{ $seccion['intro'] }}</p>
+            @endif
+
+            @if (! empty($seccion['reglas']))
+                <h3>Reglas</h3>
+                <ul>
+                    @foreach ($seccion['reglas'] as $regla)
+                        <li>{{ $regla }}</li>
+                    @endforeach
+                </ul>
+            @endif
+
+            @if (! empty($seccion['proceso']))
+                <h3>Paso a paso</h3>
+                <ol>
+                    @foreach ($seccion['proceso'] as $paso)
+                        <li>{{ $paso }}</li>
+                    @endforeach
+                </ol>
+            @endif
+
+            @if (! empty($seccion['campos']))
+                <h3>Explicación de cada campo</h3>
+                <table class="campos">
+                    @foreach ($seccion['campos'] as $campo)
+                        <tr>
+                            <td class="campo-nombre">{{ $campo['nombre'] }}</td>
+                            <td>{{ $campo['explicacion'] }}</td>
+                        </tr>
+                    @endforeach
+                </table>
+            @endif
+        @endforeach
     </div>
 </body>
 </html>

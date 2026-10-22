@@ -1,5 +1,5 @@
 <x-mail::message>
-# Solicitud de compra {{ $solicitud->folio }}
+# {{ $solicitud->vendor?->es_interno ? 'Solicitud interna' : 'Solicitud de compra' }} {{ $solicitud->folio }}
 
 @php
     $estatusLabels = [
@@ -13,7 +13,11 @@
 
 Estimado(a) {{ $solicitud->vendor?->contacto_nombre ?? $solicitud->vendor?->nombre_comercial }},
 
+@if ($solicitud->vendor?->es_interno)
+Se autorizó la siguiente solicitud y corresponde a su área surtirla:
+@else
 Le compartimos la siguiente solicitud de compra:
+@endif
 
 - **Folio:** {{ $solicitud->folio }}
 - **Fecha de solicitud:** {{ $solicitud->fecha_solicitud?->format('d/m/Y') }}
@@ -33,7 +37,11 @@ Le compartimos la siguiente solicitud de compra:
 
 Adjuntamos el PDF de esta solicitud para impresión/entrega.
 
+@if ($solicitud->vendor?->es_interno)
+Cuando entreguen lo solicitado, **confirmen la entrega en el sistema** (pantalla "Entregas internas") para que TI haga el ingreso.
+@else
 Quedamos al pendiente de su confirmación.
+@endif
 
 Saludos.
 </x-mail::message>

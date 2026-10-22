@@ -81,6 +81,15 @@ class EbsRequisition extends Model
     }
 
     /**
+     * Líneas de esta requisición que ya se atendieron fuera del flujo (ver
+     * `EbsLineaAtendida`), con su motivo.
+     */
+    public function lineasAtendidas(): HasMany
+    {
+        return $this->hasMany(EbsLineaAtendida::class, 'ebs_requisition_id');
+    }
+
+    /**
      * Segundo camino de elegibilidad para armar una Solicitud a Proveedor
      * (ver `SolicitudSicBorrador::scopeAutorizadaYSeleccionable()` para el
      * primero, "SIC local") — usado por requisiciones que NUNCA tuvieron SIC
@@ -136,6 +145,10 @@ class EbsRequisition extends Model
         $tomadas = SolicitudProveedorLinea::whereIn('ebs_requisition_line_id', $lineaIds)
             ->when($exceptSolicitudId, fn ($q) => $q->where('solicitud_id', '!=', $exceptSolicitudId))
             ->pluck('ebs_requisition_line_id')
+            ->merge(
+                // Atendidas FUERA del flujo (ver `EbsLineaAtendida`): tampoco se ofrecen.
+                EbsLineaAtendida::whereIn('ebs_requisition_line_id', $lineaIds)->pluck('ebs_requisition_line_id')
+            )
             ->flip();
 
         $resultado = collect();

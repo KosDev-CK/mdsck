@@ -20,6 +20,7 @@ use Modules\GestionTI\Livewire\Catalogos\Nucleo as CatalogosNucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
+use Modules\GestionTI\Livewire\Compras\EntregasInternas;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
 use Modules\GestionTI\Livewire\Dashboard;
 use Modules\GestionTI\Livewire\Inventarios\Asignaciones;
@@ -120,6 +121,7 @@ class GestionTIServiceProvider extends ModuleServiceProvider
         Livewire::component('gestionti.solicitudes-sic', SolicitudesSic::class);
         Livewire::component('gestionti.ebs-requisiciones', EbsRequisiciones::class);
         Livewire::component('gestionti.solicitudes-proveedor', SolicitudesProveedor::class);
+        Livewire::component('gestionti.entregas-internas', EntregasInternas::class);
         Livewire::component('gestionti.recepciones', Recepciones::class);
         Livewire::component('gestionti.facturas', Facturas::class);
         Livewire::component('gestionti.asignaciones', Asignaciones::class);

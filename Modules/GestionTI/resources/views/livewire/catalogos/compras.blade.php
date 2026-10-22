@@ -68,7 +68,12 @@
             @foreach ($records as $record)
                 <tr wire:key="{{ $tab }}-{{ $record->id }}" class="border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors">
                     @if ($tab === 'proveedores')
-                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $record->nombre_comercial }}</td>
+                        <td class="py-2 font-medium text-gray-900 dark:text-gray-100">
+                            {{ $record->nombre_comercial }}
+                            @if ($record->es_interno)
+                                <x-ui.badge color="indigo">Interno</x-ui.badge>
+                            @endif
+                        </td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->razon_social }}</td>
                         <td class="py-2">{{ $record->rfc }}</td>
                         <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->contacto_nombre }}</td>
@@ -149,6 +154,26 @@
                     <x-ui.input label="Teléfono de contacto" name="form.contacto_telefono" wire:model="form.contacto_telefono" />
                     <x-ui.input label="Correo de contacto" name="form.contacto_correo" type="email" wire:model="form.contacto_correo" />
                 </div>
+
+                <x-ui.toggle label="Proveedor interno (un área de la empresa que surte equipo)" name="form.es_interno" wire:model.live="form.es_interno" />
+
+                @if (! empty($form['es_interno']))
+                    <div>
+                        <p class="block text-sm font-medium text-gray-700 dark:text-gray-300">Encargados que confirman las entregas</p>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Estas personas verán las solicitudes enviadas a esta área en "Entregas internas" y confirman cuando se entrega el equipo. Obligatorio elegir al menos una.</p>
+                        <div class="mt-2 max-h-40 divide-y divide-gray-100 overflow-y-auto rounded-md border border-gray-200 dark:divide-gray-800 dark:border-gray-700">
+                            @foreach ($usuarioOptions as $usuario)
+                                <label class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" value="{{ $usuario->id }}" wire:model="usuariosIds" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                                    {{ $usuario->name }}
+                                </label>
+                            @endforeach
+                        </div>
+                        @error('usuariosIds')
+                            <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                        @enderror
+                    </div>
+                @endif
             @elseif ($tab === 'categorias')
                 <x-ui.input label="Nombre" name="form.nombre" wire:model="form.nombre" />
                 <x-ui.toggle label="Va a Compras (genera Solicitud a Proveedor)" name="form.es_compra" wire:model="form.es_compra" />

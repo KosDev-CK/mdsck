@@ -6,7 +6,9 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
+use Modules\GestionTI\Models\EbsLineaAtendida;
 use Modules\GestionTI\Models\EbsRequisition;
+use Modules\GestionTI\Models\SolicitudProveedorLinea;
 use Modules\GestionTI\Models\SolicitudProveedor;
 use Modules\GestionTI\Models\SolicitudSicBorrador;
 use Modules\GestionTI\Support\Ebs\EbsRequisitionSyncService;
@@ -98,6 +100,16 @@ class EbsRequisiciones extends Component
      */
     public array $ebsIdsSeleccionados = [];
 
+    /** Modal "Atención de líneas": marcar líneas ya atendidas fuera del flujo. */
+    public bool $showAtencionModal = false;
+
+    public ?int $atencionId = null;
+
+    /** `requisition_line_id` (de EBS) de las líneas marcadas en el modal. */
+    public array $atencionLineaIds = [];
+
+    public string $atencionMotivo = '';
+
     public bool $showSolicitudProveedorModal = false;
 
     public ?int $solicitudProveedorDetalleId = null;
@@ -165,6 +177,111 @@ class EbsRequisiciones extends Component
     {
         $this->showDetalleModal = false;
         $this->detalleId = null;
+    }
+
+    /**
+     * Solo requisiciones APROBADAS sin SIC local (las que se ofrecen por el
+     * camino directo en Solicitud a Proveedores): las demás no entran a ese
+     * pool, no hay nada que marcar.
+     */
+    private function requisicionAtendible(int $id): ?EbsRequisition
+    {
+        return EbsRequisition::where('status', 'APPROVED')
+            ->whereDoesntHave('solicitudSicBorrador')
+            ->with(['lines', 'lineasAtendidas.usuario'])
+            ->find($id);
+    }
+
+    public function openAtencion(int $id): void
+    {
+        if (! $this->requisicionAtendible($id)) {
+            return;
+        }
+
+        $this->atencionId = $id;
+        $this->atencionLineaIds = [];
+        $this->atencionMotivo = '';
+        $this->resetValidation();
+        $this->showAtencionModal = true;
+    }
+
+    public function closeAtencion(): void
+    {
+        $this->showAtencionModal = false;
+        $this->atencionId = null;
+        $this->atencionLineaIds = [];
+        $this->atencionMotivo = '';
+        $this->resetValidation();
+    }
+
+    /**
+     * Marca como atendidas las líneas elegidas: dejan de ofrecerse en
+     * Solicitud a Proveedores. Las que ya recogió una solicitud o ya estaban
+     * atendidas se ignoran (no hay nada que marcar). Se resuelve contra las
+     * líneas REALES de la requisición — nunca se confía en los ids del cliente.
+     */
+    public function marcarAtendidas(): void
+    {
+        $this->validate([
+            'atencionLineaIds' => 'required|array|min:1',
+            'atencionMotivo' => 'required|string|min:5|max:1000',
+        ], [
+            'atencionLineaIds.required' => 'Marca al menos una línea.',
+            'atencionLineaIds.min' => 'Marca al menos una línea.',
+            'atencionMotivo.required' => 'Escribe el motivo (por ejemplo, "ya se compró y recibió en septiembre").',
+            'atencionMotivo.min' => 'El motivo es muy corto — explica por qué ya está atendida.',
+        ]);
+
+        $requisicion = $this->atencionId ? $this->requisicionAtendible($this->atencionId) : null;
+
+        if (! $requisicion) {
+            return;
+        }
+
+        $yaTomadas = SolicitudProveedorLinea::whereIn('ebs_requisition_line_id', $requisicion->lines->pluck('requisition_line_id'))
+            ->pluck('ebs_requisition_line_id')->map(fn ($id) => (int) $id)->all();
+        $yaAtendidas = $requisicion->lineasAtendidas->pluck('ebs_requisition_line_id')->map(fn ($id) => (int) $id)->all();
+
+        $marcadas = 0;
+
+        foreach ($requisicion->lines as $linea) {
+            $id = (int) $linea->requisition_line_id;
+
+            if (! in_array($id, array_map('intval', $this->atencionLineaIds), true)
+                || in_array($id, $yaTomadas, true)
+                || in_array($id, $yaAtendidas, true)) {
+                continue;
+            }
+
+            EbsLineaAtendida::create([
+                'ebs_requisition_line_id' => $id,
+                'ebs_requisition_id' => $requisicion->id,
+                'motivo' => trim($this->atencionMotivo),
+                'user_id' => auth()->id(),
+            ]);
+            $marcadas++;
+        }
+
+        $this->ebsDirectoElegibleIdsCache = null;
+        $this->closeAtencion();
+        session()->flash('status', $marcadas > 0
+            ? "Se marcaron {$marcadas} línea(s) como atendidas — ya no se ofrecen en Solicitud a Proveedores."
+            : 'No había líneas disponibles que marcar.');
+    }
+
+    /** Regresa una línea atendida al pool (por si se marcó por error). */
+    public function reabrirLinea(int $requisitionLineId): void
+    {
+        if (! $this->atencionId) {
+            return;
+        }
+
+        EbsLineaAtendida::where('ebs_requisition_id', $this->atencionId)
+            ->where('ebs_requisition_line_id', $requisitionLineId)
+            ->delete();
+
+        $this->ebsDirectoElegibleIdsCache = null;
+        session()->flash('status', 'La línea volvió a estar disponible en Solicitud a Proveedores.');
     }
 
     public function openVincular(int $id): void
@@ -404,6 +521,17 @@ class EbsRequisiciones extends Component
             ])->find($this->detalleId)
             : null;
 
+        $atencion = $this->showAtencionModal && $this->atencionId
+            ? $this->requisicionAtendible($this->atencionId)
+            : null;
+
+        $lineasTomadas = $atencion
+            ? SolicitudProveedorLinea::with('solicitud')
+                ->whereIn('ebs_requisition_line_id', $atencion->lines->pluck('requisition_line_id'))
+                ->get()
+                ->keyBy('ebs_requisition_line_id')
+            : collect();
+
         $solicitudProveedorDetalle = $this->showSolicitudProveedorModal
             ? SolicitudProveedor::with(['vendor', 'lineas.articulo', 'lineas.sic'])->find($this->solicitudProveedorDetalleId)
             : null;
@@ -445,6 +573,8 @@ class EbsRequisiciones extends Component
             'estatusOptions' => EbsRequisition::query()->whereNotNull('status')->distinct()->orderBy('status')->pluck('status'),
             'solicitudOptions' => $solicitudOptions,
             'detalle' => $detalle,
+            'atencion' => $atencion,
+            'lineasTomadas' => $lineasTomadas,
         ]);
     }
 }

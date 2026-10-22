@@ -49,7 +49,7 @@
             <table style="width: 100%; border-collapse: collapse;">
                 <tr>
                     <td style="vertical-align: top;">
-                        <h1>Solicitud a Proveedor</h1>
+                        <h1>{{ $solicitud->vendor?->es_interno ? 'Solicitud interna' : 'Solicitud a Proveedor' }}</h1>
                         <p class="meta">Folio {{ $solicitud->folio }} &middot; Generado el {{ now()->format('d/m/Y H:i') }}</p>
                     </td>
                     <td style="vertical-align: top; text-align: right; width: 260px;">
@@ -67,7 +67,7 @@
                     <td class="value">{{ $solicitud->folio }}</td>
                 </tr>
                 <tr>
-                    <td class="label">Proveedor</td>
+                    <td class="label">{{ $solicitud->vendor?->es_interno ? 'Área' : 'Proveedor' }}</td>
                     <td class="value">{{ $solicitud->vendor?->nombre_comercial ?? '—' }}</td>
                 </tr>
                 <tr>

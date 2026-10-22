@@ -101,8 +101,9 @@
             @if ($detalle->lines->isEmpty())
                 <p class="text-sm text-gray-500 dark:text-gray-400">Sin líneas registradas.</p>
             @else
-                <x-ui.table :headers="['#', 'Descripción', 'Cantidad', 'Unidad', 'Precio unitario', 'Moneda']">
+                <x-ui.table :headers="['#', 'Descripción', 'Cantidad', 'Unidad', 'Precio unitario', 'Moneda', 'Atención']">
                     @foreach ($detalle->lines as $line)
+                        @php $lineaAtendida = $detalle->lineasAtendidas->firstWhere('ebs_requisition_line_id', $line->requisition_line_id); @endphp
                         <tr wire:key="ebs-linea-{{ $line->id }}" class="border-b border-gray-50 dark:border-gray-800">
                             <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->line_number }}</td>
                             <td class="py-2 text-gray-900 dark:text-gray-100">{{ $line->item_description ?? '—' }}</td>
@@ -110,6 +111,13 @@
                             <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->unit_measurement ?? '—' }}</td>
                             <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->unit_price }}</td>
                             <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->currency_code ?? '—' }}</td>
+                            <td class="py-2 text-xs text-gray-500 dark:text-gray-400">
+                                @if ($lineaAtendida)
+                                    <x-ui.badge color="gray">Atendida</x-ui.badge> {{ $lineaAtendida->motivo }}
+                                @else
+                                    —
+                                @endif
+                            </td>
                         </tr>
                     @endforeach
                 </x-ui.table>

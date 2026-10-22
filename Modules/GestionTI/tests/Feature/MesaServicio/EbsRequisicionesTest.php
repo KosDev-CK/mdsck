@@ -791,4 +791,59 @@ class EbsRequisicionesTest extends TestCase
         $admin = Role::findOrCreate('Administrador', 'web');
         $this->assertTrue($admin->hasPermissionTo('screens.gestionti-ebs-requisiciones.manage'));
     }
+
+    public function test_marking_a_line_as_attended_removes_it_from_the_direct_pool_and_can_be_reopened(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDirectoElegible('ATEN-1', 7401);
+        $lineaId = (int) $ebs->lines()->value('requisition_line_id');
+
+        $this->assertContains($ebs->id, EbsRequisition::lineasElegiblesDeCompra(
+            EbsRequisition::elegibleDirectoSinSic()->with('lines')->get()
+        )->pluck('requisicion.id')->all());
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openAtencion', $ebs->id)
+            ->set('atencionLineaIds', [$lineaId])
+            ->set('atencionMotivo', 'Ya se compró y recibió en septiembre')
+            ->call('marcarAtendidas')
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseHas('ebs_lineas_atendidas', ['ebs_requisition_line_id' => $lineaId, 'ebs_requisition_id' => $ebs->id]);
+        $this->assertNotContains($ebs->id, EbsRequisition::lineasElegiblesDeCompra(
+            EbsRequisition::elegibleDirectoSinSic()->with('lines')->get()
+        )->pluck('requisicion.id')->all());
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openAtencion', $ebs->id)
+            ->call('reabrirLinea', $lineaId);
+
+        $this->assertDatabaseMissing('ebs_lineas_atendidas', ['ebs_requisition_line_id' => $lineaId]);
+        $this->assertContains($ebs->id, EbsRequisition::lineasElegiblesDeCompra(
+            EbsRequisition::elegibleDirectoSinSic()->with('lines')->get()
+        )->pluck('requisicion.id')->all());
+    }
+
+    public function test_marking_as_attended_requires_a_reason_and_at_least_one_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDirectoElegible('ATEN-2', 7402);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openAtencion', $ebs->id)
+            ->call('marcarAtendidas')
+            ->assertHasErrors(['atencionLineaIds', 'atencionMotivo']);
+
+        $this->assertDatabaseCount('ebs_lineas_atendidas', 0);
+    }
+
+    public function test_the_attention_modal_only_opens_for_approved_requisitions_without_a_local_sic(): void
+    {
+        $this->actingAs($this->actingUser());
+        $pendiente = EbsRequisition::create(['requisition_header_id' => random_int(1000000, 9999999), 'code' => 'ATEN-IP', 'status' => 'IN PROCESS']);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openAtencion', $pendiente->id)
+            ->assertSet('showAtencionModal', false);
+    }
 }

@@ -40,12 +40,16 @@ class SolicitudProveedor extends Model
         'enviada_at',
         'ultimo_envio_at',
         'creado_por_user_id',
+        'entrega_confirmada_at',
+        'entrega_confirmada_por_user_id',
+        'entrega_confirmada_notas',
     ];
 
     protected $casts = [
         'fecha_solicitud' => 'date',
         'fecha_entrega_prometida' => 'date',
         'enviada_at' => 'datetime',
+        'entrega_confirmada_at' => 'datetime',
         'ultimo_envio_at' => 'datetime',
     ];
 
@@ -105,6 +109,25 @@ class SolicitudProveedor extends Model
     public function creadoPor()
     {
         return $this->belongsTo(User::class, 'creado_por_user_id');
+    }
+
+    /** Quien confirmó la entrega (solo solicitudes a un proveedor INTERNO). */
+    public function entregaConfirmadaPor()
+    {
+        return $this->belongsTo(User::class, 'entrega_confirmada_por_user_id');
+    }
+
+    /**
+     * ¿Esta solicitud espera la confirmación de entrega del área? Solo las
+     * dirigidas a un proveedor interno, ya enviadas y aún no confirmadas ni
+     * canceladas.
+     */
+    public function pendienteDeConfirmacionInterna(): bool
+    {
+        return (bool) $this->vendor?->es_interno
+            && $this->enviada_at !== null
+            && $this->entrega_confirmada_at === null
+            && $this->estatus !== self::ESTATUS_CANCELADA;
     }
 
     public function ticket()

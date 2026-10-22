@@ -143,6 +143,16 @@ class GestionTIDatabaseSeeder extends Seeder
                 'order' => 21,
             ],
             [
+                'slug' => 'gestionti-entregas-internas',
+                'module' => 'GestionTI',
+                'group_label' => 'Compras',
+                'name' => 'Entregas internas',
+                'route_name' => 'gestionti.entregas-internas.index',
+                'permission_name' => 'screens.gestionti-entregas-internas.manage',
+                'icon' => 'truck',
+                'order' => 22,
+            ],
+            [
                 'slug' => 'gestionti-recepciones',
                 'module' => 'GestionTI',
                 'group_label' => 'Compras',

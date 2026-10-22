@@ -2,6 +2,7 @@
 
 namespace Modules\GestionTI\Livewire\Catalogos;
 
+use App\Models\User;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -40,6 +41,13 @@ class Compras extends Component
 
     public array $form = [];
 
+    /**
+     * Encargados de un proveedor INTERNO (ids de `users`) — se guardan en la
+     * pivote `proveedor_usuario`, no en la tabla del proveedor, por eso viven
+     * fuera de `$form`.
+     */
+    public array $usuariosIds = [];
+
     public string $search = '';
 
     public bool $showModal = false;
@@ -56,9 +64,10 @@ class Compras extends Component
                 'model' => Proveedor::class,
                 'fields' => [
                     'razon_social', 'nombre_comercial', 'rfc',
-                    'contacto_nombre', 'contacto_telefono', 'contacto_correo',
+                    'contacto_nombre', 'contacto_telefono', 'contacto_correo', 'es_interno',
                 ],
                 'rules' => [
+                    'form.es_interno' => 'boolean',
                     'form.razon_social' => 'required|string|max:255',
                     'form.nombre_comercial' => 'required|string|max:255',
                     'form.rfc' => 'nullable|string|max:20',
@@ -185,6 +194,7 @@ class Compras extends Component
 
         $this->editingId = null;
         $this->form = array_fill_keys($this->catalogos()[$this->tab]['fields'], null);
+        $this->usuariosIds = [];
         $this->resetValidation();
         $this->showModal = true;
     }
@@ -196,6 +206,9 @@ class Compras extends Component
 
         $this->editingId = $id;
         $this->form = collect($config['fields'])->mapWithKeys(fn ($field) => [$field => $record->{$field}])->all();
+        $this->usuariosIds = $this->tab === 'proveedores'
+            ? $record->usuarios()->pluck('users.id')->map(fn ($id) => (int) $id)->all()
+            : [];
         $this->resetValidation();
         $this->showModal = true;
     }
@@ -257,16 +270,39 @@ class Compras extends Component
             $this->form['es_compra'] = (bool) $this->form['es_compra'];
         }
 
-        $this->validate($config['rules']);
+        // Mismo tratamiento para el toggle "Proveedor interno".
+        if ($this->tab === 'proveedores') {
+            $this->form['es_interno'] = (bool) ($this->form['es_interno'] ?? false);
+
+            // Un proveedor interno recibe la solicitud por correo y sus
+            // encargados confirman la entrega en el sistema: ambos son
+            // obligatorios.
+            if ($this->form['es_interno']) {
+                $config['rules']['form.contacto_correo'] = 'required|email|max:255';
+                $config['rules']['usuariosIds'] = 'required|array|min:1';
+                $config['rules']['usuariosIds.*'] = 'integer|exists:users,id';
+            }
+        }
+
+        $this->validate($config['rules'], [
+            'usuariosIds.required' => 'Elige al menos un encargado que confirme las entregas de este proveedor interno.',
+            'usuariosIds.min' => 'Elige al menos un encargado que confirme las entregas de este proveedor interno.',
+            'form.contacto_correo.required' => 'Un proveedor interno necesita correo de contacto (ahí se envía la solicitud).',
+        ]);
 
         if ($this->editingId) {
-            $config['model']::findOrFail($this->editingId)->update($this->form);
+            $registro = $config['model']::findOrFail($this->editingId);
+            $registro->update($this->form);
         } else {
             if ($this->tab === 'categorias') {
                 $this->form['slug'] = $this->generarSlugUnico($this->form['nombre']);
             }
 
-            $config['model']::create($this->form);
+            $registro = $config['model']::create($this->form);
+        }
+
+        if ($this->tab === 'proveedores') {
+            $registro->usuarios()->sync($this->form['es_interno'] ? $this->usuariosIds : []);
         }
 
         $this->showModal = false;
@@ -374,6 +410,9 @@ class Compras extends Component
                 : null,
             'ramOptions' => $this->tab === 'articulos_solicitud'
                 ? Ram::where('activo', true)->orderBy('nombre')->get()
+                : null,
+            'usuarioOptions' => $this->tab === 'proveedores'
+                ? User::where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 : null,
             'articuloMapeadoOptions' => $this->tab === 'ebs_articulos'
                 ? ArticuloSolicitud::where('activo', true)->orderBy('descripcion')->get()

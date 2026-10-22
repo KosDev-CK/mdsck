@@ -17,6 +17,7 @@ use Modules\GestionTI\Livewire\Catalogos\Empleados as CatalogosEmpleados;
 use Modules\GestionTI\Livewire\Catalogos\Inventario as CatalogosInventario;
 use Modules\GestionTI\Livewire\Catalogos\Nucleo as CatalogosNucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
+use Modules\GestionTI\Livewire\Compras\EntregasInternas;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
@@ -93,6 +94,10 @@ Route::middleware(['auth', 'permission:screens.gestionti-ebs-requisiciones.manag
 Route::middleware(['auth', 'permission:screens.gestionti-solicitudes-proveedor.manage'])->group(function () {
     Route::get('/solicitudes-proveedor', SolicitudesProveedor::class)->name('gestionti.solicitudes-proveedor.index');
     Route::get('/solicitudes-proveedor/{solicitudProveedor}/pdf', SolicitudProveedorPdfController::class)->name('gestionti.solicitudes-proveedor.pdf');
+});
+
+Route::middleware(['auth', 'permission:screens.gestionti-entregas-internas.manage'])->group(function () {
+    Route::get('/entregas-internas', EntregasInternas::class)->name('gestionti.entregas-internas.index');
 });
 
 Route::middleware(['auth', 'permission:screens.gestionti-recepciones.manage'])->group(function () {

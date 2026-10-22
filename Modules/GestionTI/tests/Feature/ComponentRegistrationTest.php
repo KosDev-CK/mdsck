@@ -14,6 +14,7 @@ use Modules\GestionTI\Livewire\Catalogos\Nucleo;
 use Modules\GestionTI\Livewire\Configuracion\AlmacenamientoDocumentos;
 use Modules\GestionTI\Livewire\Compras\Facturas;
 use Modules\GestionTI\Livewire\Compras\Recepciones;
+use Modules\GestionTI\Livewire\Compras\EntregasInternas;
 use Modules\GestionTI\Livewire\Compras\SolicitudesProveedor;
 use Modules\GestionTI\Livewire\Dashboard;
 use Modules\GestionTI\Livewire\Inventarios\Asignaciones;
@@ -53,6 +54,7 @@ class ComponentRegistrationTest extends TestCase
             ['gestionti.solicitudes-sic', SolicitudesSic::class],
             ['gestionti.ebs-requisiciones', EbsRequisiciones::class],
             ['gestionti.solicitudes-proveedor', SolicitudesProveedor::class],
+            ['gestionti.entregas-internas', EntregasInternas::class],
             ['gestionti.recepciones', Recepciones::class],
             ['gestionti.facturas', Facturas::class],
             ['gestionti.asignaciones', Asignaciones::class],

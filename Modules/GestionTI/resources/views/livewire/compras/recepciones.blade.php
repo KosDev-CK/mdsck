@@ -81,7 +81,16 @@
                     class="cursor-pointer border-b border-gray-50 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50 transition-colors"
                 >
                     <td class="py-2 font-medium text-gray-900 dark:text-gray-100">{{ $solicitud->folio }}</td>
-                    <td class="py-2">{{ $solicitud->vendor?->nombre_comercial }}</td>
+                    <td class="py-2">
+                        {{ $solicitud->vendor?->nombre_comercial }}
+                        @if ($solicitud->vendor?->es_interno)
+                            @if ($solicitud->entrega_confirmada_at)
+                                <x-ui.badge color="emerald">Entrega confirmada</x-ui.badge>
+                            @elseif ($solicitud->enviada_at)
+                                <x-ui.badge color="amber">Área sin confirmar</x-ui.badge>
+                            @endif
+                        @endif
+                    </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ $solicitud->fecha_solicitud?->format('d/m/Y') }}</td>
                     <td class="py-2 whitespace-nowrap text-gray-500 dark:text-gray-400">
                         {{ $solicitud->fecha_entrega_prometida?->format('d/m/Y') ?? '—' }}
@@ -106,7 +115,14 @@
         <form wire:submit="save" class="space-y-4">
             @if ($solicitudSeleccionada)
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-300">
-                    <span><strong>Proveedor:</strong> {{ $solicitudSeleccionada->vendor?->nombre_comercial }}</span>
+                    <span><strong>Proveedor:</strong> {{ $solicitudSeleccionada->vendor?->nombre_comercial }}@if ($solicitudSeleccionada->vendor?->es_interno) (interno)@endif</span>
+                    @if ($solicitudSeleccionada->vendor?->es_interno)
+                        @if ($solicitudSeleccionada->entrega_confirmada_at)
+                            <span><strong>Entrega confirmada:</strong> {{ $solicitudSeleccionada->entregaConfirmadaPor?->name }} · {{ $solicitudSeleccionada->entrega_confirmada_at->format('d/m/Y') }}</span>
+                        @else
+                            <x-ui.badge color="amber">El área aún no confirma la entrega</x-ui.badge>
+                        @endif
+                    @endif
                     <span><strong>Fecha de solicitud:</strong> {{ $solicitudSeleccionada->fecha_solicitud?->format('d/m/Y') }}</span>
                     <span><strong>Entrega prometida:</strong> {{ $solicitudSeleccionada->fecha_entrega_prometida?->format('d/m/Y') ?? '—' }}</span>
                     <x-ui.badge :color="$estatusColors[$solicitudSeleccionada->estatus] ?? 'gray'">{{ $estatusLabels[$solicitudSeleccionada->estatus] ?? $solicitudSeleccionada->estatus }}</x-ui.badge>

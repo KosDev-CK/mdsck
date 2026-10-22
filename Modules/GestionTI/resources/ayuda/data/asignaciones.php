@@ -4,6 +4,13 @@ return [
     'titulo' => 'Asignación de Activo',
     'concepto' => 'Esta pantalla formaliza la entrega física de un equipo (Activo) a un empleado, a partir de una Solicitud Interna de Compra (SIC) ya autorizada. Al guardar, el Activo elegido cambia de estatus a "asignado" y queda ligado a ese empleado — es el paso que cierra el ciclo de "necesito un equipo" (Ticket/SIC) → "aquí está, firmalo de recibido" (esta pantalla).',
     'resuelve' => 'Antes de esta pantalla no había un registro formal de qué equipo específico se entregó, en qué condición, con qué accesorios y quién lo entregó — información necesaria tanto para trazabilidad de inventario como para generar la carta responsiva que el empleado firma al recibir el equipo. Una vez guardada la asignación, la pantalla también permite generar esa carta responsiva en PDF y, más adelante, adjuntar el documento ya firmado (subido directamente o vinculado desde SharePoint), cerrando el expediente físico de la entrega.',
+    'reglas' => [
+        'UNA SIC ES APTA PARA ASIGNAR cuando: (a) es una Solicitud de SIC LOCAL, (b) está en estatus "Autorizada" y (c) todavía no tiene ninguna asignación. Una SIC solo se asigna una vez.',
+        'El empleado destinatario sale de la SIC y no puede cambiarse: el equipo se entrega a quien lo solicitó.',
+        'UN ACTIVO ES APTO cuando está "En stock" (libre) o está "Reservado" específicamente para la SIC elegida. Un activo reservado para otra SIC no aparece. El estatus del activo se vuelve "Asignado" al guardar.',
+        'Los equipos que llegaron de una requisición de EBS SIN SIC local (compras directas, por ejemplo de un área interna) entran a stock sin reserva: se pueden asignar a cualquier SIC autorizada pendiente. Para entregar uno a una persona, primero debe existir su Solicitud de SIC local (captúrala con el folio de EBS y se vincula sola); sin SIC local no hay a quién asignar.',
+        'Los equipos reservados vienen de líneas de Solicitud a Proveedores que traían una SIC local; si hay que cambiar la SIC para la que está reservado, se hace desde "Stock" (Reasignar).',
+    ],
     'proceso' => [
         'Da clic en "Nuevo".',
         'Selecciona la "SIC autorizada pendiente" — solo aparecen SICs ya autorizadas que todavía no tienen una asignación. Al elegirla, el empleado destinatario se muestra automáticamente (no se puede asignar el equipo a alguien distinto del solicitante original).',

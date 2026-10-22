@@ -155,6 +155,9 @@
                     </td>
                     <td class="py-2 text-right whitespace-nowrap">
                         @if (! $record->solicitudSicBorrador)
+                            @if ($record->status === 'APPROVED')
+                                <x-ui.icon-button wire:click="openAtencion({{ $record->id }})" icon="heroicon-o-check-circle" title="Atención de líneas (marcar como atendida)" />
+                            @endif
                             <x-ui.icon-button wire:click="openVincular({{ $record->id }})" icon="heroicon-o-link" title="Vincular" />
                         @endif
                     </td>
@@ -221,6 +224,69 @@
                 <x-ui.button type="button" wire:click="confirmVincular">Vincular</x-ui.button>
             </div>
         </div>
+    </x-ui.modal>
+
+    <x-ui.modal model="showAtencionModal" :title="'Atención de líneas — '.($atencion?->code ?? '')" max-width="max-w-3xl">
+        @if ($atencion)
+            <div class="space-y-4">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Marca las líneas que <strong>ya se atendieron fuera del sistema</strong> (compra o entrega hecha antes, o que no necesitan ingreso). Dejan de ofrecerse en "Solicitud a Proveedores". Si esas piezas deben entrar al inventario, hazlo con una Solicitud a Proveedores guardada sin enviar y su Recepción, para conservar la trazabilidad.
+                </p>
+
+                <x-ui.table :headers="['', '#', 'Descripción', 'Cantidad', 'Estado']" :empty="$atencion->lines->isEmpty()">
+                    @foreach ($atencion->lines->sortBy('line_number') as $line)
+                        @php
+                            $atendida = $atencion->lineasAtendidas->firstWhere('ebs_requisition_line_id', $line->requisition_line_id);
+                            $tomada = $lineasTomadas->get($line->requisition_line_id);
+                        @endphp
+                        <tr wire:key="atencion-linea-{{ $line->id }}" class="border-b border-gray-50 dark:border-gray-800">
+                            <td class="py-2">
+                                @if (! $atendida && ! $tomada)
+                                    <input type="checkbox" value="{{ $line->requisition_line_id }}" wire:model="atencionLineaIds" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                                @endif
+                            </td>
+                            <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->line_number }}</td>
+                            <td class="py-2 text-gray-900 dark:text-gray-100">{{ $line->item_description ?? '—' }}</td>
+                            <td class="py-2 text-gray-500 dark:text-gray-400">{{ $line->quantity }}</td>
+                            <td class="py-2 text-sm">
+                                @if ($atendida)
+                                    <x-ui.badge color="gray">Atendida</x-ui.badge>
+                                    <span class="block text-xs text-gray-500 dark:text-gray-400">{{ $atendida->motivo }} — {{ $atendida->usuario?->name }}, {{ $atendida->created_at?->format('d/m/Y') }}</span>
+                                    <button type="button" wire:click="reabrirLinea({{ $line->requisition_line_id }})" class="text-xs text-primary hover:underline">Volver a ofrecerla</button>
+                                @elseif ($tomada)
+                                    <x-ui.badge color="indigo">En solicitud {{ $tomada->solicitud?->folio }}</x-ui.badge>
+                                @else
+                                    <x-ui.badge color="emerald">Disponible</x-ui.badge>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </x-ui.table>
+
+                @error('atencionLineaIds')
+                    <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+
+                <div>
+                    <label for="atencionMotivo" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Motivo</label>
+                    <textarea
+                        id="atencionMotivo"
+                        wire:model="atencionMotivo"
+                        rows="2"
+                        placeholder="Ej. ya se compró y recibió en septiembre..."
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                    ></textarea>
+                    @error('atencionMotivo')
+                        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div class="flex justify-end gap-2">
+                    <x-ui.button type="button" variant="secondary" wire:click="closeAtencion">Cerrar</x-ui.button>
+                    <x-ui.button type="button" wire:click="marcarAtendidas">Marcar como atendidas</x-ui.button>
+                </div>
+            </div>
+        @endif
     </x-ui.modal>
 
     <x-ui.modal model="showDetalleModal" title="Detalle de la requisición {{ $detalle?->code }}" max-width="max-w-3xl">
