@@ -93,7 +93,7 @@ class AvisoEncargadosEntregaTest extends TestCase
         $this->assertNotNull($solicitud->fresh()->encargados_avisados_at);
     }
 
-    public function test_an_encargado_of_two_sites_gets_a_single_mail_with_both_lines(): void
+    public function test_an_encargado_of_two_sites_gets_one_separate_mail_per_site(): void
     {
         Mail::fake();
         $this->actingAs($this->actingUser());
@@ -103,8 +103,75 @@ class AvisoEncargadosEntregaTest extends TestCase
 
         Livewire::test(SolicitudesProveedor::class)->call('avisarEncargados', $solicitud->id);
 
-        Mail::assertSent(SolicitudProveedorEncargadoMail::class, 1);
-        Mail::assertSent(SolicitudProveedorEncargadoMail::class, fn ($m) => $m->lineas->count() === 2);
+        Mail::assertSent(SolicitudProveedorEncargadoMail::class, 2);
+        Mail::assertSent(SolicitudProveedorEncargadoMail::class, fn ($m) => $m->lineas->count() === 1);
+    }
+
+    public function test_sending_marks_the_request_as_enviada_and_locks_it_for_non_admins(): void
+    {
+        Mail::fake();
+        $this->actingAs($this->actingUser());
+        $solicitud = $this->solicitud([$this->sitio('Zurich')]);
+
+        Livewire::test(SolicitudesProveedor::class)->call('enviarAProveedor', $solicitud->id);
+
+        $solicitud->refresh();
+        $this->assertSame(SolicitudProveedor::ESTATUS_ENVIADA, $solicitud->estatus);
+        $this->assertNotNull($solicitud->enviada_at);
+
+        Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id)->assertSet('editingId', null);
+    }
+
+    public function test_an_administrator_can_still_edit_an_enviada_request(): void
+    {
+        Mail::fake();
+        $admin = $this->actingUser();
+        $admin->assignRole(Role::findOrCreate('Administrador', 'web'));
+        $this->actingAs($admin);
+        $solicitud = $this->solicitud([$this->sitio('Zurich')]);
+        $solicitud->update(['estatus' => SolicitudProveedor::ESTATUS_ENVIADA, 'enviada_at' => now()]);
+
+        Livewire::test(SolicitudesProveedor::class)->call('edit', $solicitud->id)->assertSet('editingId', $solicitud->id);
+    }
+
+    public function test_the_vendor_still_gets_every_line_and_a_pdf_with_one_sheet_per_site(): void
+    {
+        $solicitud = $this->solicitud([$this->sitio('Zurich'), $this->sitio('CEDA'), $this->sitio('Sotelo')]);
+        $solicitud->load(['vendor', 'ticket', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition.lines', 'lineas.lugarEntrega']);
+
+        $correo = new SolicitudProveedorMail($solicitud);
+        $cuerpo = $correo->render();
+
+        foreach (['Equipo 1', 'Equipo 2', 'Equipo 3'] as $equipo) {
+            $this->assertStringContainsString($equipo, $cuerpo);
+        }
+
+        $html = view('gestionti::pdf.solicitud-proveedor', ['solicitud' => $solicitud, 'lugarEntregaIds' => null])->render();
+
+        foreach (['Entrega en: Zurich', 'Entrega en: CEDA', 'Entrega en: Sotelo'] as $hoja) {
+            $this->assertStringContainsString($hoja, $html);
+        }
+        $this->assertSame(2, substr_count($html, 'page-break-before: always'));
+
+        $adjuntos = $correo->attachments();
+        $this->assertCount(1, $adjuntos);
+        $this->assertSame('solicitud-proveedor-SP-ENC-001.pdf', $adjuntos[0]->as);
+    }
+
+    public function test_the_encargado_pdf_only_includes_that_sites_sheet(): void
+    {
+        $ana = User::factory()->create(['is_active' => true, 'email' => 'ana@example.test']);
+        $solicitud = $this->solicitud([$this->sitio('Zurich', [$ana]), $this->sitio('CEDA')]);
+        $solicitud->load(['vendor', 'creadoPor', 'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition.lines', 'lineas.lugarEntrega']);
+
+        $html = view('gestionti::pdf.solicitud-proveedor', [
+            'solicitud' => $solicitud,
+            'lugarEntregaIds' => [$solicitud->lineas->first()->lugar_entrega_id],
+        ])->render();
+
+        $this->assertStringContainsString('Entrega en: Zurich', $html);
+        $this->assertStringNotContainsString('CEDA', $html);
+        $this->assertStringNotContainsString('Equipo 2', $html);
     }
 
     public function test_notify_encargados_only_writes_to_them_and_never_to_the_vendor(): void

@@ -15,6 +15,9 @@ class SolicitudProveedor extends Model
 
     public const ESTATUS_SOLICITADA = 'solicitada';
 
+    /** Ya se envió al proveedor por correo: solo un Administrador puede modificarla. */
+    public const ESTATUS_ENVIADA = 'enviada';
+
     public const ESTATUS_PARCIALMENTE_RECIBIDA = 'parcialmente_recibida';
 
     public const ESTATUS_RECIBIDA = 'recibida';

@@ -1061,7 +1061,7 @@ class SolicitudesProveedor extends Component
     {
         $record = SolicitudProveedor::findOrFail($id);
 
-        if ($record->estatus !== SolicitudProveedor::ESTATUS_SOLICITADA) {
+        if (! in_array($record->estatus, [SolicitudProveedor::ESTATUS_SOLICITADA, SolicitudProveedor::ESTATUS_ENVIADA], true)) {
             return;
         }
 
@@ -1100,6 +1100,13 @@ class SolicitudesProveedor extends Component
         }
 
         Mail::to($record->vendor->contacto_correo)->send(new SolicitudProveedorMail($record));
+
+        // Al enviarse pasa a "Enviada" (y desde ahí solo un Administrador puede
+        // modificarla, ver `puedeEditar()`). Una solicitud ya recibida/facturada
+        // que se reenvía conserva su estatus.
+        if ($record->estatus === SolicitudProveedor::ESTATUS_SOLICITADA) {
+            $record->estatus = SolicitudProveedor::ESTATUS_ENVIADA;
+        }
 
         if (! $record->enviada_at) {
             $record->enviada_at = now();

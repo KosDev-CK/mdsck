@@ -19,6 +19,7 @@
     @php
         $estatusLabels = [
             'solicitada' => 'Solicitada',
+            'enviada' => 'Enviada',
             'parcialmente_recibida' => 'Parcialmente recibida',
             'recibida' => 'Recibida',
             'facturada' => 'Facturada',
@@ -26,6 +27,7 @@
         ];
         $estatusColors = [
             'solicitada' => 'indigo',
+            'enviada' => 'info',
             'parcialmente_recibida' => 'amber',
             'recibida' => 'emerald',
             'facturada' => 'emerald',
@@ -63,6 +65,7 @@
                 <option value="">Todas</option>
                 <option value="pendientes">Pendientes de recibir</option>
                 <option value="solicitada">Solicitadas</option>
+                <option value="enviada">Enviadas</option>
                 <option value="parcialmente_recibida">Parcialmente recibidas</option>
                 <option value="recibida">Recibidas</option>
                 <option value="facturada">Facturadas</option>
@@ -73,7 +76,7 @@
         <x-ui.table :headers="['Solicitud', 'Proveedor', 'Fecha', 'Entrega prometida', 'Estatus', 'Recibido', 'Recepciones', '']" :empty="$solicitudes->isEmpty()" empty-description="No hay solicitudes a proveedor con ese filtro.">
             @foreach ($solicitudes as $solicitud)
                 @php
-                    $admite = in_array($solicitud->estatus, ['solicitada', 'parcialmente_recibida'], true);
+                    $admite = in_array($solicitud->estatus, ['solicitada', 'enviada', 'parcialmente_recibida'], true);
                 @endphp
                 <tr
                     wire:key="solicitud-{{ $solicitud->id }}"

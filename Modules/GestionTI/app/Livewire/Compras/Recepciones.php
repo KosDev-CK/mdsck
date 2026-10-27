@@ -512,6 +512,7 @@ class Recepciones extends Component
     {
         return $solicitud !== null && in_array($solicitud->estatus, [
             SolicitudProveedor::ESTATUS_SOLICITADA,
+            SolicitudProveedor::ESTATUS_ENVIADA,
             SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA,
         ], true);
     }
@@ -1651,11 +1652,12 @@ class Recepciones extends Component
             })
             ->when($this->estatusFiltro === 'pendientes', fn ($q) => $q->whereIn('estatus', [
                 SolicitudProveedor::ESTATUS_SOLICITADA,
+                SolicitudProveedor::ESTATUS_ENVIADA,
                 SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA,
             ]))
             ->when($this->estatusFiltro !== '' && $this->estatusFiltro !== 'pendientes', fn ($q) => $q->where('estatus', $this->estatusFiltro))
             // Las pendientes de recibir primero, luego por fecha.
-            ->orderByRaw("CASE WHEN estatus IN ('solicitada', 'parcialmente_recibida') THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN estatus IN ('solicitada', 'enviada', 'parcialmente_recibida') THEN 0 ELSE 1 END")
             ->orderByDesc('fecha_solicitud')
             ->orderByDesc('id')
             ->paginate(10);

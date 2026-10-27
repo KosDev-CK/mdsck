@@ -21,7 +21,7 @@ Se hizo la siguiente solicitud de compra y a ti te corresponde recibir lo que ll
 @endforeach
 </x-mail::table>
 
-Adjuntamos el PDF completo de la solicitud: cada lugar de entrega viene en su propia hoja, con el código de cada línea para escanearlo al recibir.
+Adjuntamos el PDF con lo que corresponde a **{{ $sitios->implode(', ') ?: 'tu sitio' }}**, con el código de cada línea para escanearlo al recibir.
 
 Este es un aviso informativo; no tienes que responder.
 

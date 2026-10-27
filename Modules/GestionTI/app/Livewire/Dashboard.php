@@ -160,6 +160,7 @@ class Dashboard extends Component
         $solicitudesProveedorPendientes = $user->can('screens.gestionti-solicitudes-proveedor.manage')
             ? SolicitudProveedor::whereIn('estatus', [
                 SolicitudProveedor::ESTATUS_SOLICITADA,
+                SolicitudProveedor::ESTATUS_ENVIADA,
                 SolicitudProveedor::ESTATUS_PARCIALMENTE_RECIBIDA,
             ])->count()
             : null;

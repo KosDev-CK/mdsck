@@ -22,6 +22,7 @@
     @php
         $estatusLabels = [
             'solicitada' => 'Solicitada',
+            'enviada' => 'Enviada',
             'parcialmente_recibida' => 'Parcialmente recibida',
             'recibida' => 'Recibida',
             'facturada' => 'Facturada',
@@ -35,6 +36,7 @@
         // código de barras), aunque se reordenen las líneas por lugar.
         $grupos = $solicitud->lineas->sortBy('id')->values()
             ->map(fn ($linea, $i) => ['linea' => $linea, 'ordinal' => $i + 1])
+            ->when(! empty($lugarEntregaIds), fn ($items) => $items->filter(fn ($item) => in_array($item['linea']->lugar_entrega_id, $lugarEntregaIds, true)))
             ->groupBy(fn ($item) => $item['linea']->lugar_entrega_id ?? 0)
             ->sortBy(fn ($grupo, $clave) => $clave === 0 ? 'zzz' : mb_strtolower($grupo->first()['linea']->lugarEntrega?->nombre ?? ''))
             ->values();

@@ -20,6 +20,7 @@
     @php
         $estatusLabels = [
             'solicitada' => 'Solicitada',
+            'enviada' => 'Enviada',
             'parcialmente_recibida' => 'Parcialmente recibida',
             'recibida' => 'Recibida',
             'facturada' => 'Facturada',
@@ -27,6 +28,7 @@
         ];
         $estatusColors = [
             'solicitada' => 'indigo',
+            'enviada' => 'info',
             'parcialmente_recibida' => 'amber',
             'recibida' => 'emerald',
             'facturada' => 'emerald',
@@ -93,7 +95,7 @@
 
                                 <x-ui.icon-button tag="a" :href="route('gestionti.solicitudes-proveedor.pdf', $record)" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
 
-                                @if ($record->estatus === 'solicitada' && $this->puedeEditar($record))
+                                @if (in_array($record->estatus, ['solicitada', 'enviada'], true) && $this->puedeEditar($record))
                                     <x-ui.icon-button
                                         wire:click="cancelarSolicitud({{ $record->id }})"
                                         wire:confirm="¿Cancelar esta solicitud a proveedor?"

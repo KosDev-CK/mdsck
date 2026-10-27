@@ -13,9 +13,12 @@ use Modules\GestionTI\Models\SolicitudProveedor;
  */
 class SolicitudProveedorPdf
 {
-    public static function generar(SolicitudProveedor $solicitud): DompdfWrapper
+    /**
+     * @param  array<int, int>|null  $lugarEntregaIds  Si se indica, el PDF trae solo las hojas de esos lugares de entrega (copia para un encargado).
+     */
+    public static function generar(SolicitudProveedor $solicitud, ?array $lugarEntregaIds = null): DompdfWrapper
     {
-        $pdf = Pdf::loadView('gestionti::pdf.solicitud-proveedor', ['solicitud' => $solicitud]);
+        $pdf = Pdf::loadView('gestionti::pdf.solicitud-proveedor', ['solicitud' => $solicitud, 'lugarEntregaIds' => $lugarEntregaIds]);
 
         // La numeración se agrega sobre el PDF ya paginado ({PAGE_COUNT} solo se conoce al final).
         $pdf->render();

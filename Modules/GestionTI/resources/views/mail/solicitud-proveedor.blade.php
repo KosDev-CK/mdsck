@@ -4,6 +4,7 @@
 @php
     $estatusLabels = [
         'solicitada' => 'Solicitada',
+        'enviada' => 'Enviada',
         'parcialmente_recibida' => 'Parcialmente recibida',
         'recibida' => 'Recibida',
         'facturada' => 'Facturada',

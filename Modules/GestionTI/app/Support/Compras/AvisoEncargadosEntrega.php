@@ -2,6 +2,7 @@
 
 namespace Modules\GestionTI\Support\Compras;
 
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -12,8 +13,8 @@ use Throwable;
 /**
  * Manda a los ENCARGADOS de cada lugar de entrega una copia de una Solicitud
  * a Proveedores con lo que deben recibir en su sitio (solo las líneas de sus
- * sitios). Un encargado de varios sitios de la misma solicitud recibe UN solo
- * correo con todas sus líneas. Se usa al enviar la solicitud al proveedor y
+ * sitios), un correo por cada lugar de entrega con el PDF solo de ese lugar:
+ * un encargado de varios sitios recibe un correo por sitio, no uno con todo junto. Se usa al enviar la solicitud al proveedor y
  * desde la acción "Avisar a encargados" (que no le escribe al proveedor).
  */
 class AvisoEncargadosEntrega
@@ -28,8 +29,8 @@ class AvisoEncargadosEntrega
             'lineas.articulo', 'lineas.sic', 'lineas.ebsRequisition.lines', 'lineas.lugarEntrega.usuarios',
         ]);
 
-        /** @var array<int, array{user: \App\Models\User, lineas: Collection}> $porUsuario */
-        $porUsuario = [];
+        /** @var array<int, array{user: \App\Models\User, lineas: Collection}> $envios Un envío por encargado Y por lugar de entrega. */
+        $envios = [];
         $sinEncargados = [];
 
         foreach ($solicitud->lineas->groupBy('lugar_entrega_id') as $lineas) {
@@ -43,27 +44,24 @@ class AvisoEncargadosEntrega
             }
 
             foreach ($encargados as $usuario) {
-                $porUsuario[$usuario->id]['user'] = $usuario;
-                $porUsuario[$usuario->id]['lineas'] = ($porUsuario[$usuario->id]['lineas'] ?? collect())->merge($lineas);
+                $envios[] = ['user' => $usuario, 'lineas' => $lineas->sortBy('id')->values()];
             }
         }
 
         $enviados = 0;
         $fallidos = [];
 
-        foreach ($porUsuario as $datos) {
-            $lineas = $solicitud->lineas->whereIn('id', $datos['lineas']->pluck('id'))->sortBy('id')->values();
-
+        foreach ($envios as $envio) {
             try {
-                Mail::to($datos['user']->email)->send(new SolicitudProveedorEncargadoMail($solicitud, $lineas));
+                Mail::to($envio['user']->email)->send(new SolicitudProveedorEncargadoMail($solicitud, new EloquentCollection($envio['lineas']->all())));
                 $enviados++;
             } catch (Throwable $e) {
                 Log::warning('GestionTI: no se pudo avisar a un encargado de entrega', [
                     'solicitud' => $solicitud->folio,
-                    'usuario' => $datos['user']->id,
+                    'usuario' => $envio['user']->id,
                     'error' => $e->getMessage(),
                 ]);
-                $fallidos[] = $datos['user']->name;
+                $fallidos[] = $envio['user']->name;
             }
         }
 
@@ -80,7 +78,7 @@ class AvisoEncargadosEntrega
         $partes = [];
 
         if ($resultado['enviados'] > 0) {
-            $partes[] = "Copia enviada a {$resultado['enviados']} encargado(s) de entrega.";
+            $partes[] = "Se enviaron {$resultado['enviados']} correo(s) a encargados de entrega (uno por lugar).";
         }
 
         if (! empty($resultado['sin_encargados'])) {

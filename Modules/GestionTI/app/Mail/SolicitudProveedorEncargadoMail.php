@@ -12,9 +12,10 @@ use Modules\GestionTI\Support\Pdf\SolicitudProveedorPdf;
 
 /**
  * Copia de una Solicitud a Proveedores para un ENCARGADO de lugar de entrega:
- * le dice qué se solicitó y qué debe recibir en su(s) sitio(s) — solo las
- * líneas que le corresponden. Adjunta el mismo PDF completo de la solicitud
- * (la numeración de líneas L{folio}-n es la misma que se usa al recibir).
+ * le dice qué debe recibir en UN sitio — solo las líneas de ese lugar (se
+ * manda un correo por lugar, no uno con todo junto). Adjunta el PDF con solo la
+ * hoja de ese lugar (la numeración de líneas L{folio}-n es la de la solicitud
+ * completa, la misma que se usa al recibir).
  * Se envía desde `Support\Compras\AvisoEncargadosEntrega`.
  */
 class SolicitudProveedorEncargadoMail extends Mailable
@@ -35,12 +36,14 @@ class SolicitudProveedorEncargadoMail extends Mailable
         $ordinales = $this->solicitud->lineas->sortBy('id')->values()
             ->mapWithKeys(fn ($linea, $i) => [$linea->id => $i + 1]);
 
-        return $this->subject("Por recibir — solicitud {$this->solicitud->folio}")
+        $sitios = $this->lineas->map(fn ($l) => $l->lugarEntrega?->nombre)->filter()->unique()->values();
+
+        return $this->subject("Por recibir en {$sitios->implode(', ')} — solicitud {$this->solicitud->folio}")
             ->markdown('gestionti::mail.solicitud-encargado', [
                 'solicitud' => $this->solicitud,
                 'lineas' => $this->lineas,
                 'ordinales' => $ordinales,
-                'sitios' => $this->lineas->map(fn ($l) => $l->lugarEntrega?->nombre)->filter()->unique()->values(),
+                'sitios' => $sitios,
             ]);
     }
 
@@ -51,7 +54,7 @@ class SolicitudProveedorEncargadoMail extends Mailable
     {
         return [
             Attachment::fromData(
-                fn () => SolicitudProveedorPdf::generar($this->solicitud)->output(),
+                fn () => SolicitudProveedorPdf::generar($this->solicitud, $this->lineas->pluck('lugar_entrega_id')->unique()->values()->all())->output(),
                 "solicitud-proveedor-{$this->solicitud->folio}.pdf"
             )->withMime('application/pdf'),
         ];
