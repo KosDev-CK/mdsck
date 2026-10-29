@@ -137,7 +137,10 @@ class SolicitudSicBorrador extends Model
     {
         $categoriaIdsCompra = CategoriaArticulo::where('es_compra', true)->pluck('id');
 
+        // Una SIC local que ya tiene un equipo asignado (entrega hecha, por ejemplo
+        // con equipo de stock) no se vuelve a comprar.
         return $query->where('estatus', self::ESTATUS_AUTORIZADA)
+            ->whereDoesntHave('assetAssignments')
             ->whereHas('articulo', fn ($q) => $q->whereIn('categoria_id', $categoriaIdsCompra))
             ->where(function ($q) use ($exceptSolicitudId) {
                 $q->whereDoesntHave('solicitudProveedorLineas')

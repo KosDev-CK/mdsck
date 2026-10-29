@@ -66,6 +66,11 @@
                     <option value="asignada">Con solicitud asignada</option>
                     <option value="sin_asignar">Sin asignar</option>
                 </x-ui.select>
+                <x-ui.select name="entregaFilter" wire:model.live="entregaFilter">
+                    <option value="">Entrega de equipos (todas)</option>
+                    <option value="con_entrega">Con equipos entregados</option>
+                    <option value="sin_entrega">Sin entregar (sin asignar a un empleado)</option>
+                </x-ui.select>
                 <x-ui.input type="date" label="Desde" name="fechaDesde" wire:model.live="fechaDesde" />
                 <x-ui.input type="date" label="Hasta" name="fechaHasta" wire:model.live="fechaHasta" />
                 <x-ui.input type="date" label="Autorizada desde" name="fechaAprobadaDesde" wire:model.live="fechaAprobadaDesde" />
@@ -96,7 +101,7 @@
             @endif
         </div>
 
-        <x-ui.table :headers="['', 'Código', 'Descripción', 'Estatus', 'Fecha', 'Fecha de autorización', 'Vinculada', 'Id solicitud prov.', '']" :empty="$records->isEmpty()" empty-description="Corre gestionti:ebs-sincronizar-creadas para traer datos reales de EBS.">
+        <x-ui.table :headers="['', 'Código', 'Descripción', 'Estatus', 'Fecha', 'Fecha de autorización', 'Vinculada', 'Id solicitud prov.', 'Entrega', '']" :empty="$records->isEmpty()" empty-description="Corre gestionti:ebs-sincronizar-creadas para traer datos reales de EBS.">
             @foreach ($records as $record)
                 @php
                     $lineaAsignada = $record->solicitudSicBorrador
@@ -153,7 +158,22 @@
                             <span class="text-sm text-gray-400 dark:text-gray-500">—</span>
                         @endif
                     </td>
+                    <td class="py-2">
+                        @php
+                            $entrega = $entregas[$record->id] ?? ['entregadas' => 0, 'total' => 0];
+                        @endphp
+                        @if ($entrega['entregadas'] > 0)
+                            <x-ui.badge :color="$entrega['entregadas'] >= $entrega['total'] ? 'emerald' : 'amber'">
+                                {{ $entrega['entregadas'] >= $entrega['total'] ? 'Cubierta por asignación' : 'Entregadas '.$entrega['entregadas'].' de '.$entrega['total'] }}
+                            </x-ui.badge>
+                        @else
+                            <span class="text-sm text-gray-400 dark:text-gray-500">—</span>
+                        @endif
+                    </td>
                     <td class="py-2 text-right whitespace-nowrap">
+                        @if ($record->status === 'APPROVED' && auth()->user()->can('screens.gestionti-asignaciones.manage') && ($entrega['total'] === 0 || $entrega['entregadas'] < $entrega['total']))
+                            <x-ui.icon-button tag="a" :href="route('gestionti.asignaciones.index', ['folio' => $record->code])" icon="heroicon-o-user-plus" title="Asignar equipo a esta SIC" />
+                        @endif
                         @if (! $record->solicitudSicBorrador)
                             @if ($record->status === 'APPROVED')
                                 <x-ui.icon-button wire:click="openAtencion({{ $record->id }})" icon="heroicon-o-check-circle" title="Atención de líneas (marcar como atendida)" />
@@ -238,10 +258,13 @@
                         @php
                             $atendida = $atencion->lineasAtendidas->firstWhere('ebs_requisition_line_id', $line->requisition_line_id);
                             $tomada = $lineasTomadas->get($line->requisition_line_id);
+                            $piezas = max(1, (int) ceil((float) $line->quantity));
+                            $entregadas = $entregasLinea[$line->requisition_line_id] ?? 0;
+                            $cubierta = $entregadas >= $piezas;
                         @endphp
                         <tr wire:key="atencion-linea-{{ $line->id }}" class="border-b border-gray-50 dark:border-gray-800">
                             <td class="py-2">
-                                @if (! $atendida && ! $tomada)
+                                @if (! $atendida && ! $tomada && ! $cubierta)
                                     <input type="checkbox" value="{{ $line->requisition_line_id }}" wire:model="atencionLineaIds" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
                                 @endif
                             </td>
@@ -255,6 +278,8 @@
                                     <button type="button" wire:click="reabrirLinea({{ $line->requisition_line_id }})" class="text-xs text-primary hover:underline">Volver a ofrecerla</button>
                                 @elseif ($tomada)
                                     <x-ui.badge color="indigo">En solicitud {{ $tomada->solicitud?->folio }}</x-ui.badge>
+                                @elseif ($cubierta)
+                                    <x-ui.badge color="emerald">Cubierta por asignación ({{ $entregadas }} de {{ $piezas }})</x-ui.badge>
                                 @else
                                     <x-ui.badge color="emerald">Disponible</x-ui.badge>
                                 @endif

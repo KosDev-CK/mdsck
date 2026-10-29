@@ -46,6 +46,15 @@ class EbsRequisiciones extends Component
     #[Url(as: 'asignacion')]
     public string $asignacionFilter = '';
 
+    /**
+     * '' | 'con_entrega' | 'sin_entrega' — si ya se entregó (asignó a un
+     * empleado) algún equipo de la requisición, por el camino de EBS directo o
+     * por su SIC local. "Sin entrega" + estatus Aprobada son las SICs
+     * autorizadas que todavía no se asignan.
+     */
+    #[Url(as: 'entrega')]
+    public string $entregaFilter = '';
+
     #[Url(as: 'desde')]
     public string $fechaDesde = '';
 
@@ -138,6 +147,11 @@ class EbsRequisiciones extends Component
     }
 
     public function updatingAsignacionFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingEntregaFilter(): void
     {
         $this->resetPage();
     }
@@ -241,6 +255,7 @@ class EbsRequisiciones extends Component
         $yaTomadas = SolicitudProveedorLinea::whereIn('ebs_requisition_line_id', $requisicion->lines->pluck('requisition_line_id'))
             ->pluck('ebs_requisition_line_id')->map(fn ($id) => (int) $id)->all();
         $yaAtendidas = $requisicion->lineasAtendidas->pluck('ebs_requisition_line_id')->map(fn ($id) => (int) $id)->all();
+        $entregasLinea = $this->entregasPorLinea($requisicion);
 
         $marcadas = 0;
 
@@ -249,7 +264,8 @@ class EbsRequisiciones extends Component
 
             if (! in_array($id, array_map('intval', $this->atencionLineaIds), true)
                 || in_array($id, $yaTomadas, true)
-                || in_array($id, $yaAtendidas, true)) {
+                || in_array($id, $yaAtendidas, true)
+                || ($entregasLinea[$id] ?? 0) >= max(1, (int) ceil((float) $linea->quantity))) {
                 continue;
             }
 
@@ -267,6 +283,23 @@ class EbsRequisiciones extends Component
         session()->flash('status', $marcadas > 0
             ? "Se marcaron {$marcadas} línea(s) como atendidas — ya no se ofrecen en Solicitud a Proveedores."
             : 'No había líneas disponibles que marcar.');
+    }
+
+    /**
+     * Piezas ya entregadas (asignadas) de cada línea de la requisición, por su
+     * `requisition_line_id`.
+     *
+     * @return array<int, int>
+     */
+    private function entregasPorLinea(EbsRequisition $requisicion): array
+    {
+        return \Modules\GestionTI\Models\AssetAssignment::query()
+            ->whereIn('ebs_requisition_line_id', $requisicion->lines->pluck('requisition_line_id'))
+            ->selectRaw('ebs_requisition_line_id, count(*) as total')
+            ->groupBy('ebs_requisition_line_id')
+            ->pluck('total', 'ebs_requisition_line_id')
+            ->map(fn ($total) => (int) $total)
+            ->all();
     }
 
     /** Regresa una línea atendida al pool (por si se marcó por error). */
@@ -371,6 +404,15 @@ class EbsRequisiciones extends Component
                             ->orWhereHas('solicitudSicBorrador', fn ($q4) => $q4->whereDoesntHave('solicitudProveedorLineas'));
                     });
             }))
+            ->when($this->entregaFilter === 'con_entrega', fn ($q) => $q->where(function ($q2) {
+                $q2->whereHas('asignaciones')
+                    ->orWhereHas('solicitudSicBorrador.assetAssignments');
+            }))
+            ->when($this->entregaFilter === 'sin_entrega', fn ($q) => $q->whereDoesntHave('asignaciones')
+                ->where(function ($q2) {
+                    $q2->whereDoesntHave('solicitudSicBorrador')
+                        ->orWhereHas('solicitudSicBorrador', fn ($q3) => $q3->whereDoesntHave('assetAssignments'));
+                }))
             ->when($this->fechaDesde !== '', fn ($q) => $q->whereDate('fecha_creacion', '>=', $this->fechaDesde))
             ->when($this->fechaHasta !== '', fn ($q) => $q->whereDate('fecha_creacion', '<=', $this->fechaHasta))
             ->when($this->fechaAprobadaDesde !== '', fn ($q) => $q->whereDate('approver_date', '>=', $this->fechaAprobadaDesde))
@@ -532,6 +574,8 @@ class EbsRequisiciones extends Component
                 ->keyBy('ebs_requisition_line_id')
             : collect();
 
+        $entregasLinea = $atencion ? $this->entregasPorLinea($atencion) : [];
+
         $solicitudProveedorDetalle = $this->showSolicitudProveedorModal
             ? SolicitudProveedor::with(['vendor', 'lineas.articulo', 'lineas.sic'])->find($this->solicitudProveedorDetalleId)
             : null;
@@ -575,6 +619,8 @@ class EbsRequisiciones extends Component
             'detalle' => $detalle,
             'atencion' => $atencion,
             'lineasTomadas' => $lineasTomadas,
+            'entregasLinea' => $entregasLinea,
+            'entregas' => EbsRequisition::entregas($records->getCollection()->loadMissing('lines')),
         ]);
     }
 }

@@ -162,6 +162,21 @@ class Asignaciones extends Component
         }
     }
 
+    /**
+     * Acceso directo desde "SIC en EBS" (`?folio=...`): abre el formulario con el
+     * folio de esa SIC ya capturado.
+     */
+    public function mount(): void
+    {
+        $folio = trim((string) request()->query('folio', ''));
+
+        if ($folio !== '') {
+            $this->create();
+            $this->form['sic_folio'] = $folio;
+            $this->updated('form.sic_folio', $folio);
+        }
+    }
+
     protected function messages(): array
     {
         return [

@@ -68,6 +68,54 @@ class EbsRequisition extends Model
     }
 
     /**
+     * Asignaciones de activo cuya SIC es ESTA requisición directamente
+     * (`AssetAssignment::ebs_requisition_id`); las de una SIC local vinculada
+     * se cuentan aparte (ver `entregas()`).
+     */
+    public function asignaciones(): HasMany
+    {
+        return $this->hasMany(AssetAssignment::class, 'ebs_requisition_id');
+    }
+
+    /**
+     * Entrega (asignación de equipos) por requisición: cuántas piezas se
+     * entregaron de las que trae. Cuenta las asignaciones ligadas directo a la
+     * requisición y las de su SIC local vinculada. Resuelto en lote (2 consultas)
+     * para listas. Requiere `lines` cargadas.
+     *
+     * @param  \Illuminate\Support\Collection<int, EbsRequisition>  $requisiciones
+     * @return array<int, array{entregadas: int, total: int}>
+     */
+    public static function entregas($requisiciones): array
+    {
+        $ids = $requisiciones->pluck('id')->all();
+
+        $directas = AssetAssignment::query()
+            ->whereIn('ebs_requisition_id', $ids)
+            ->selectRaw('ebs_requisition_id, count(*) as total')
+            ->groupBy('ebs_requisition_id')
+            ->pluck('total', 'ebs_requisition_id');
+
+        $locales = SolicitudSicBorrador::query()
+            ->whereIn('ebs_requisition_id', $ids)
+            ->withCount('assetAssignments')
+            ->get()
+            ->groupBy('ebs_requisition_id')
+            ->map(fn ($sics) => $sics->sum('asset_assignments_count'));
+
+        $resultado = [];
+
+        foreach ($requisiciones as $requisicion) {
+            $resultado[$requisicion->id] = [
+                'entregadas' => (int) ($directas[$requisicion->id] ?? 0) + (int) ($locales[$requisicion->id] ?? 0),
+                'total' => (int) $requisicion->lines->sum(fn ($linea) => max(1, (int) ceil((float) $linea->quantity))),
+            ];
+        }
+
+        return $resultado;
+    }
+
+    /**
      * Líneas de Solicitud a Proveedor que recogieron ESTA requisición
      * DIRECTAMENTE (`SolicitudProveedorLinea::ebs_requisition_id`) — el
      * tercer origen de línea, exclusivo de requisiciones que nunca tuvieron
@@ -151,6 +199,14 @@ class EbsRequisition extends Model
             )
             ->flip();
 
+        // Piezas ya ENTREGADAS (asignadas a un empleado) de cada línea: una línea
+        // con todas sus piezas entregadas ya no se compra.
+        $entregadas = AssetAssignment::query()
+            ->whereIn('ebs_requisition_line_id', $lineaIds)
+            ->selectRaw('ebs_requisition_line_id, count(*) as total')
+            ->groupBy('ebs_requisition_line_id')
+            ->pluck('total', 'ebs_requisition_line_id');
+
         $resultado = collect();
 
         foreach ($requisiciones as $requisicion) {
@@ -160,6 +216,10 @@ class EbsRequisition extends Model
                 $articulo = $articulosPorItem[$linea->item_id] ?? null;
 
                 if ($articulo === null || $tomadas->has($linea->requisition_line_id)) {
+                    continue;
+                }
+
+                if ((int) ($entregadas[$linea->requisition_line_id] ?? 0) >= max(1, (int) ceil((float) $linea->quantity))) {
                     continue;
                 }
 

@@ -1346,6 +1346,21 @@ class AsignacionesTest extends TestCase
         $this->assertSame(2, AssetAssignment::count());
     }
 
+    public function test_the_shortcut_from_sic_en_ebs_opens_the_form_with_the_folio_and_the_single_line_chosen(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $requisicion = $this->requisicion('REQ-7001');
+
+        $this->get('/asignaciones?folio=REQ-7001')->assertOk()->assertSee('REQ-7001');
+
+        Livewire::withQueryParams(['folio' => 'REQ-7001'])
+            ->test(Asignaciones::class)
+            ->assertSet('showModal', true)
+            ->assertSet('form.sic_folio', 'REQ-7001')
+            ->assertSet('form.ebs_linea_id', $requisicion->lines->first()->requisition_line_id);
+    }
+
     public function test_assignments_without_any_sic_data_are_not_flagged_as_pending(): void
     {
         // Asignación histórica / del registro manual: sin SIC ni folio, no se marca como pendiente.

@@ -8,6 +8,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Modules\GestionTI\Livewire\MesaServicio\EbsRequisiciones;
 use Modules\GestionTI\Models\ArticuloSolicitud;
+use Modules\GestionTI\Models\Asset;
+use Modules\GestionTI\Models\AssetAssignment;
+use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\CategoriaArticulo;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\EbsArticulo;
@@ -140,6 +143,174 @@ class EbsRequisicionesTest extends TestCase
         ]);
 
         return $ebsRequisicion->fresh();
+    }
+
+    /** Asignación de un equipo a una requisición de EBS (directa), sobre una línea concreta. */
+    private function asignarEquipoAEbs(EbsRequisition $ebs, string $codigo, ?int $lineaId = null): AssetAssignment
+    {
+        $asset = Asset::create([
+            'codigo' => $codigo,
+            'tipo_equipo_id' => TipoEquipo::firstOrCreate(['nombre' => 'Laptop'])->id,
+            'numero_serie' => 'SN-'.$codigo,
+            'origen_tipo' => 'compra',
+            'estatus_id' => EstatusActivo::firstOrCreate(['codigo' => 'asignado'], ['nombre' => 'Asignado'])->id,
+        ]);
+
+        return AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => Empleado::firstOrCreate(['numero_empleado' => 'EMP-ENT'], ['nombre' => 'Quien recibe'])->id,
+            'ebs_requisition_id' => $ebs->id,
+            'ebs_requisition_line_id' => $lineaId ?? $ebs->lines->first()->requisition_line_id,
+            'sic_folio' => $ebs->code,
+            'fecha_asignacion' => '2026-10-30',
+        ]);
+    }
+
+    public function test_a_requisition_with_delivered_equipment_shows_the_delivery_badge_and_the_filter_splits_them(): void
+    {
+        $this->actingAs($this->actingUser());
+        $entregada = $this->crearEbsDirectoElegible('REQ-ENT-1', 3101);
+        $this->crearEbsDirectoElegible('REQ-SIN-1', 3102);
+        $this->asignarEquipoAEbs($entregada, 'KOS-ENT-000001');
+
+        Livewire::test(EbsRequisiciones::class)
+            ->assertSee('Cubierta por asignación');
+
+        $conEntrega = Livewire::test(EbsRequisiciones::class)->set('entregaFilter', 'con_entrega')->viewData('records');
+        $this->assertSame(['REQ-ENT-1'], $conEntrega->pluck('code')->all());
+
+        $sinEntrega = Livewire::test(EbsRequisiciones::class)->set('entregaFilter', 'sin_entrega')->viewData('records');
+        $this->assertSame(['REQ-SIN-1'], $sinEntrega->pluck('code')->all());
+    }
+
+    public function test_a_partially_delivered_requisition_shows_how_many_pieces_were_delivered(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDirectoElegible('REQ-PARC-1', 3103);
+        $ebs->lines()->first()->update(['quantity' => 3]);
+        $this->asignarEquipoAEbs($ebs->fresh('lines'), 'KOS-ENT-000002');
+
+        Livewire::test(EbsRequisiciones::class)->assertSee('Entregadas 1 de 3');
+    }
+
+    public function test_a_local_sic_assignment_counts_as_delivery_of_its_linked_requisition(): void
+    {
+        $this->actingAs($this->actingUser());
+        $c = $this->baseCatalogos();
+        $ebs = $this->crearEbsDirectoElegible('REQ-LOC-1', 3104);
+        $sic = $this->crearSicElegible($c, 'REQ-LOC-1', $ebs->id);
+
+        $asset = Asset::create([
+            'codigo' => 'KOS-ENT-000003',
+            'tipo_equipo_id' => TipoEquipo::firstOrCreate(['nombre' => 'Laptop'])->id,
+            'numero_serie' => 'SN-3',
+            'origen_tipo' => 'compra',
+            'estatus_id' => EstatusActivo::firstOrCreate(['codigo' => 'asignado'], ['nombre' => 'Asignado'])->id,
+        ]);
+        AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => $sic->empleado_id,
+            'sic_id' => $sic->id,
+            'sic_folio' => 'REQ-LOC-1',
+            'fecha_asignacion' => '2026-10-30',
+        ]);
+
+        $entregas = Livewire::test(EbsRequisiciones::class)->viewData('entregas');
+        $this->assertSame(1, $entregas[$ebs->id]['entregadas']);
+    }
+
+    public function test_the_assign_shortcut_only_shows_for_approved_requisitions_not_fully_delivered_and_with_the_assignment_permission(): void
+    {
+        $usuario = $this->actingUser();
+        $this->actingAs($usuario);
+        $pendiente = $this->crearEbsDirectoElegible('REQ-ATJ-1', 3105);
+        $entregada = $this->crearEbsDirectoElegible('REQ-ATJ-2', 3106);
+        $this->asignarEquipoAEbs($entregada, 'KOS-ENT-000004');
+
+        // Sin el permiso de Asignación de Activo no hay acceso directo.
+        Livewire::test(EbsRequisiciones::class)->assertDontSee('Asignar equipo a esta SIC');
+
+        $screen = Screen::create([
+            'module' => 'GestionTI',
+            'group_label' => 'Inventarios',
+            'name' => 'Asignación de Activo',
+            'slug' => 'gestionti-asignaciones',
+            'route_name' => 'gestionti.asignaciones.index',
+            'permission_name' => 'screens.gestionti-asignaciones.manage',
+            'icon' => 'user-plus',
+            'order' => 31,
+        ]);
+        Role::findOrCreate('Mesa de Servicio', 'web')->givePermissionTo($screen->permission_name);
+        $this->actingAs($usuario->fresh());
+
+        $html = Livewire::test(EbsRequisiciones::class)->html();
+        $this->assertStringContainsString('folio='.$pendiente->code, $html);
+        $this->assertStringNotContainsString('folio='.$entregada->code, $html);
+    }
+
+    public function test_lines_fully_delivered_show_as_covered_in_the_attention_modal_and_cannot_be_marked(): void
+    {
+        $this->actingAs($this->actingUser());
+        $ebs = $this->crearEbsDirectoElegible('REQ-ATN-1', 3107);
+        $ebs->lines()->create([
+            'requisition_line_id' => random_int(1000000, 9999999),
+            'line_number' => 2,
+            'item_id' => 3108,
+            'item_description' => 'Segunda línea',
+            'quantity' => 1,
+        ]);
+        $ebs = $ebs->fresh('lines');
+        $linea1 = $ebs->lines->sortBy('line_number')->first();
+        $linea2 = $ebs->lines->sortBy('line_number')->last();
+        $this->asignarEquipoAEbs($ebs, 'KOS-ENT-000005', $linea1->requisition_line_id);
+
+        Livewire::test(EbsRequisiciones::class)
+            ->call('openAtencion', $ebs->id)
+            ->assertSee('Cubierta por asignación (1 de 1)')
+            ->set('atencionLineaIds', [$linea1->requisition_line_id, $linea2->requisition_line_id])
+            ->set('atencionMotivo', 'Ya se compró y entregó')
+            ->call('marcarAtendidas');
+
+        // Solo la línea sin entregar se marca; la entregada ya está cubierta.
+        $this->assertSame([$linea2->requisition_line_id], $ebs->lineasAtendidas()->pluck('ebs_requisition_line_id')->map(fn ($id) => (int) $id)->all());
+    }
+
+    public function test_requisition_lines_fully_delivered_are_no_longer_offered_for_purchase(): void
+    {
+        $ebs = $this->crearEbsDirectoElegible('REQ-POOL-1', 3109);
+        $otra = $this->crearEbsDirectoElegible('REQ-POOL-2', 3110);
+        $this->asignarEquipoAEbs($ebs, 'KOS-ENT-000006');
+
+        $requisiciones = EbsRequisition::elegibleDirectoSinSic()->with('lines')->get();
+        $codigos = EbsRequisition::lineasElegiblesDeCompra($requisiciones)->map(fn ($par) => $par['requisicion']->code)->all();
+
+        $this->assertSame(['REQ-POOL-2'], $codigos);
+    }
+
+    public function test_a_local_sic_that_already_has_an_assignment_is_not_offered_for_purchase(): void
+    {
+        $c = $this->baseCatalogos();
+        $ebs = $this->crearEbsDirectoElegible('REQ-POOL-3', 3111);
+        $sic = $this->crearSicElegible($c, 'REQ-POOL-3', $ebs->id);
+
+        $this->assertTrue(SolicitudSicBorrador::autorizadaYSeleccionable()->whereKey($sic->id)->exists());
+
+        $asset = Asset::create([
+            'codigo' => 'KOS-ENT-000007',
+            'tipo_equipo_id' => TipoEquipo::firstOrCreate(['nombre' => 'Laptop'])->id,
+            'numero_serie' => 'SN-7',
+            'origen_tipo' => 'compra',
+            'estatus_id' => EstatusActivo::firstOrCreate(['codigo' => 'asignado'], ['nombre' => 'Asignado'])->id,
+        ]);
+        AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => $sic->empleado_id,
+            'sic_id' => $sic->id,
+            'sic_folio' => 'REQ-POOL-3',
+            'fecha_asignacion' => '2026-10-30',
+        ]);
+
+        $this->assertFalse(SolicitudSicBorrador::autorizadaYSeleccionable()->whereKey($sic->id)->exists());
     }
 
     public function test_route_requires_the_screen_permission(): void
