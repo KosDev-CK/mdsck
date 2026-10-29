@@ -15,6 +15,7 @@ use Modules\GestionTI\Models\AssetAssignment;
 use Modules\GestionTI\Models\CentroCosto;
 use Modules\GestionTI\Models\ConfiguracionDocumentos;
 use Modules\GestionTI\Models\DocumentoDigitalizado;
+use Modules\GestionTI\Models\EbsRequisition;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EstatusActivo;
@@ -264,7 +265,8 @@ class AsignacionesTest extends TestCase
             ->set('form.fecha_asignacion', '')
             ->call('save')
             ->assertHasErrors([
-                'form.sic_id' => 'required',
+                // El flujo principal es por folio (EBS): el folio es obligatorio.
+                'form.sic_folio' => 'required',
                 'form.asset_id' => 'required',
                 'form.fecha_asignacion' => 'required',
                 'form.estado_equipo_entrega' => 'required',
@@ -883,5 +885,405 @@ class AsignacionesTest extends TestCase
         Livewire::test(Asignaciones::class)
             ->call('openAttach', $assignment->id)
             ->assertSet('showAttachModal', true);
+    }
+
+    // ------------------------------------------------------------------
+    // SIC por folio (EBS o local), líneas, excepción sin SIC autorizada y "Ligar SIC"
+    // ------------------------------------------------------------------
+
+    /** @param  array<int, int|float>  $cantidades  Una línea por cantidad (numeradas desde 1). */
+    private function requisicion(string $code, string $status = 'APPROVED', array $cantidades = [1]): EbsRequisition
+    {
+        $requisicion = EbsRequisition::create([
+            'requisition_header_id' => random_int(1000000, 9999999),
+            'code' => $code,
+            'status' => $status,
+        ]);
+
+        foreach (array_values($cantidades) as $i => $cantidad) {
+            $requisicion->lines()->create([
+                'requisition_line_id' => random_int(1000000, 9999999),
+                'line_number' => $i + 1,
+                'item_id' => 100 + $i,
+                'item_description' => 'Artículo '.($i + 1),
+                'quantity' => $cantidad,
+            ]);
+        }
+
+        return $requisicion->fresh('lines');
+    }
+
+    private function formularioPorFolio($componente, string $folio, Asset $asset, ?Empleado $empleado = null)
+    {
+        $validador = Validador::firstOrCreate(['nombre' => 'Ana Torres']);
+
+        $componente->call('create')
+            ->set('form.sic_folio', $folio)
+            ->set('form.asset_id', $asset->id)
+            ->set('form.fecha_asignacion', '2026-10-29')
+            ->set('form.estado_equipo_entrega', 'nuevo')
+            ->set('form.responsable_entrega_id', $validador->id);
+
+        if ($empleado) {
+            $componente->set('form.empleado_id', $empleado->id);
+        }
+
+        return $componente;
+    }
+
+    public function test_an_authorized_ebs_requisition_can_be_assigned_by_folio_without_a_local_sic(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $requisicion = $this->requisicion('REQ-5001');
+        $asset = $this->asset('KOS-LAPTOP-000501', 'en_stock');
+        $empleado = $this->empleado('EMP-50', 'Luisa Ramos');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5001', $asset, $empleado)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertNull($asignacion->sic_id);
+        $this->assertSame($requisicion->id, $asignacion->ebs_requisition_id);
+        $this->assertSame($requisicion->lines->first()->requisition_line_id, $asignacion->ebs_requisition_line_id);
+        $this->assertSame('REQ-5001', $asignacion->sic_folio);
+        $this->assertFalse($asignacion->excepcion_sin_sic);
+        $this->assertSame($empleado->id, $asignacion->empleado_id);
+        $this->assertSame(auth()->id(), $asignacion->registrado_por_user_id);
+        $this->assertSame(AssetAssignment::COBERTURA_CUBIERTA, $asignacion->estadoCobertura());
+        $this->assertSame($this->estatusAsignado()->id, $asset->fresh()->estatus_id);
+    }
+
+    public function test_the_employee_is_required_when_the_sic_does_not_bring_one(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->requisicion('REQ-5002');
+        $asset = $this->asset('KOS-LAPTOP-000502', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5002', $asset)
+            ->call('save')
+            ->assertHasErrors(['form.empleado_id']);
+
+        $this->assertSame(0, AssetAssignment::count());
+    }
+
+    public function test_a_requisition_with_several_lines_requires_choosing_the_line_and_each_line_has_its_own_capacity(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $requisicion = $this->requisicion('REQ-5003', 'APPROVED', [1, 2]);
+        [$linea1, $linea2] = $requisicion->lines->sortBy('line_number')->values()->all();
+        $empleado = $this->empleado('EMP-51', 'Mario Soto');
+
+        // Sin elegir la línea se rechaza.
+        $a1 = $this->asset('KOS-LAPTOP-000503', 'en_stock');
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a1, $empleado)
+            ->call('save')
+            ->assertHasErrors(['form.ebs_linea_id']);
+
+        // La línea 1 trae 1 pieza: la primera asignación pasa, la segunda se rechaza.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a1, $empleado)
+            ->set('form.ebs_linea_id', $linea1->requisition_line_id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $a2 = $this->asset('KOS-LAPTOP-000504', 'en_stock');
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a2, $empleado)
+            ->set('form.ebs_linea_id', $linea1->requisition_line_id)
+            ->call('save')
+            ->assertHasErrors(['form.ebs_linea_id']);
+
+        // La línea 2 trae 2 piezas: caben dos asignaciones y la tercera no.
+        foreach (['KOS-LAPTOP-000504', 'KOS-LAPTOP-000505'] as $codigo) {
+            $a = Asset::where('codigo', $codigo)->first() ?? $this->asset($codigo, 'en_stock');
+            $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a, $empleado)
+                ->set('form.ebs_linea_id', $linea2->requisition_line_id)
+                ->call('save')
+                ->assertHasNoErrors();
+        }
+
+        $a3 = $this->asset('KOS-LAPTOP-000506', 'en_stock');
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a3, $empleado)
+            ->set('form.ebs_linea_id', $linea2->requisition_line_id)
+            ->call('save')
+            ->assertHasErrors(['form.ebs_linea_id']);
+
+        $this->assertSame(3, AssetAssignment::count());
+        $this->assertSame(2, AssetAssignment::where('ebs_requisition_line_id', $linea2->requisition_line_id)->count());
+    }
+
+    public function test_a_line_that_does_not_belong_to_the_requisition_is_rejected(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->requisicion('REQ-5004', 'APPROVED', [1, 1]);
+        $otra = $this->requisicion('REQ-5005');
+        $asset = $this->asset('KOS-LAPTOP-000507', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5004', $asset, $this->empleado('EMP-52', 'Pepe'))
+            ->set('form.ebs_linea_id', $otra->lines->first()->requisition_line_id)
+            ->call('save')
+            ->assertHasErrors(['form.ebs_linea_id']);
+    }
+
+    public function test_assigning_before_the_requisition_is_authorized_is_an_exception_that_needs_a_reason_and_becomes_covered_later(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $requisicion = $this->requisicion('REQ-5006', 'IN PROCESS');
+        $asset = $this->asset('KOS-LAPTOP-000508', 'en_stock');
+        $empleado = $this->empleado('EMP-53', 'Rosa Vega');
+
+        // Sin motivo no pasa.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5006', $asset, $empleado)
+            ->call('save')
+            ->assertHasErrors(['form.motivo_excepcion']);
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5006', $asset, $empleado)
+            ->set('form.motivo_excepcion', 'Entrega urgente a dirección')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertTrue($asignacion->excepcion_sin_sic);
+        $this->assertSame('Entrega urgente a dirección', $asignacion->motivo_excepcion);
+        $this->assertSame($requisicion->id, $asignacion->ebs_requisition_id);
+        $this->assertSame(AssetAssignment::COBERTURA_PENDIENTE, $asignacion->estadoCobertura());
+
+        // Aparece en el filtro de pendientes...
+        $this->assertCount(1, Livewire::test(Asignaciones::class)->set('soloPendientes', true)->viewData('records'));
+
+        // ...y en cuanto EBS la autoriza queda cubierta, sin tocar nada.
+        $requisicion->update(['status' => 'APPROVED']);
+        $this->assertSame(AssetAssignment::COBERTURA_CUBIERTA, $asignacion->fresh()->estadoCobertura());
+        $this->assertCount(0, Livewire::test(Asignaciones::class)->set('soloPendientes', true)->viewData('records'));
+    }
+
+    public function test_a_folio_that_does_not_exist_yet_is_saved_as_pending_and_can_be_linked_when_the_sic_arrives(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $asset = $this->asset('KOS-LAPTOP-000509', 'en_stock');
+        $empleado = $this->empleado('EMP-54', 'Tomás Rey');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5007', $asset, $empleado)
+            ->set('form.motivo_excepcion', 'El cliente no puede esperar')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertNull($asignacion->sic_id);
+        $this->assertNull($asignacion->ebs_requisition_id);
+        $this->assertSame('REQ-5007', $asignacion->sic_folio);
+        $this->assertSame(AssetAssignment::COBERTURA_PENDIENTE, $asignacion->estadoCobertura());
+
+        // La SIC llega a EBS y se autoriza: el folio coincide y queda "por ligar".
+        $requisicion = $this->requisicion('REQ-5007', 'APPROVED', [1, 1]);
+        $this->assertSame(AssetAssignment::COBERTURA_POR_LIGAR, $asignacion->fresh()->estadoCobertura());
+
+        // Tiene 2 líneas: ligar exige elegir la línea.
+        $lineaId = $requisicion->lines->sortBy('line_number')->last()->requisition_line_id;
+        $component = Livewire::test(Asignaciones::class)
+            ->call('openLigar', $asignacion->id)
+            ->assertSet('ligarFolio', 'REQ-5007')
+            ->call('confirmLigar')
+            ->assertHasErrors(['ligarLineaId']);
+
+        $component->set('ligarLineaId', $lineaId)
+            ->call('confirmLigar')
+            ->assertHasNoErrors()
+            ->assertSet('showLigarModal', false);
+
+        $asignacion->refresh();
+        $this->assertSame($requisicion->id, $asignacion->ebs_requisition_id);
+        $this->assertSame($lineaId, $asignacion->ebs_requisition_line_id);
+        $this->assertNotNull($asignacion->sic_ligada_at);
+        $this->assertSame(auth()->id(), $asignacion->sic_ligada_por_user_id);
+        $this->assertSame(AssetAssignment::COBERTURA_CUBIERTA, $asignacion->estadoCobertura());
+    }
+
+    public function test_linking_is_refused_while_the_sic_is_not_authorized_or_does_not_exist(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $asset = $this->asset('KOS-LAPTOP-000510', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5008', $asset, $this->empleado('EMP-55', 'Iván Cruz'))
+            ->set('form.motivo_excepcion', 'Urgente')
+            ->call('save');
+
+        $asignacion = AssetAssignment::firstOrFail();
+
+        Livewire::test(Asignaciones::class)
+            ->call('openLigar', $asignacion->id)
+            ->call('confirmLigar')
+            ->assertHasErrors(['ligarFolio']);
+
+        $this->requisicion('REQ-5008', 'IN PROCESS');
+
+        Livewire::test(Asignaciones::class)
+            ->call('openLigar', $asignacion->id)
+            ->call('confirmLigar')
+            ->assertHasErrors(['ligarFolio']);
+
+        $this->assertNull($asignacion->fresh()->ebs_requisition_id);
+    }
+
+    public function test_a_rejected_requisition_cannot_cover_an_assignment(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->requisicion('REQ-5009', 'REJECTED');
+        $asset = $this->asset('KOS-LAPTOP-000511', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5009', $asset, $this->empleado('EMP-56', 'Eva Mora'))
+            ->set('form.motivo_excepcion', 'Intento')
+            ->call('save')
+            ->assertHasErrors(['form.sic_folio']);
+
+        $this->assertSame(0, AssetAssignment::count());
+    }
+
+    public function test_a_local_sic_typed_by_folio_uses_its_employee_and_cannot_be_assigned_twice(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $empleado = $this->empleado('EMP-57', 'Dora Luna');
+        $sic = $this->sicAutorizada($empleado);
+        $a1 = $this->asset('KOS-LAPTOP-000512', 'en_stock');
+        $a2 = $this->asset('KOS-LAPTOP-000513', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), $sic->folio_sic, $a1)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertSame($sic->id, $asignacion->sic_id);
+        $this->assertSame($empleado->id, $asignacion->empleado_id);
+        $this->assertSame($sic->folio_sic, $asignacion->sic_folio);
+        $this->assertFalse($asignacion->excepcion_sin_sic);
+
+        // Ya asignada: no se puede volver a usar.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), $sic->folio_sic, $a2)
+            ->call('save')
+            ->assertHasErrors(['form.sic_folio']);
+
+        $this->assertSame(1, AssetAssignment::count());
+    }
+
+    public function test_a_sic_with_a_reserved_asset_cannot_be_assigned_a_different_one(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusReservado();
+        $this->estatusAsignado();
+        $sic = $this->sicAutorizada();
+        $reservado = $this->asset('KOS-LAPTOP-000514', 'reservado', $sic->id);
+        $libre = $this->asset('KOS-LAPTOP-000515', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), $sic->folio_sic, $libre)
+            ->call('save')
+            ->assertHasErrors(['form.sic_folio']);
+
+        // Con el equipo reservado sí pasa.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), $sic->folio_sic, $reservado)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame($reservado->id, AssetAssignment::firstOrFail()->asset_id);
+    }
+
+    public function test_a_local_sic_that_is_not_authorized_yet_is_an_exception_and_linking_asks_to_confirm_a_different_employee(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $empleadoSic = $this->empleado('EMP-58', 'Beto Ríos');
+        $sic = $this->sicAutorizada($empleadoSic);
+        $sic->update(['estatus' => SolicitudSicBorrador::ESTATUS_SIC_CREADA]);
+        $asset = $this->asset('KOS-LAPTOP-000516', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), $sic->folio_sic, $asset)
+            ->set('form.motivo_excepcion', 'Equipo ya entregado')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertTrue($asignacion->excepcion_sin_sic);
+        $this->assertSame($sic->id, $asignacion->sic_id);
+        $this->assertSame(AssetAssignment::COBERTURA_PENDIENTE, $asignacion->estadoCobertura());
+
+        $sic->update(['estatus' => SolicitudSicBorrador::ESTATUS_AUTORIZADA]);
+        $this->assertSame(AssetAssignment::COBERTURA_CUBIERTA, $asignacion->fresh()->estadoCobertura());
+
+        // Ligar una asignación hecha a OTRO empleado a una SIC local pide confirmación.
+        $otroEmpleado = $this->empleado('EMP-59', 'Nora Paz');
+        $otraSic = $this->sicAutorizada($otroEmpleado);
+        $asset2 = $this->asset('KOS-LAPTOP-000517', 'en_stock');
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'FOLIO-LIBRE-1', $asset2, $empleadoSic)
+            ->set('form.motivo_excepcion', 'Urgente')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $libre = AssetAssignment::where('sic_folio', 'FOLIO-LIBRE-1')->firstOrFail();
+
+        Livewire::test(Asignaciones::class)
+            ->call('openLigar', $libre->id)
+            ->set('ligarFolio', $otraSic->folio_sic)
+            ->call('confirmLigar')
+            ->assertHasErrors(['ligarFolio'])
+            ->set('ligarConfirmaEmpleado', true)
+            ->call('confirmLigar')
+            ->assertHasNoErrors();
+
+        $this->assertSame($otraSic->id, $libre->fresh()->sic_id);
+    }
+
+    public function test_the_local_origin_still_assigns_from_the_authorized_local_sic_list_and_stores_its_folio(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusAsignado();
+        $sic = $this->sicAutorizada();
+        $asset = $this->asset('KOS-LAPTOP-000518', 'en_stock');
+        $validador = $this->validador();
+
+        Livewire::test(Asignaciones::class)
+            ->call('create')
+            ->set('form.origen_sic', 'local')
+            ->set('form.sic_id', $sic->id)
+            ->set('form.asset_id', $asset->id)
+            ->set('form.fecha_asignacion', '2026-10-29')
+            ->set('form.estado_equipo_entrega', 'nuevo')
+            ->set('form.responsable_entrega_id', $validador->id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asignacion = AssetAssignment::firstOrFail();
+        $this->assertSame($sic->folio_sic, $asignacion->sic_folio);
+        $this->assertFalse($asignacion->excepcion_sin_sic);
+    }
+
+    public function test_assignments_without_any_sic_data_are_not_flagged_as_pending(): void
+    {
+        // Asignación histórica / del registro manual: sin SIC ni folio, no se marca como pendiente.
+        $this->estatusAsignado();
+        $asset = $this->asset('KOS-LAPTOP-000519', 'asignado');
+        $asignacion = AssetAssignment::create([
+            'asset_id' => $asset->id,
+            'empleado_id' => $this->empleado('EMP-60', 'Histórico')->id,
+            'fecha_asignacion' => '2020-01-01',
+        ]);
+
+        $this->assertSame(AssetAssignment::COBERTURA_SIN_DATO, $asignacion->estadoCobertura());
     }
 }

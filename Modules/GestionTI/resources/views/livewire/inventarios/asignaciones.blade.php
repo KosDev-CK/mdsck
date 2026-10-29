@@ -29,7 +29,13 @@
                 placeholder="Buscar por código de activo, empleado o folio SIC..."
                 class="w-full sm:w-80 rounded-md border-gray-300 shadow-sm sm:text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
             >
-            <x-ui.button wire:click="create">Nuevo</x-ui.button>
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <input type="checkbox" wire:model.live="soloPendientes" class="rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                    Solo pendientes de SIC
+                </label>
+                <x-ui.button wire:click="create">Nuevo</x-ui.button>
+            </div>
         </div>
 
         <x-ui.table :headers="['Activo', 'Empleado', 'SIC', 'Fecha de asignación', 'Estado', 'Responsable de entrega', '']" :empty="$records->isEmpty()" empty-description="Registra la primera asignación con el botón Nuevo.">
@@ -42,7 +48,21 @@
                         @endif
                     </td>
                     <td class="py-2">{{ $record->empleado?->nombre }}</td>
-                    <td class="py-2 text-gray-500 dark:text-gray-400">{{ $record->sic?->folio_sic ?? ($record->sic ? 'Sin folio' : '—') }}</td>
+                    @php($cobertura = $record->estadoCobertura())
+                    <td class="py-2 text-gray-500 dark:text-gray-400">
+                        {{ $record->folioSic() ?? ($record->sic ? 'Sin folio' : '—') }}
+                        @if ($record->ebs_requisition_line_id && $record->ebsRequisition)
+                            <span class="block text-xs">Línea {{ $record->ebsRequisition->lines->firstWhere('requisition_line_id', $record->ebs_requisition_line_id)?->line_number }}</span>
+                        @endif
+                        @if ($cobertura === \Modules\GestionTI\Models\AssetAssignment::COBERTURA_PENDIENTE)
+                            <x-ui.badge color="amber">Pendiente de SIC</x-ui.badge>
+                        @elseif ($cobertura === \Modules\GestionTI\Models\AssetAssignment::COBERTURA_POR_LIGAR)
+                            <x-ui.badge color="indigo">SIC autorizada: ligar</x-ui.badge>
+                        @endif
+                        @if ($record->excepcion_sin_sic)
+                            <span class="block text-xs" title="{{ $record->motivo_excepcion }}">Excepción: {{ \Illuminate\Support\Str::limit($record->motivo_excepcion, 40) }}</span>
+                        @endif
+                    </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">{{ optional($record->fecha_asignacion)->format('d/m/Y') ?? $record->fecha_asignacion }}</td>
                     <td class="py-2">
                         <x-ui.badge :color="$record->fecha_devolucion ? 'gray' : 'emerald'">{{ $record->fecha_devolucion ? 'Devuelta' : 'Activa' }}</x-ui.badge>
@@ -51,6 +71,10 @@
                     <td class="py-2 text-right whitespace-nowrap">
                         <x-ui.row-actions>
                             <x-ui.icon-button wire:click="exportResponsivaPdf({{ $record->id }})" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
+
+                            @if (! $record->sic_id && ! $record->ebs_requisition_id && $record->sic_folio)
+                                <x-ui.icon-button wire:click="openLigar({{ $record->id }})" icon="heroicon-o-link" title="Ligar SIC" />
+                            @endif
 
                             @if ($record->documentoResponsiva)
                                 <x-ui.icon-button tag="a" :href="$record->documentoResponsiva->url()" target="_blank" icon="heroicon-o-eye" title="Ver responsiva" />
@@ -75,18 +99,82 @@
 
     <x-ui.modal model="showModal" title="Nueva asignación de activo" max-width="max-w-2xl">
         <form wire:submit="save" class="space-y-4">
-            <x-ui.select label="SIC autorizada pendiente" name="form.sic_id" wire:model.live="form.sic_id">
-                <option value="">Selecciona...</option>
-                @foreach ($sicOptions as $sic)
-                    <option value="{{ $sic->id }}">{{ $this->sicOptionLabel($sic) }}</option>
-                @endforeach
-            </x-ui.select>
-
-            @if ($form['sic_id'] ?? null)
-                <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 text-sm">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">Empleado destinatario:</span>
-                    {{ $selectedSic?->empleado?->nombre ?? '—' }}
+            <div>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Origen de la SIC</span>
+                <div class="flex flex-wrap gap-4 text-sm text-gray-700 dark:text-gray-300">
+                    <label class="flex items-center gap-2">
+                        <input type="radio" wire:model.live="form.origen_sic" value="ebs">
+                        SIC de EBS (por folio)
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="radio" wire:model.live="form.origen_sic" value="local">
+                        SIC local (respaldo cuando EBS no está disponible)
+                    </label>
                 </div>
+            </div>
+
+            @if (($form['origen_sic'] ?? 'ebs') === 'local' || ($form['sic_id'] ?? null))
+                <x-ui.select label="SIC local autorizada pendiente" name="form.sic_id" wire:model.live="form.sic_id">
+                    <option value="">Selecciona...</option>
+                    @foreach ($sicOptions as $sic)
+                        <option value="{{ $sic->id }}">{{ $this->sicOptionLabel($sic) }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                @if ($form['sic_id'] ?? null)
+                    <div class="rounded-md bg-gray-50 dark:bg-gray-800/50 p-3 text-sm">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">Empleado destinatario:</span>
+                        {{ $selectedSic?->empleado?->nombre ?? '—' }}
+                    </div>
+                @endif
+            @else
+                <div>
+                    <x-ui.input label="Folio de la SIC" name="form.sic_folio" wire:model.live.debounce.500ms="form.sic_folio" />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Obligatorio aunque la SIC todavía no esté autorizada: la entrega no tiene que esperar. Si la SIC ya existe, aquí se muestra su estatus.
+                    </p>
+                </div>
+
+                @if ($resolucion)
+                    <div class="rounded-md p-3 text-sm {{ $resolucion['bloqueo'] ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' : ($resolucion['autorizada'] ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300') }}">
+                        @if ($resolucion['bloqueo'])
+                            {{ $resolucion['bloqueo'] }}
+                        @elseif ($resolucion['tipo'] === null)
+                            Esta SIC no existe todavía en el sistema (ni en EBS ni local). Se registrará la asignación como excepción y quedará "Pendiente de SIC" hasta que llegue.
+                        @elseif ($resolucion['autorizada'])
+                            SIC {{ $resolucion['tipo'] === 'ebs' ? 'de EBS' : 'local' }} autorizada: la asignación queda cubierta.
+                        @else
+                            La SIC existe pero está en estatus {{ $resolucion['estatus'] }} (aún no autorizada). Se registrará como excepción y quedará "Pendiente de SIC" hasta que se autorice.
+                        @endif
+                        @if ($resolucion['local'])
+                            <span class="block mt-1">Empleado de la SIC: {{ $resolucion['local']->empleado?->nombre ?? '—' }}</span>
+                        @endif
+                    </div>
+                @endif
+
+                @if ($lineasEbs->count() > 0)
+                    <x-ui.select label="Línea de la SIC que se entrega" name="form.ebs_linea_id" wire:model="form.ebs_linea_id">
+                        <option value="">Selecciona...</option>
+                        @foreach ($lineasEbs as $lineaEbs)
+                            <option value="{{ $lineaEbs['id'] }}" @disabled($lineaEbs['libres'] <= 0)>
+                                Línea {{ $lineaEbs['numero'] }} — {{ $lineaEbs['descripcion'] }} ({{ $lineaEbs['libres'] }} de {{ $lineaEbs['cantidad'] }} por entregar)
+                            </option>
+                        @endforeach
+                    </x-ui.select>
+                @endif
+
+                @if (! ($resolucion['local'] ?? null) && filled($form['sic_folio'] ?? null))
+                    <x-ui.select label="Empleado que recibe" name="form.empleado_id" wire:model="form.empleado_id">
+                        <option value="">Selecciona...</option>
+                        @foreach ($empleadoOptions as $empleado)
+                            <option value="{{ $empleado->id }}">{{ $empleado->nombre }}</option>
+                        @endforeach
+                    </x-ui.select>
+                @endif
+
+                @if ($resolucion && ! $resolucion['bloqueo'] && ! $resolucion['autorizada'])
+                    <x-ui.input label="Motivo de la excepción" name="form.motivo_excepcion" type="textarea" wire:model="form.motivo_excepcion" />
+                @endif
             @endif
 
             <x-ui.select label="Activo" name="form.asset_id" wire:model="form.asset_id">
@@ -249,4 +337,56 @@
     <x-ui.help-modal titulo="Asignación de Activo" :pdf-url="route('gestionti.ayuda.pdf', 'asignaciones')">
         @include('gestionti::ayuda.contenido', ['contenido' => \Modules\GestionTI\Support\Ayuda\AyudaCatalog::contenido('asignaciones')])
     </x-ui.help-modal>
+    <x-ui.modal model="showLigarModal" title="Ligar SIC a la asignación" max-width="max-w-xl">
+        @if ($ligandoAsignacion)
+            <div class="space-y-4">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    Activo <strong>{{ $ligandoAsignacion->asset?->codigo }}</strong> asignado a <strong>{{ $ligandoAsignacion->empleado?->nombre }}</strong>.
+                    Cuando la SIC ya existe y está autorizada, ligarla deja la asignación cubierta.
+                </p>
+
+                <x-ui.input label="Folio de la SIC" name="ligarFolio" wire:model.live.debounce.500ms="ligarFolio" />
+
+                @if ($resolucionLigar)
+                    <div class="rounded-md p-3 text-sm {{ $resolucionLigar['bloqueo'] ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' : ($resolucionLigar['autorizada'] ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300') }}">
+                        @if ($resolucionLigar['bloqueo'])
+                            {{ $resolucionLigar['bloqueo'] }}
+                        @elseif ($resolucionLigar['tipo'] === null)
+                            No existe ninguna SIC con ese folio todavía.
+                        @elseif ($resolucionLigar['autorizada'])
+                            SIC {{ $resolucionLigar['tipo'] === 'ebs' ? 'de EBS' : 'local' }} autorizada: se puede ligar.
+                        @else
+                            La SIC está en estatus {{ $resolucionLigar['estatus'] }}: aún no se puede ligar.
+                        @endif
+                        @if ($resolucionLigar['local'])
+                            <span class="block mt-1">Empleado de la SIC: {{ $resolucionLigar['local']->empleado?->nombre ?? '—' }}</span>
+                        @endif
+                    </div>
+                @endif
+
+                @if ($resolucionLigar && $resolucionLigar['local'] && $resolucionLigar['local']->empleado_id && $resolucionLigar['local']->empleado_id !== $ligandoAsignacion->empleado_id)
+                    <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" wire:model="ligarConfirmaEmpleado" class="mt-0.5 rounded border-gray-300 text-primary focus:ring-primary dark:bg-gray-800 dark:border-gray-700">
+                        El empleado de la SIC es distinto al de la asignación y confirmo que corresponde.
+                    </label>
+                @endif
+
+                @if ($lineasLigar->count() > 1)
+                    <x-ui.select label="Línea de la SIC que se entregó" name="ligarLineaId" wire:model="ligarLineaId">
+                        <option value="">Selecciona...</option>
+                        @foreach ($lineasLigar as $lineaLigar)
+                            <option value="{{ $lineaLigar['id'] }}" @disabled($lineaLigar['libres'] <= 0)>
+                                Línea {{ $lineaLigar['numero'] }} — {{ $lineaLigar['descripcion'] }} ({{ $lineaLigar['libres'] }} de {{ $lineaLigar['cantidad'] }} por entregar)
+                            </option>
+                        @endforeach
+                    </x-ui.select>
+                @endif
+
+                <div class="flex justify-end gap-2">
+                    <x-ui.button type="button" variant="secondary" wire:click="closeLigar">Cancelar</x-ui.button>
+                    <x-ui.button type="button" wire:click="confirmLigar">Ligar SIC</x-ui.button>
+                </div>
+            </div>
+        @endif
+    </x-ui.modal>
 </div>
