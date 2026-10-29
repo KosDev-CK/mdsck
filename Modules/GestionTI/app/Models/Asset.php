@@ -13,7 +13,8 @@ class Asset extends Model
         'origen_tipo', 'recepcion_linea_id', 'motivo_alta_manual',
         'dado_de_alta_por_id', 'vendor_id', 'fecha_alta_stock',
         'fecha_inicio_garantia', 'fecha_fin_garantia', 'ubicacion_actual_id',
-        'sic_reservada_id', 'proyecto_presupuesto_id', 'estatus_id',
+        'sic_reservada_id', 'ebs_requisition_id', 'ebs_requisition_line_id',
+        'proyecto_presupuesto_id', 'estatus_id',
         'propiedad_id', 'invoice_id', 'nota_adquisicion_original', 'articulo_id',
     ];
 
@@ -162,6 +163,12 @@ class Asset extends Model
     public function sicReservada()
     {
         return $this->belongsTo(SolicitudSicBorrador::class, 'sic_reservada_id');
+    }
+
+    /** Requisición de EBS de la que salió (y para la que está reservado mientras no se asigna). */
+    public function ebsRequisition()
+    {
+        return $this->belongsTo(EbsRequisition::class, 'ebs_requisition_id');
     }
 
     public function proyectoPresupuesto()

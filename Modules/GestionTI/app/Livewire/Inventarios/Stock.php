@@ -141,7 +141,7 @@ class Stock extends Component
         // Activo fresco desde BD y se revalida el estatus, no solo se
         // confía en que el botón estuvo oculto en la vista — mismo patrón
         // ya usado en `Asignaciones::save()`.
-        $asset = Asset::with('estatus')->findOrFail($this->reassigningAssetId);
+        $asset = Asset::with(['estatus', 'ebsRequisition'])->findOrFail($this->reassigningAssetId);
 
         if ($asset->estatus?->codigo !== 'reservado') {
             $this->cancelReassign();
@@ -150,15 +150,23 @@ class Stock extends Component
         }
 
         DB::transaction(function () use ($asset) {
+            // Si estaba reservado para una requisición de EBS, la bitácora lo deja dicho
+            // (no hay SIC local anterior) y la reserva pasa a la SIC local elegida.
+            $reservaEbs = $asset->ebsRequisition?->code;
+
             AssetSicReservationLog::create([
                 'asset_id' => $asset->id,
                 'sic_anterior_id' => $asset->sic_reservada_id,
                 'sic_nueva_id' => $this->reassignForm['sic_nueva_id'],
-                'motivo' => $this->reassignForm['motivo'],
+                'motivo' => $this->reassignForm['motivo'].($reservaEbs ? " [reserva anterior: requisición de EBS {$reservaEbs}]" : ''),
                 'usuario_id' => auth()->id(),
             ]);
 
-            $asset->update(['sic_reservada_id' => $this->reassignForm['sic_nueva_id']]);
+            $asset->update([
+                'sic_reservada_id' => $this->reassignForm['sic_nueva_id'],
+                'ebs_requisition_id' => null,
+                'ebs_requisition_line_id' => null,
+            ]);
         });
 
         $this->cancelReassign();
@@ -262,7 +270,7 @@ class Stock extends Component
     public function render()
     {
         $records = Asset::query()
-            ->with(['tipoEquipo', 'marca', 'modelo', 'ubicacionActual', 'estatus', 'sicReservada'])
+            ->with(['tipoEquipo', 'marca', 'modelo', 'ubicacionActual', 'estatus', 'sicReservada', 'ebsRequisition'])
             ->when($this->ubicacionFilter !== '', fn ($q) => $q->where('ubicacion_actual_id', $this->ubicacionFilter))
             ->when($this->tipoEquipoFilter !== '', fn ($q) => $q->where('tipo_equipo_id', $this->tipoEquipoFilter))
             ->when($this->marcaFilter !== '', fn ($q) => $q->where('marca_id', $this->marcaFilter))

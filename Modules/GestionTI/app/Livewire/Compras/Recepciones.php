@@ -1123,6 +1123,7 @@ class Recepciones extends Component
                 'sic_id' => $linea->sic_id,
                 'sic_folio' => $linea->sic?->folio_sic,
                 'ebs_requisition_id' => $linea->ebs_requisition_id,
+                'ebs_requisition_line_id' => $linea->ebs_requisition_line_id,
                 // Folio a mostrar junto al artículo (SIC local, requisición de EBS directa o folio capturado a mano).
                 'sic_display' => $linea->folioSicDisplay(),
                 'lugar_entrega_id' => $linea->lugar_entrega_id,
@@ -1416,7 +1417,12 @@ class Recepciones extends Component
                     // ella (apartado, no la asignación formal); si no, quedan libres
                     // en_stock.
                     $sicIdLinea = $linea['sic_id'] ?? null;
-                    $estatusInventariableId = $sicIdLinea
+                    // Una línea de EBS directa (sin SIC local) reserva igual, contra su
+                    // requisición y su línea: lo recibido queda apartado para esa SIC y se
+                    // entrega después desde Asignación de Activo, por folio.
+                    $ebsRequisicionId = $sicIdLinea ? null : ($linea['ebs_requisition_id'] ?? null);
+                    $ebsLineaId = $ebsRequisicionId ? ($linea['ebs_requisition_line_id'] ?? null) : null;
+                    $estatusInventariableId = ($sicIdLinea || $ebsRequisicionId)
                         ? $this->estatusIdPorCodigo('reservado')
                         : $this->estatusIdPorCodigo('en_stock');
 
@@ -1463,6 +1469,8 @@ class Recepciones extends Component
                             'fecha_fin_garantia' => $linea['fecha_fin_garantia'] ?: null,
                             'ubicacion_actual_id' => $ubicacionId,
                             'sic_reservada_id' => $sicIdLinea,
+                            'ebs_requisition_id' => $ebsRequisicionId,
+                            'ebs_requisition_line_id' => $ebsLineaId,
                             'proyecto_presupuesto_id' => $proyectoPresupuestoId,
                             'estatus_id' => $estatusInventariableId,
                             'nota_adquisicion_original' => null,

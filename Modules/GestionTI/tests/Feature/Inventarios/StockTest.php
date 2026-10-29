@@ -377,6 +377,36 @@ class StockTest extends TestCase
         $this->assertSame($sicNueva->id, $asset->fresh()->sic_reservada_id);
     }
 
+    public function test_reassigning_an_asset_reserved_for_an_ebs_requisition_moves_it_to_the_local_sic_and_leaves_a_note(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatus('reservado', 'Reservado');
+
+        $requisicion = \Modules\GestionTI\Models\EbsRequisition::create(['requisition_header_id' => 8800001, 'code' => 'REQ-STK-1', 'status' => 'APPROVED']);
+        $linea = $requisicion->lines()->create(['requisition_line_id' => 8800011, 'line_number' => 1, 'item_id' => 1, 'item_description' => 'Laptop', 'quantity' => 1]);
+        $sicNueva = $this->sicAutorizada();
+        $asset = $this->asset('KOS-LAPTOP-000020', 'reservado', [
+            'ebs_requisition_id' => $requisicion->id,
+            'ebs_requisition_line_id' => $linea->requisition_line_id,
+        ]);
+
+        // La columna de la lista muestra la requisición de EBS.
+        Livewire::test(Stock::class)->assertSee('REQ-STK-1');
+
+        Livewire::test(Stock::class)
+            ->call('openReassign', $asset->id)
+            ->set('reassignForm.sic_nueva_id', $sicNueva->id)
+            ->set('reassignForm.motivo', 'Se pidió para otra persona')
+            ->call('confirmReassign')
+            ->assertHasNoErrors();
+
+        $asset->refresh();
+        $this->assertSame($sicNueva->id, $asset->sic_reservada_id);
+        $this->assertNull($asset->ebs_requisition_id);
+        $this->assertNull($asset->ebs_requisition_line_id);
+        $this->assertStringContainsString('REQ-STK-1', AssetSicReservationLog::firstOrFail()->motivo);
+    }
+
     public function test_reassign_sic_direct_call_does_nothing_if_asset_is_not_reservado(): void
     {
         $this->actingAs($this->actingUser());

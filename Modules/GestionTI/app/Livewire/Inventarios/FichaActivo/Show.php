@@ -35,7 +35,7 @@ class Show extends Component
     public function mount(Asset $asset): void
     {
         $this->asset = $asset->load([
-            'tipoEquipo', 'marca', 'modelo', 'estatus', 'ubicacionActual', 'sicReservada',
+            'tipoEquipo', 'marca', 'modelo', 'estatus', 'ubicacionActual', 'sicReservada', 'ebsRequisition',
             'dadoDeAltaPor',
             'recepcionLinea.recepcion.recibidoPor',
             'recepcionLinea.recepcion.solicitudProveedor.ticket.empleado',
@@ -257,6 +257,18 @@ class Show extends Component
                 titulo: 'Solicitud de SIC',
                 detalle: 'Folio: '.($sic->folio_sic ?: "SIC #{$sic->id}")
                     .' — solicitante: '.($sic->empleado?->nombre ?? '—'),
+            );
+        } elseif ($ebs = ($this->asset->recepcionLinea?->solicitudProveedorLinea?->ebsRequisition ?? $this->asset->ebsRequisition)) {
+            // Compra directa de una requisición de EBS (sin SIC local): se conserva su origen.
+            $events[] = $this->event(
+                fecha: $ebs->fecha_creacion,
+                fallback: $ebs->created_at,
+                orden: 1,
+                tipo: 'sic',
+                color: 'indigo',
+                icono: 'document-text',
+                titulo: 'Requisición de EBS',
+                detalle: 'Folio: '.$ebs->code.' — '.($ebs->created_by_description ?: 'solicitante no disponible'),
             );
         } elseif ($solicitud?->proyectoPresupuestoArticulo?->proyecto) {
             $proyecto = $solicitud->proyectoPresupuestoArticulo->proyecto;

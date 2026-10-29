@@ -53,7 +53,7 @@
             @if ($asset->estatus?->codigo === 'reservado')
                 <div>
                     <dt class="text-gray-500 dark:text-gray-400">SIC reservada actual</dt>
-                    <dd class="text-gray-900 dark:text-gray-100">{{ $asset->sicReservada?->folio_sic ?: ($asset->sicReservada ? "SIC #{$asset->sicReservada->id}" : '—') }}</dd>
+                    <dd class="text-gray-900 dark:text-gray-100">{{ $asset->sicReservada?->folio_sic ?: ($asset->sicReservada ? "SIC #{$asset->sicReservada->id}" : ($asset->ebsRequisition?->code ?? '—')) }}</dd>
                 </div>
             @endif
         </dl>

@@ -223,6 +223,10 @@ class Asignaciones extends Component
             $this->form['asset_id'] = null;
         }
 
+        if ($name === 'form.ebs_linea_id') {
+            $this->form['asset_id'] = null;
+        }
+
         if ($name === 'form.sic_folio') {
             $this->form['ebs_linea_id'] = null;
             $this->form['asset_id'] = null;
@@ -372,6 +376,16 @@ class Asignaciones extends Component
 
                 return;
             }
+
+            // Lo recibido de esa línea queda reservado para ella: si hay equipos
+            // reservados sin asignar, se entregan esos en vez de uno cualquiera de stock.
+            $reservadosDeLaLinea = $this->reservadosDeEbs($requisicion->id, $lineaEbsId);
+
+            if ($reservadosDeLaLinea->isNotEmpty() && ! $reservadosDeLaLinea->contains('id', $asset->id)) {
+                $this->addError('form.asset_id', 'Esta SIC ya tiene equipos reservados que llegaron en su recepción ('.$reservadosDeLaLinea->pluck('codigo')->join(', ').'): asigna uno de ellos antes de usar otro de stock.');
+
+                return;
+            }
         }
 
         $empleadoId = $sic?->empleado_id ?? ($this->form['empleado_id'] ?? null);
@@ -388,8 +402,10 @@ class Asignaciones extends Component
         // pudo asignar el mismo Activo mientras tanto) — se vuelve a
         // verificar aquí antes de crear nada.
         $calificaEnStock = $asset->estatus?->codigo === 'en_stock';
-        $calificaReservadoParaEstaSic = $sic && $asset->estatus?->codigo === 'reservado'
-            && $asset->sic_reservada_id === $sic->id;
+        $calificaReservadoParaEstaSic = $asset->estatus?->codigo === 'reservado' && (
+            ($sic && $asset->sic_reservada_id === $sic->id)
+            || ($requisicion && $this->reservadosDeEbs($requisicion->id, $lineaEbsId)->contains('id', $asset->id))
+        );
 
         if (! $calificaEnStock && ! $calificaReservadoParaEstaSic) {
             $this->addError('form.asset_id', 'Este activo ya no está disponible para asignarse — selecciona otro.');
@@ -818,17 +834,37 @@ class Asignaciones extends Component
         return "{$folio} — {$sic->empleado?->nombre} — {$sic->tipoEquipo?->nombre}";
     }
 
-    private function assetOptionsFor(?int $sicId)
+    /**
+     * Equipos reservados (aún sin asignar) para una requisición de EBS: los de la
+     * línea concreta si ya se eligió, o los de cualquier línea de la requisición.
+     */
+    private function reservadosDeEbs(int $requisicionId, $lineaId = null)
+    {
+        return Asset::query()
+            ->whereHas('estatus', fn ($q) => $q->where('codigo', 'reservado'))
+            ->when($lineaId, fn ($q) => $q->where('ebs_requisition_line_id', $lineaId), fn ($q) => $q->where('ebs_requisition_id', $requisicionId))
+            ->orderBy('codigo')
+            ->get();
+    }
+
+    private function assetOptionsFor(?int $sicId, ?int $ebsRequisicionId = null, $ebsLineaId = null)
     {
         return Asset::query()
             ->with(['tipoEquipo', 'marca', 'modelo'])
-            ->where(function ($q) use ($sicId) {
+            ->where(function ($q) use ($sicId, $ebsRequisicionId, $ebsLineaId) {
                 $q->whereHas('estatus', fn ($q2) => $q2->where('codigo', 'en_stock'));
 
                 if ($sicId) {
                     $q->orWhere(function ($q2) use ($sicId) {
                         $q2->whereHas('estatus', fn ($q3) => $q3->where('codigo', 'reservado'))
                             ->where('sic_reservada_id', $sicId);
+                    });
+                }
+
+                if ($ebsRequisicionId) {
+                    $q->orWhere(function ($q2) use ($ebsRequisicionId, $ebsLineaId) {
+                        $q2->whereHas('estatus', fn ($q3) => $q3->where('codigo', 'reservado'))
+                            ->when($ebsLineaId, fn ($q3) => $q3->where('ebs_requisition_line_id', $ebsLineaId), fn ($q3) => $q3->where('ebs_requisition_id', $ebsRequisicionId));
                     });
                 }
             })
@@ -898,7 +934,11 @@ class Asignaciones extends Component
                 ->whereDoesntHave('assetAssignments')
                 ->with(['empleado', 'tipoEquipo', 'ticket'])
                 ->get(),
-            'assetOptions' => $this->assetOptionsFor($selectedSicId),
+            'assetOptions' => $this->assetOptionsFor(
+                $selectedSicId,
+                $lineasEbs->isNotEmpty() ? $resolucion['ebs']->id : null,
+                $lineasEbs->isNotEmpty() ? ($this->form['ebs_linea_id'] ?? null) : null,
+            ),
             'validadorOptions' => Validador::where('activo', true)->orderBy('nombre')->get(),
             'sistemaOperativoOptions' => SistemaOperativo::where('activo', true)->orderBy('nombre')->get(),
             'selectedSic' => $selectedSicId

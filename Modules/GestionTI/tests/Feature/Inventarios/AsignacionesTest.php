@@ -913,12 +913,18 @@ class AsignacionesTest extends TestCase
         return $requisicion->fresh('lines');
     }
 
-    private function formularioPorFolio($componente, string $folio, Asset $asset, ?Empleado $empleado = null)
+    private function formularioPorFolio($componente, string $folio, Asset $asset, ?Empleado $empleado = null, ?int $lineaId = null)
     {
         $validador = Validador::firstOrCreate(['nombre' => 'Ana Torres']);
 
         $componente->call('create')
-            ->set('form.sic_folio', $folio)
+            ->set('form.sic_folio', $folio);
+
+        if ($lineaId) {
+            $componente->set('form.ebs_linea_id', $lineaId);
+        }
+
+        $componente
             ->set('form.asset_id', $asset->id)
             ->set('form.fecha_asignacion', '2026-10-29')
             ->set('form.estado_equipo_entrega', 'nuevo')
@@ -986,29 +992,25 @@ class AsignacionesTest extends TestCase
             ->assertHasErrors(['form.ebs_linea_id']);
 
         // La línea 1 trae 1 pieza: la primera asignación pasa, la segunda se rechaza.
-        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a1, $empleado)
-            ->set('form.ebs_linea_id', $linea1->requisition_line_id)
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a1, $empleado, $linea1->requisition_line_id)
             ->call('save')
             ->assertHasNoErrors();
 
         $a2 = $this->asset('KOS-LAPTOP-000504', 'en_stock');
-        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a2, $empleado)
-            ->set('form.ebs_linea_id', $linea1->requisition_line_id)
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a2, $empleado, $linea1->requisition_line_id)
             ->call('save')
             ->assertHasErrors(['form.ebs_linea_id']);
 
         // La línea 2 trae 2 piezas: caben dos asignaciones y la tercera no.
         foreach (['KOS-LAPTOP-000504', 'KOS-LAPTOP-000505'] as $codigo) {
             $a = Asset::where('codigo', $codigo)->first() ?? $this->asset($codigo, 'en_stock');
-            $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a, $empleado)
-                ->set('form.ebs_linea_id', $linea2->requisition_line_id)
+            $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a, $empleado, $linea2->requisition_line_id)
                 ->call('save')
                 ->assertHasNoErrors();
         }
 
         $a3 = $this->asset('KOS-LAPTOP-000506', 'en_stock');
-        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a3, $empleado)
-            ->set('form.ebs_linea_id', $linea2->requisition_line_id)
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5003', $a3, $empleado, $linea2->requisition_line_id)
             ->call('save')
             ->assertHasErrors(['form.ebs_linea_id']);
 
@@ -1024,8 +1026,7 @@ class AsignacionesTest extends TestCase
         $otra = $this->requisicion('REQ-5005');
         $asset = $this->asset('KOS-LAPTOP-000507', 'en_stock');
 
-        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5004', $asset, $this->empleado('EMP-52', 'Pepe'))
-            ->set('form.ebs_linea_id', $otra->lines->first()->requisition_line_id)
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-5004', $asset, $this->empleado('EMP-52', 'Pepe'), $otra->lines->first()->requisition_line_id)
             ->call('save')
             ->assertHasErrors(['form.ebs_linea_id']);
     }
@@ -1271,6 +1272,78 @@ class AsignacionesTest extends TestCase
         $asignacion = AssetAssignment::firstOrFail();
         $this->assertSame($sic->folio_sic, $asignacion->sic_folio);
         $this->assertFalse($asignacion->excepcion_sin_sic);
+    }
+
+    /** Equipo recibido de una línea de EBS: reservado para su requisición y línea. */
+    private function assetReservadoDeEbs(string $codigo, EbsRequisition $requisicion, int $numeroLinea = 1): Asset
+    {
+        $asset = $this->asset($codigo, 'reservado');
+        $asset->update([
+            'ebs_requisition_id' => $requisicion->id,
+            'ebs_requisition_line_id' => $requisicion->lines->firstWhere('line_number', $numeroLinea)->requisition_line_id,
+        ]);
+
+        return $asset->fresh();
+    }
+
+    public function test_an_asset_reserved_for_an_ebs_line_is_offered_and_assigned_for_that_line_only(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusReservado();
+        $this->estatusAsignado();
+        $requisicion = $this->requisicion('REQ-6001', 'APPROVED', [1, 1]);
+        [$linea1, $linea2] = $requisicion->lines->sortBy('line_number')->values()->all();
+        $reservado1 = $this->assetReservadoDeEbs('KOS-LAPTOP-000601', $requisicion, 1);
+        $reservado2 = $this->assetReservadoDeEbs('KOS-LAPTOP-000602', $requisicion, 2);
+        $empleado = $this->empleado('EMP-61', 'Lupe Gil');
+
+        // Con la línea 1 elegida solo se ofrece el reservado de esa línea.
+        $ids = $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6001', $reservado1, $empleado, $linea1->requisition_line_id)
+            ->viewData('assetOptions')->pluck('id')->all();
+        $this->assertContains($reservado1->id, $ids);
+        $this->assertNotContains($reservado2->id, $ids);
+
+        // El reservado de OTRA línea no puede usarse en esta.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6001', $reservado2, $empleado, $linea1->requisition_line_id)
+            ->call('save')
+            ->assertHasErrors(['form.asset_id']);
+
+        // El de su línea sí.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6001', $reservado1, $empleado, $linea1->requisition_line_id)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame($this->estatusAsignado()->id, $reservado1->fresh()->estatus_id);
+        $this->assertSame($reservado1->id, AssetAssignment::firstOrFail()->asset_id);
+    }
+
+    public function test_a_line_with_reserved_equipment_cannot_be_assigned_a_different_stock_asset(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusReservado();
+        $this->estatusAsignado();
+        $requisicion = $this->requisicion('REQ-6002', 'APPROVED', [2]);
+        $reservado = $this->assetReservadoDeEbs('KOS-LAPTOP-000603', $requisicion, 1);
+        $libre = $this->asset('KOS-LAPTOP-000604', 'en_stock');
+        $empleado = $this->empleado('EMP-62', 'Nico Paz');
+
+        // Hay un equipo reservado sin asignar: se rechaza usar uno cualquiera de stock.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6002', $libre, $empleado)
+            ->call('save')
+            ->assertHasErrors(['form.asset_id']);
+
+        // Ya asignado el reservado, la segunda pieza de la línea sí puede salir de stock.
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6002', $reservado, $empleado)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->formularioPorFolio(Livewire::test(Asignaciones::class), 'REQ-6002', $libre, $empleado)
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(2, AssetAssignment::count());
     }
 
     public function test_assignments_without_any_sic_data_are_not_flagged_as_pending(): void

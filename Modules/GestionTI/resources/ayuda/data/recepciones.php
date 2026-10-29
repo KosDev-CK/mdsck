@@ -8,7 +8,7 @@ return [
         'La solicitud se hace casi siempre con un artículo GENÉRICO no inventariable (por ejemplo "Laptop Ejecutiva (estándar EBS)"); aquí se elige el artículo REAL que llegó, pieza por pieza, y de él depende si se da de alta un Activo.',
         'Cada técnico recibe solo lo de su sitio de entrega (su sede de trabajo); una recepción cubre un solo sitio.',
         'Una recepción guardada es definitiva: cantidades, folio, fechas y líneas no se editan ni se cancelan.',
-        'RESERVA: un equipo recibido de una línea que viene de una SIC LOCAL queda "Reservado" para esa SIC; el de una línea de requisición de EBS directa, de folio manual o de proyecto queda "En stock".',
+        'RESERVA: un equipo recibido de una línea que viene de una SIC LOCAL queda "Reservado" para esa SIC; el de una línea de requisición de EBS directa queda "Reservado" para esa requisición y esa línea (conserva su origen); el de folio manual o de proyecto queda "En stock".',
         'Solicitudes a un proveedor INTERNO: el listado y el encabezado muestran "Entrega confirmada" o "Área sin confirmar". Puedes recibir aunque el área no haya confirmado; es un control de seguimiento, no un candado.',
     ],
     'secciones' => [
@@ -53,10 +53,10 @@ return [
             'titulo' => 'Al guardar',
             'reglas' => [
                 'Se da de alta un Activo por cada pieza inventariable, con folio de inventario propio, su artículo, marca, modelo y datos técnicos, en la ubicación destino.',
-                'Estatus del activo: "Reservado" si la línea trae una SIC local (queda apartado para ese empleado), "En stock" si no (SIC de EBS sin SIC local, folio manual o proyecto).',
+                'Estatus del activo: "Reservado" si la línea trae una SIC local (apartado para ese empleado) o una requisición de EBS (apartado para esa requisición y línea); "En stock" si no (folio manual o proyecto).',
                 'Las piezas no inventariables se registran solo por cantidad (telefonía, licencias, consumibles).',
                 'La solicitud pasa a "Parcialmente recibida" o a "Recibida" si ya se completó todo lo pedido.',
-                'ASIGNACIÓN: "Asignación de Activo" exige una Solicitud de SIC local autorizada para elegir a la persona; un activo en stock puede asignarse a cualquier SIC autorizada sin asignar, y uno reservado solo a la SIC para la que se reservó. Para entregar un equipo de una requisición de EBS sin SIC local, captura su Solicitud de SIC con el folio de EBS (se vincula sola) y asígnalo desde stock.',
+                'ASIGNACIÓN: en "Asignación de Activo" se captura el folio de la SIC (de EBS o local); un equipo reservado solo se entrega a la SIC y línea para las que se reservó, y uno en stock puede asignarse a cualquier SIC. Para entregar lo recibido de una requisición de EBS basta capturar su folio y elegir la línea: el equipo reservado para esa línea aparece en la lista.',
                 'Una recepción guardada no se edita ni se cancela; si falta algo se registra en una recepción nueva.',
             ],
         ],

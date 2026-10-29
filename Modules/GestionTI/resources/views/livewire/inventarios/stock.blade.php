@@ -102,7 +102,10 @@
                     </td>
                     <td class="py-2 text-gray-500 dark:text-gray-400">
                         @if ($asset->estatus?->codigo === 'reservado')
-                            {{ $asset->sicReservada?->folio_sic ?: ($asset->sicReservada ? "SIC #{$asset->sicReservada->id}" : '—') }}
+                            {{ $asset->sicReservada?->folio_sic ?: ($asset->sicReservada ? "SIC #{$asset->sicReservada->id}" : ($asset->ebsRequisition?->code ?? '—')) }}
+                            @if ($asset->ebs_requisition_line_id && $asset->ebsRequisition)
+                                <span class="block text-xs">Línea {{ $asset->ebsRequisition->lines->firstWhere('requisition_line_id', $asset->ebs_requisition_line_id)?->line_number }} (EBS)</span>
+                            @endif
                         @else
                             —
                         @endif

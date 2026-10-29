@@ -18,6 +18,7 @@ use Modules\GestionTI\Models\DocumentoDigitalizado;
 use Modules\GestionTI\Models\Empleado;
 use Modules\GestionTI\Models\Empresa;
 use Modules\GestionTI\Models\EbsArticulo;
+use Modules\GestionTI\Models\EbsRequisition;
 use Modules\GestionTI\Models\EstatusActivo;
 use Modules\GestionTI\Models\LugarEntrega;
 use Modules\GestionTI\Models\Marca;
@@ -1492,6 +1493,43 @@ class RecepcionesTest extends TestCase
         $asset = Asset::firstOrFail();
         $this->assertSame($this->estatusReservado()->id, $asset->estatus_id);
         $this->assertSame($sic->id, $asset->sic_reservada_id);
+    }
+
+    public function test_receiving_an_ebs_direct_line_reserves_the_asset_for_its_requisition_and_line(): void
+    {
+        $this->actingAs($this->actingUser());
+        $this->estatusEnStock();
+        $this->estatusReservado();
+        $validador = $this->validador();
+        $ubicacion = $this->ubicacion();
+        $marca = Marca::create(['nombre' => 'HP']);
+
+        $requisicion = EbsRequisition::create(['requisition_header_id' => 7700001, 'code' => 'REQ-RES-1', 'status' => 'APPROVED']);
+        $lineaEbs = $requisicion->lines()->create(['requisition_line_id' => 7700011, 'line_number' => 1, 'item_id' => 1, 'item_description' => 'Laptop', 'quantity' => 1]);
+
+        $solicitud = $this->solicitudConLineaInventariable([], [
+            'cantidad_solicitada' => 1,
+            'ebs_requisition_id' => $requisicion->id,
+            'ebs_requisition_line_id' => $lineaEbs->requisition_line_id,
+        ]);
+
+        Livewire::test(Recepciones::class)
+            ->call('abrirSolicitud', $solicitud->id)
+            ->call('recibirTodoPendiente')
+            ->set('form.folio_remision', 'REM-EBS-001')
+            ->set('form.fecha_recepcion', '2026-09-01')
+            ->set('form.recibido_por_id', $validador->id)
+            ->set('form.ubicacion_id', $ubicacion->id)
+            ->set('lineas.0.marca_id', $marca->id)
+            ->set('lineas.0.unidades.0.numero_serie', 'SN-EBS-001')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $asset = Asset::firstOrFail();
+        $this->assertSame($this->estatusReservado()->id, $asset->estatus_id);
+        $this->assertNull($asset->sic_reservada_id);
+        $this->assertSame($requisicion->id, $asset->ebs_requisition_id);
+        $this->assertSame(7700011, (int) $asset->ebs_requisition_line_id);
     }
 
     public function test_receiving_without_a_sic_leaves_the_asset_free_in_stock(): void

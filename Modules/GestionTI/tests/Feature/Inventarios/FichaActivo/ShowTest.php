@@ -118,6 +118,30 @@ class ShowTest extends TestCase
         $this->assertSame('01/07/2026', $timeline[0]['fecha']->format('d/m/Y'));
     }
 
+    public function test_a_purchase_from_an_ebs_requisition_without_local_sic_keeps_its_origin_in_the_timeline(): void
+    {
+        $this->actingAs($this->actingUser());
+
+        $requisicion = \Modules\GestionTI\Models\EbsRequisition::create([
+            'requisition_header_id' => 9900001,
+            'code' => 'REQ-FICHA-1',
+            'status' => 'APPROVED',
+            'created_by_description' => 'Solicitante EBS',
+        ]);
+        $asset = $this->asset([
+            'origen_tipo' => 'compra',
+            'ebs_requisition_id' => $requisicion->id,
+            'ebs_requisition_line_id' => 9900011,
+        ]);
+
+        $timeline = Livewire::test(Show::class, ['asset' => $asset])->viewData('timeline');
+        $evento = collect($timeline)->firstWhere('titulo', 'Requisición de EBS');
+
+        $this->assertNotNull($evento);
+        $this->assertStringContainsString('REQ-FICHA-1', $evento['detalle']);
+        $this->assertStringContainsString('Solicitante EBS', $evento['detalle']);
+    }
+
     public function test_compra_origin_with_full_chain_shows_the_4_events_in_order_without_duplicating_solicitud_proveedor(): void
     {
         $this->actingAs($this->actingUser());
