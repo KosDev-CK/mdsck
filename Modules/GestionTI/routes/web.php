@@ -6,6 +6,7 @@ use Modules\GestionTI\Http\Controllers\Catalogos\ComprasExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\EmpleadosExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\InventarioExportController;
 use Modules\GestionTI\Http\Controllers\Catalogos\NucleoExportController;
+use Modules\GestionTI\Http\Controllers\Compras\SolicitudProveedorExcelController;
 use Modules\GestionTI\Http\Controllers\Compras\SolicitudProveedorPdfController;
 use Modules\GestionTI\Http\Controllers\MesaServicio\EbsRequisicionesExportController;
 use Modules\GestionTI\Http\Controllers\PresupuestoProyectos\ExportController as PresupuestoProyectosExportController;
@@ -94,6 +95,7 @@ Route::middleware(['auth', 'permission:screens.gestionti-ebs-requisiciones.manag
 Route::middleware(['auth', 'permission:screens.gestionti-solicitudes-proveedor.manage'])->group(function () {
     Route::get('/solicitudes-proveedor', SolicitudesProveedor::class)->name('gestionti.solicitudes-proveedor.index');
     Route::get('/solicitudes-proveedor/{solicitudProveedor}/pdf', SolicitudProveedorPdfController::class)->name('gestionti.solicitudes-proveedor.pdf');
+    Route::get('/solicitudes-proveedor/{solicitudProveedor}/excel', SolicitudProveedorExcelController::class)->name('gestionti.solicitudes-proveedor.excel');
 });
 
 Route::middleware(['auth', 'permission:screens.gestionti-entregas-internas.manage'])->group(function () {

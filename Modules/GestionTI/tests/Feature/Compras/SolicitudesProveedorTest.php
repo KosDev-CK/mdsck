@@ -1207,6 +1207,51 @@ class SolicitudesProveedorTest extends TestCase
         $this->actingAs($user)->get(route('gestionti.solicitudes-proveedor.pdf', $solicitud))->assertForbidden();
     }
 
+    public function test_excel_route_requires_the_screen_permission(): void
+    {
+        $user = User::factory()->create(['is_active' => true]);
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-XLS-001',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+
+        $this->actingAs($user)->get(route('gestionti.solicitudes-proveedor.excel', $solicitud))->assertForbidden();
+    }
+
+    public function test_excel_has_header_data_and_one_row_per_line_with_the_folio(): void
+    {
+        $this->actingAs($this->actingUser());
+        $sic = $this->crearSicAutorizada('laptops_desktops', ['folio_sic' => 'SIC-XLS-001']);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-XLS-002',
+            'vendor_id' => $this->proveedor()->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+        $solicitud->lineas()->create(['sic_id' => $sic->id, 'articulo_id' => $sic->articulo_id, 'cantidad_solicitada' => 3]);
+
+        $response = $this->get(route('gestionti.solicitudes-proveedor.excel', $solicitud));
+        $response->assertOk();
+        $this->assertStringContainsString('solicitud-proveedor-SP-XLS-002.xlsx', $response->headers->get('content-disposition'));
+
+        $archivo = tempnam(sys_get_temp_dir(), 'xls').'.xlsx';
+        file_put_contents($archivo, $response->streamedContent());
+        $hoja = \PhpOffice\PhpSpreadsheet\IOFactory::load($archivo)->getActiveSheet();
+        @unlink($archivo);
+
+        $this->assertSame('Folio', $hoja->getCell('A1')->getValue());
+        $this->assertSame('SP-XLS-002', $hoja->getCell('B1')->getValue());
+        // Cabecera de 7 filas + 1 en blanco → encabezados de la tabla en la fila 9, primera línea en la 10.
+        $this->assertSame('Artículo', $hoja->getCell('D9')->getValue());
+        $this->assertSame('SP-XLS-002', $hoja->getCell('A10')->getValue());
+        $this->assertSame('SIC-XLS-001', $hoja->getCell('C10')->getValue());
+        $this->assertSame('3', $hoja->getCell('E10')->getValue());
+        $this->assertNull($hoja->getCell('A11')->getValue());
+    }
+
     public function test_pdf_shows_the_sic_folio_per_line_for_both_origins(): void
     {
         $this->actingAs($this->actingUser());
