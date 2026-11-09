@@ -95,7 +95,7 @@
 
                                 <x-ui.icon-button tag="a" :href="route('gestionti.solicitudes-proveedor.pdf', $record)" icon="heroicon-o-arrow-down-tray" title="Generar PDF" />
 
-                                <x-ui.icon-button tag="a" :href="route('gestionti.solicitudes-proveedor.excel', $record)" icon="far-file-excel" title="Descargar Excel" />
+                                <x-ui.icon-button tag="a" :href="route('gestionti.solicitudes-proveedor.excel', $record)" icon="icons.file-excel" title="Descargar Excel" />
 
                                 @if (in_array($record->estatus, ['solicitada', 'enviada'], true) && $this->puedeEditar($record))
                                     <x-ui.icon-button
