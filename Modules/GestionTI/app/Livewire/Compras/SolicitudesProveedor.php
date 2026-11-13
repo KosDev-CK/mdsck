@@ -108,6 +108,12 @@ class SolicitudesProveedor extends Component
     public bool $showForm = false;
 
     /**
+     * Al enviar/reenviar al proveedor: copia (CC) al usuario y Reply-To a su
+     * correo. Marcado por defecto; decisión del usuario.
+     */
+    public bool $copiaAMi = true;
+
+    /**
      * Modal de solo lectura "ver detalle de la SIC" al dar clic sobre el
      * número de SIC en la tabla de selección — mismo detalle que ya existe
      * en "SIC en EBS" (`MesaServicio\EbsRequisiciones::openDetalle()`),
@@ -1099,7 +1105,14 @@ class SolicitudesProveedor extends Component
             return;
         }
 
-        Mail::to($record->vendor->contacto_correo)->send(new SolicitudProveedorMail($record));
+        $copiaA = $this->copiaAMi ? auth()->user()?->email : null;
+
+        // Sin CC si el correo del usuario es inválido o es el mismo del proveedor.
+        if ($copiaA && (! filter_var($copiaA, FILTER_VALIDATE_EMAIL) || strcasecmp($copiaA, $record->vendor->contacto_correo) === 0)) {
+            $copiaA = null;
+        }
+
+        Mail::to($record->vendor->contacto_correo)->send(new SolicitudProveedorMail($record, $copiaA));
 
         // Al enviarse pasa a "Enviada" (y desde ahí solo un Administrador puede
         // modificarla, ver `puedeEditar()`). Una solicitud ya recibida/facturada

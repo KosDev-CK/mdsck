@@ -965,6 +965,38 @@ class SolicitudesProveedorTest extends TestCase
         $this->assertNotNull($solicitud->ultimo_envio_at);
     }
 
+    public function test_enviar_a_proveedor_copies_the_user_and_sets_reply_to_by_default_and_can_opt_out(): void
+    {
+        Mail::fake();
+        $user = $this->actingUser();
+        $this->actingAs($user);
+
+        $vendor = Proveedor::create([
+            'razon_social' => 'Proveedor CC',
+            'nombre_comercial' => 'Proveedor CC',
+            'contacto_correo' => 'compras@proveedor-cc.com',
+        ]);
+
+        $solicitud = SolicitudProveedor::create([
+            'folio' => 'SP-CC-001',
+            'vendor_id' => $vendor->id,
+            'fecha_solicitud' => '2026-09-01',
+            'tipo_solicitud' => 'regular',
+        ]);
+
+        Livewire::test(SolicitudesProveedor::class)->call('enviarAProveedor', $solicitud->id);
+
+        Mail::assertSent(SolicitudProveedorMail::class, fn (SolicitudProveedorMail $mail) => $mail->hasCc($user->email) && $mail->hasReplyTo($user->email));
+
+        Mail::fake();
+
+        Livewire::test(SolicitudesProveedor::class)
+            ->set('copiaAMi', false)
+            ->call('enviarAProveedor', $solicitud->id);
+
+        Mail::assertSent(SolicitudProveedorMail::class, fn (SolicitudProveedorMail $mail) => ! $mail->hasCc($user->email) && ! $mail->hasReplyTo($user->email));
+    }
+
     public function test_enviar_a_proveedor_without_contacto_correo_sends_nothing_and_shows_an_error(): void
     {
         Mail::fake();

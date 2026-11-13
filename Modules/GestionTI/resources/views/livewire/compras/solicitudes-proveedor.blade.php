@@ -57,7 +57,13 @@
                         @endforeach
                     </x-ui.select>
                 </div>
-                <x-ui.button wire:click="create">Nuevo</x-ui.button>
+                <div class="flex flex-wrap items-center gap-4">
+                    <label class="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300" title="Al enviar o reenviar al proveedor, te llega copia y sus respuestas van a tu correo">
+                        <input type="checkbox" wire:model="copiaAMi" class="rounded border-gray-300 text-primary focus:ring-primary dark:border-gray-700 dark:bg-gray-800">
+                        Enviarme copia (CC) y recibir respuestas
+                    </label>
+                    <x-ui.button wire:click="create">Nuevo</x-ui.button>
+                </div>
             </div>
 
             <x-ui.table :headers="['Folio', 'Proveedor', 'Fecha', 'Tipo', 'Estatus', 'Líneas', '']" :empty="$records->isEmpty()" empty-description="Agrega la primera con el botón Nuevo.">

@@ -28,8 +28,17 @@ class SolicitudProveedorMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public SolicitudProveedor $solicitud)
+    /**
+     * @param  ?string  $copiaA  Correo del usuario que envía: si viene, va en
+     *                           copia (CC) y como Reply-To, para que la
+     *                           respuesta del proveedor le llegue a él y no a
+     *                           la cuenta parametrizada del sitio.
+     */
+    public function __construct(public SolicitudProveedor $solicitud, ?string $copiaA = null)
     {
+        if ($copiaA) {
+            $this->cc($copiaA)->replyTo($copiaA);
+        }
     }
 
     public function build(): self
